@@ -58,4 +58,18 @@ object Conversations {
         val through = minOf(here.last().id, (elsewhere.firstOrNull()?.id ?: Long.MAX_VALUE) - 1)
         return through.takeIf { it >= here.first().id }
     }
+
+    /**
+     * Whether the node holds a message the user wrote to [peer] with [text], under an id past
+     * [after]. A send the node never answered for may have reached it all the same; once a sync
+     * shows it did, it is not sent again. The node knows a `SEND`'s `ref` only among its last
+     * [Companion.REFS] messages, so this, not the `ref`, keeps a late retry from sending twice.
+     */
+    fun holdsSent(records: Records, peer: Peer, text: String, after: Long): Boolean = records.items.values.any { item ->
+        item.id > after && item.state != MessageState.RECEIVED && peerOf(item) == peer && when (item) {
+            is Body.Message -> item.text == text
+            is Body.GroupMessage -> item.text == text
+            else -> false
+        }
+    }
 }

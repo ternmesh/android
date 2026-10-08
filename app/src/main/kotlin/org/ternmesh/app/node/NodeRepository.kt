@@ -66,8 +66,12 @@ sealed interface Problem {
     data object Gone : Problem
 }
 
-/** A message the node never answered for, which the user may send again under the same `ref`. */
-data class Unanswered(val ref: Long, val peer: Peer, val text: String)
+/**
+ * A message the node never answered for, which the user may send again under the same `ref`.
+ * [after] is the greatest id held when it was first sent: a message the node holds past it, to the
+ * same peer with the same text, is this one, and it went.
+ */
+data class Unanswered(val ref: Long, val peer: Peer, val text: String, val after: Long)
 
 data class NodeState(
     val node: ChosenNode? = null,
@@ -168,12 +172,18 @@ class NodeRepository(private val context: Context) {
      * sends once. One the node may not have, for want of an answer or a link, is kept for the user
      * to send again; [then] hears of the rest that did not go.
      */
-    fun send(peer: Peer, text: String, ref: Long = Random.nextLong(1, 0x1_0000_0000L), then: (Outcome) -> Unit = {}) {
+    fun send(
+        peer: Peer,
+        text: String,
+        ref: Long = Random.nextLong(1, 0x1_0000_0000L),
+        after: Long = connection.records.greatest,
+        then: (Outcome) -> Unit = {},
+    ) {
         val done = { outcome: Outcome ->
             val keep = outcome == Outcome.NoAnswer || outcome == Outcome.Closed
             setUnanswered { list ->
                 val rest = list.filter { it.ref != ref }
-                if (keep) rest + Unanswered(ref, peer, text) else rest
+                if (keep) rest + Unanswered(ref, peer, text, after) else rest
             }
             if (!keep) then(outcome)
         }
@@ -182,6 +192,12 @@ class NodeRepository(private val context: Context) {
             is Peer.Group -> connection.sendToGroup(text, peer.group, ref, done)
         }
         scheduleTick()
+    }
+
+    /** Sends [u] again, unless the node turns out to hold it already: then it went, and is dropped. */
+    fun resend(u: Unanswered, then: (Outcome) -> Unit) {
+        if (Conversations.holdsSent(connection.records, u.peer, u.text, u.after)) return dismissUnanswered(u)
+        send(u.peer, u.text, u.ref, u.after, then)
     }
 
     fun dismissUnanswered(u: Unanswered) = setUnanswered { it - u }
@@ -194,7 +210,7 @@ class NodeRepository(private val context: Context) {
         update { it.copy(unanswered = change(it.unanswered)) }
         val address = _state.value.node?.address ?: return
         val lines = _state.value.unanswered.map { u ->
-            "${u.ref}:${Notifier.key(u.peer)}:" + Base64.encodeToString(u.text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            "${u.ref}:${Notifier.key(u.peer)}:" + Base64.encodeToString(u.text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP) + ":${u.after}"
         }
         unansweredPrefs.edit().putStringSet(address, lines.toSet()).apply()
     }
@@ -202,12 +218,12 @@ class NodeRepository(private val context: Context) {
     private fun loadUnanswered(address: String): List<Unanswered> =
         unansweredPrefs.getStringSet(address, emptySet()).orEmpty().mapNotNull { line ->
             val parts = line.split(':')
-            if (parts.size != 4) return@mapNotNull null
+            if (parts.size != 5) return@mapNotNull null
             val ref = parts[0].toLongOrNull() ?: return@mapNotNull null
             val peer = Notifier.peer("${parts[1]}:${parts[2]}") ?: return@mapNotNull null
             val text = runCatching { String(Base64.decode(parts[3], Base64.NO_WRAP), Charsets.UTF_8) }.getOrNull()
                 ?: return@mapNotNull null
-            Unanswered(ref, peer, text)
+            Unanswered(ref, peer, text, parts[4].toLongOrNull() ?: 0)
         }.sortedBy { it.ref }
 
     fun dismissAsked(a: Body.Asked) = setAsked { list -> list.filter { it.address != a.address } }
@@ -338,6 +354,11 @@ class NodeRepository(private val context: Context) {
 
     private fun publish() {
         notified += connection.records.items.keys
+        // An unanswered send the records now show the node holding went: it needs no retry.
+        val records = connection.records
+        if (_state.value.unanswered.any { Conversations.holdsSent(records, it.peer, it.text, it.after) }) {
+            setUnanswered { list -> list.filterNot { Conversations.holdsSent(records, it.peer, it.text, it.after) } }
+        }
         update { it.copy(records = connection.records.copy()) }
         NodeService.refresh(context, _state.value)
     }

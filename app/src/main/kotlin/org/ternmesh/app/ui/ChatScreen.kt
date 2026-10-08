@@ -122,7 +122,7 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
                         Text(u.text)
                         Text(stringResource(R.string.not_answered), style = MaterialTheme.typography.bodySmall)
                         Row {
-                            TextButton(onClick = { repository.send(peer, u.text, u.ref, report) }) { Text(stringResource(R.string.send_again)) }
+                            TextButton(onClick = { repository.resend(u, report) }) { Text(stringResource(R.string.send_again)) }
                             TextButton(onClick = { repository.dismissUnanswered(u) }) { Text(stringResource(R.string.dismiss)) }
                         }
                     }

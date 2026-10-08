@@ -3,7 +3,9 @@ package org.ternmesh.companion
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class RecordsFileTest {
     private val alice = Address(ByteArray(32) { 0xA1.toByte() })
@@ -91,5 +93,20 @@ class RecordsFileTest {
         r.apply((r.items.getValue(2) as Body.Message).copy(flags = 1))
         r.apply((r.items.getValue(3) as Body.GroupMessage).copy(flags = 1))
         assertEquals(4, Conversations.readThrough(r, a))
+    }
+
+    /** An unanswered send that reached the node is found in a sync, and not sent again. */
+    @Test
+    fun aSendTheNodeHoldsIsFound() {
+        val r = Records().apply {
+            apply(Body.Message(4, bob, 0, 0, MessageState.SENT, 0, 0, "hello"))
+            apply(received(5, alice))
+            apply(Body.GroupMessage(6, hikers, 0, 0, 0, MessageState.WAITING, 1, 0, "all"))
+        }
+        assertTrue(Conversations.holdsSent(r, Peer.Contact(bob), "hello", 3))
+        assertFalse(Conversations.holdsSent(r, Peer.Contact(bob), "hello", 4), "written before the send")
+        assertFalse(Conversations.holdsSent(r, Peer.Contact(alice), "hello", 3), "to someone else")
+        assertFalse(Conversations.holdsSent(r, Peer.Contact(alice), "hi 5", 3), "received, not sent")
+        assertTrue(Conversations.holdsSent(r, Peer.Group(hikers), "all", 0))
     }
 }
