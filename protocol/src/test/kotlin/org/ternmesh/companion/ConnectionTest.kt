@@ -5,6 +5,7 @@ package org.ternmesh.companion
 import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
@@ -451,6 +452,13 @@ class ConnectionTest {
         val hello = Codec.decode(node.sent.removeFirst())
         node.connection.receive(Codec.encode(Frame(hello.seq, Body.Error(ErrorCode.MTU))))
         assertEquals(listOf("HELLO"), node.sent.map { Codec.decode(it).body.typeName })
+    }
+
+    /** A client speaks only the versions it implements: claiming a later one would let the node send what it cannot read. */
+    @Test
+    fun aVersionThisClientDoesNotSpeakIsRefused() {
+        assertFailsWith<IllegalArgumentException> { Connection(version = Companion.VERSION + 1, now = { 0 }, wallTime = null) }
+        assertFailsWith<IllegalArgumentException> { Connection(version = -1, now = { 0 }, wallTime = null) }
     }
 
     @Test

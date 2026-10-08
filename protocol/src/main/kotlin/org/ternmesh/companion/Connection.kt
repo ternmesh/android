@@ -66,6 +66,10 @@ class Connection(
     private val now: () -> Long,
     private val wallTime: (() -> Long)?,
 ) {
+    init {
+        require(version in 0..Companion.VERSION) { "this client speaks versions 0 to ${Companion.VERSION}, not $version" }
+    }
+
     /** Sends one frame to the node: one Bluetooth write, or wrapped for a byte stream. */
     var send: (ByteArray) -> Unit = {}
     var onEvent: (ConnectionEvent) -> Unit = {}
