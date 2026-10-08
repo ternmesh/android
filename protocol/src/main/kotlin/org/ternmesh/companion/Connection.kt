@@ -111,19 +111,26 @@ class Connection(
     private class InFlight(val pending: Pending, val seq: Int, var deadline: Long)
 
     /** Starts the conversation on a link that has just opened: `HELLO`, then the clock and a sync. Requests made before the node answers wait for it. */
+    /**
+     * Opening again while a `HELLO` is unanswered does nothing; after the link drops, close() first.
+     * Requests the connection held from before fail with [Outcome.Closed], once the new `HELLO` is
+     * sent: a callback that opens again finds it opening already.
+     */
     fun open() {
-        if (phase != Phase.CLOSED) close()
+        if (phase == Phase.GREETING) return
+        val old = takeAll()
         phase = Phase.GREETING
         nodeVersion = null
         firmware = null
         hello()
+        for (p in old) p.then(Outcome.Closed)
     }
 
     /** The link closed. Every request not yet answered fails with [Outcome.Closed]. */
     fun close() {
         phase = Phase.CLOSED
         records.abandonSync()
-        failAll(Outcome.Closed)
+        for (p in takeAll()) p.then(Outcome.Closed)
     }
 
     /** Asks the node for anything it holds that this client may not. */
@@ -322,11 +329,12 @@ class Connection(
         send(bytes)
     }
 
-    private fun failAll(outcome: Outcome) {
+    /** Every request held, unanswered or waiting, which the connection then no longer holds. A caller fails them only once its own state is settled, since a callback may open again. */
+    private fun takeAll(): List<Pending> {
         val pending = listOfNotNull(inFlight?.pending) + queue
         inFlight = null
         queue.clear()
-        for (p in pending) p.then(outcome)
+        return pending
     }
 }
 

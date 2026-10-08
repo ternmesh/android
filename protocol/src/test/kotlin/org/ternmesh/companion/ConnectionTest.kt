@@ -159,6 +159,24 @@ class ConnectionTest {
         assertEquals(2, node.connection.agreed)
     }
 
+    /** Opening again fails what was held only once the new HELLO is out, so a callback that opens again too sends no second one: one request at a time holds. */
+    @Test
+    fun openingAgainFromTheCallbackOfARequestOpeningClosed() {
+        val node = Node()
+        node.connection.open()
+        node.answerAll()
+        var result: Outcome? = null
+        node.connection.submit(Body.Ping) {
+            result = it
+            node.connection.open()
+        }
+        node.sent.removeFirst()
+        node.connection.open()
+        assertEquals(Outcome.Closed, result)
+        assertEquals(listOf("HELLO"), node.sent.map { Codec.decode(it).body.typeName })
+        assertEquals(listOf("HELLO", "SET_TIME", "SYNC"), node.answerAll().map { it.typeName })
+    }
+
     @Test
     fun eachNewsFrameOfASyncStartsTheWaitAgain() {
         val node = Node()
