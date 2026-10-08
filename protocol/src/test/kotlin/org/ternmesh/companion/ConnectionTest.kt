@@ -145,7 +145,12 @@ class ConnectionTest {
         val node = Node()
         node.connection.open()
         node.answerAll()
-        node.connection.submit(Body.Ping) { node.connection.open() }
+        var gone = false
+        node.connection.onEvent = { if (it == ConnectionEvent.Gone) gone = true }
+        node.connection.submit(Body.Ping) {
+            assertTrue(gone, "the app is told before the request's callback")
+            node.connection.open()
+        }
         node.connection.submit(Body.Ping)
         node.sent.removeFirst()
         node.time += Companion.ANSWER_WAIT_MS
@@ -292,6 +297,23 @@ class ConnectionTest {
         node.answerAll()
         assertEquals(ConnectionEvent.Synced, node.events.last())
         node.time = 2 * Companion.IDLE_MS
+        node.connection.tick()
+        assertEquals(listOf("PING"), node.sent.map { Codec.decode(it).body.typeName })
+    }
+
+    /** A sync that finishes some other way pays what a refused one owed: the idle deadline pings. */
+    @Test
+    fun aSyncThatFinishesClearsTheOneOwed() {
+        val node = Node()
+        node.connection.open()
+        node.answerOne() // INFO
+        node.answerOne() // OK to SET_TIME
+        val sync = Codec.decode(node.sent.removeFirst())
+        node.connection.receive(Codec.encode(Frame(sync.seq, Body.Error(ErrorCode.NOT_NOW))))
+        node.connection.resync()
+        node.answerAll()
+        assertEquals(ConnectionEvent.Synced, node.events.last())
+        node.time = Companion.IDLE_MS
         node.connection.tick()
         assertEquals(listOf("PING"), node.sent.map { Codec.decode(it).body.typeName })
     }

@@ -188,16 +188,16 @@ class Connection(
         val f = inFlight
         if (f != null) {
             if (t < f.deadline) return
-            // Everything is cleared before any callback runs, so one that opens again at once keeps
-            // what it opens.
+            // Everything is cleared, and the app told, before any request's callback runs: an app that
+            // opens again from either keeps what it opens.
             phase = Phase.CLOSED
             records.abandonSync()
             val queued = queue.toList()
             inFlight = null
             queue.clear()
+            onEvent(ConnectionEvent.Gone)
             f.pending.then(Outcome.NoAnswer)
             for (p in queued) p.then(Outcome.Closed)
-            onEvent(ConnectionEvent.Gone)
         } else if (phase == Phase.OPEN && t >= lastAnswer + Companion.IDLE_MS) {
             if (syncOwed) {
                 syncOwed = false
@@ -275,6 +275,7 @@ class Connection(
             kind == Kind.Sync && body == Body.Synced -> {
                 if (records.finishSync(agreed ?: version)) {
                     missedSince = null
+                    syncOwed = false
                     onEvent(ConnectionEvent.Synced)
                 }
                 p.then(Outcome.Answered(body))
