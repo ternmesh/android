@@ -166,10 +166,12 @@ class BleLink(private val context: Context, private val handler: Handler) {
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) = on(g) {
+            // A discovery that failed shows nothing missing: start the link again, not give up on it.
+            if (status != BluetoothGatt.GATT_SUCCESS) return@on fail(LinkFailure.LOST)
             val service = g.getService(SERVICE)
             val to = service?.getCharacteristic(TO_NODE)
             val from = service?.getCharacteristic(FROM_NODE)
-            if (status != BluetoothGatt.GATT_SUCCESS || to == null || from == null) return@on fail(LinkFailure.NO_SERVICE)
+            if (to == null || from == null) return@on fail(LinkFailure.NO_SERVICE)
             toNode = to
             // Both characteristics need an encrypted link from passkey pairing. Bonding first,
             // rather than letting the first write fail into it, gives the user one prompt and
