@@ -2,6 +2,11 @@
 // service nearby. Picking one connects, and Android asks for its passkey the first time.
 package org.ternmesh.app.ui
 
+import android.content.Context
+import android.content.Intent
+import android.location.LocationManager
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -31,6 +36,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.location.LocationManagerCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.ternmesh.app.R
 import org.ternmesh.app.link.BleLink
@@ -56,8 +63,15 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
         on = BleLink.isOn(context)
         if (on) scanner.start()
     }
-    DisposableEffect(permitted, on) {
-        if (permitted && on) scanner.start()
+    // Android 11 and earlier report no scan results while the phone's location setting is off.
+    var located by remember { mutableStateOf(locationReady(context)) }
+    LifecycleResumeEffect(Unit) {
+        located = locationReady(context)
+        on = BleLink.isOn(context)
+        onPauseOrDispose {}
+    }
+    DisposableEffect(permitted, on, located) {
+        if (permitted && on && located) scanner.start()
         onDispose { scanner.stop() }
     }
 
@@ -71,6 +85,12 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
                 }
             }
             !on -> Button(onClick = { enable.launch(BleLink.enableIntent()) }) { Text(stringResource(R.string.connect_turn_on)) }
+            !located -> {
+                Text(stringResource(R.string.connect_location))
+                Button(onClick = { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }) {
+                    Text(stringResource(R.string.connect_turn_on_location))
+                }
+            }
             else -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (scanning) {
@@ -102,6 +122,11 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
         }
     }
 }
+
+/** Whether a scan can find anything: on Android 11 and earlier, only with the location setting on. */
+private fun locationReady(context: Context): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ||
+        context.getSystemService(LocationManager::class.java)?.let(LocationManagerCompat::isLocationEnabled) == true
 
 /** Asks for Bluetooth permission alone, for a node already chosen; [granted] once it is given. */
 @Composable

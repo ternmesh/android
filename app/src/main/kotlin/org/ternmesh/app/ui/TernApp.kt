@@ -83,9 +83,11 @@ fun TernApp(repository: NodeRepository, opening: String?, opened: () -> Unit) {
         onPauseOrDispose {}
     }
 
-    LaunchedEffect(opening, state.node) {
+    // Only once the tabs, and with them the navigation graph, are on screen: until permission is
+    // given the conversation waits.
+    LaunchedEffect(opening, state.node, permitted) {
         val peer = opening?.let(Notifier::peer)
-        if (peer != null && state.node != null) {
+        if (peer != null && state.node != null && permitted) {
             nav.navigate(chatRoute(peer)) { launchSingleTop = true }
             opened()
         }

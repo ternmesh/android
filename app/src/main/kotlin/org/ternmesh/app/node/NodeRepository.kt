@@ -7,6 +7,7 @@ package org.ternmesh.app.node
 
 import android.content.Context
 import android.os.Handler
+import android.util.Base64
 import android.os.Looper
 import android.os.SystemClock
 import androidx.lifecycle.Lifecycle
@@ -84,6 +85,7 @@ class NodeRepository(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private val link = BleLink(context, handler)
     private val prefs = context.getSharedPreferences("node", Context.MODE_PRIVATE)
+    private val unansweredPrefs = context.getSharedPreferences("unanswered", Context.MODE_PRIVATE)
     private val notifier = Notifier(context)
     private var connection = newConnection(Records())
 
@@ -109,7 +111,7 @@ class NodeRepository(private val context: Context) {
         if (address != null) {
             val node = ChosenNode(address, prefs.getString(KEY_NAME, null))
             adopt(load(address))
-            update { it.copy(node = node, records = connection.records.copy()) }
+            update { it.copy(node = node, records = connection.records.copy(), unanswered = loadUnanswered(address)) }
         }
     }
 
@@ -128,7 +130,7 @@ class NodeRepository(private val context: Context) {
             forget()
             prefs.edit().putString(KEY_ADDRESS, node.address).putString(KEY_NAME, node.name).apply()
             adopt(load(node.address))
-            update { NodeState(node = node, records = connection.records.copy()) }
+            update { NodeState(node = node, records = connection.records.copy(), unanswered = loadUnanswered(node.address)) }
         }
         connectTo(node, waitForIt = false)
     }
@@ -165,9 +167,9 @@ class NodeRepository(private val context: Context) {
     fun send(peer: Peer, text: String, ref: Long = Random.nextLong(1, 0x1_0000_0000L), then: (Outcome) -> Unit = {}) {
         val done = { outcome: Outcome ->
             val keep = outcome == Outcome.NoAnswer || outcome == Outcome.Closed
-            update { s ->
-                val rest = s.unanswered.filter { it.ref != ref }
-                s.copy(unanswered = if (keep) rest + Unanswered(ref, peer, text) else rest)
+            setUnanswered { list ->
+                val rest = list.filter { it.ref != ref }
+                if (keep) rest + Unanswered(ref, peer, text) else rest
             }
             if (!keep) then(outcome)
         }
@@ -178,7 +180,31 @@ class NodeRepository(private val context: Context) {
         scheduleTick()
     }
 
-    fun dismissUnanswered(u: Unanswered) = update { s -> s.copy(unanswered = s.unanswered - u) }
+    fun dismissUnanswered(u: Unanswered) = setUnanswered { it - u }
+
+    /**
+     * Messages the node may or may not have are kept on disk too: sent again after a restart under
+     * a new `ref`, one the node did take would go twice.
+     */
+    private fun setUnanswered(change: (List<Unanswered>) -> List<Unanswered>) {
+        update { it.copy(unanswered = change(it.unanswered)) }
+        val address = _state.value.node?.address ?: return
+        val lines = _state.value.unanswered.map { u ->
+            "${u.ref}:${Notifier.key(u.peer)}:" + Base64.encodeToString(u.text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+        }
+        unansweredPrefs.edit().putStringSet(address, lines.toSet()).apply()
+    }
+
+    private fun loadUnanswered(address: String): List<Unanswered> =
+        unansweredPrefs.getStringSet(address, emptySet()).orEmpty().mapNotNull { line ->
+            val parts = line.split(':')
+            if (parts.size != 4) return@mapNotNull null
+            val ref = parts[0].toLongOrNull() ?: return@mapNotNull null
+            val peer = Notifier.peer("${parts[1]}:${parts[2]}") ?: return@mapNotNull null
+            val text = runCatching { String(Base64.decode(parts[3], Base64.NO_WRAP), Charsets.UTF_8) }.getOrNull()
+                ?: return@mapNotNull null
+            Unanswered(ref, peer, text)
+        }.sortedBy { it.ref }
 
     fun dismissAsked(a: Body.Asked) = update { s -> s.copy(asked = s.asked.filter { it.address != a.address }) }
 

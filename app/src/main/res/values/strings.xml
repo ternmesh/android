@@ -68,6 +68,8 @@
     <string name="connect_permissions">Tern needs Bluetooth permission to find and talk to your node.</string>
     <string name="connect_grant">Allow</string>
     <string name="connect_turn_on">Turn on Bluetooth</string>
+    <string name="connect_location">On this version of Android, finding Bluetooth devices needs the phone\'s location setting on. Tern does not use your location.</string>
+    <string name="connect_turn_on_location">Open location settings</string>
     <string name="unnamed_device">Unnamed node</string>
     <string name="signal_dbm">%1$d dBm</string>
     <string name="retry">Try again</string>
