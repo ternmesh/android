@@ -43,7 +43,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.getStringExtra(Notifier.EXTRA_PEER)?.let { opening.value = it }
+        intent.getStringExtra(Notifier.EXTRA_PEER)?.let {
+            // Kept as the activity's intent, so a conversation still waiting (on permission, say)
+            // survives the activity being made again, and is cleared from the intent that has it.
+            setIntent(intent)
+            opening.value = it
+        }
     }
 
     override fun onStart() {

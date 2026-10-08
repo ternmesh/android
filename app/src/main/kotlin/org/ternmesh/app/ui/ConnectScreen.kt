@@ -5,6 +5,7 @@ package org.ternmesh.app.ui
 import android.content.Context
 import android.content.Intent
 import android.location.LocationManager
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -54,10 +55,6 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
     val found by scanner.found.collectAsStateWithLifecycle()
     val scanning by scanner.scanning.collectAsStateWithLifecycle()
 
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        permitted = MainActivity.hasBluetoothPermissions(context)
-        if (permitted && BleLink.isOn(context)) scanner.start()
-    }
     val enable = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         on = BleLink.isOn(context)
         if (on) scanner.start()
@@ -66,6 +63,7 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
     var located by remember { mutableStateOf(locationReady(context)) }
     // Scans only while the screen is in front: a low-latency scan left running costs battery.
     LifecycleResumeEffect(permitted, on, located) {
+        permitted = MainActivity.hasBluetoothPermissions(context)
         located = locationReady(context)
         on = BleLink.isOn(context)
         if (permitted && on && located) scanner.start()
@@ -75,11 +73,9 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.connect_title), style = MaterialTheme.typography.headlineSmall)
         when {
-            !permitted -> {
-                Text(stringResource(R.string.connect_permissions))
-                Button(onClick = { ask.launch(MainActivity.bluetoothPermissions + MainActivity.notificationPermissions) }) {
-                    Text(stringResource(R.string.connect_grant))
-                }
+            !permitted -> PermissionAsk {
+                permitted = true
+                if (BleLink.isOn(context)) scanner.start()
             }
             !on -> Button(onClick = { enable.launch(BleLink.enableIntent()) }) { Text(stringResource(R.string.connect_turn_on)) }
             !located -> {
@@ -128,14 +124,33 @@ private fun locationReady(context: Context): Boolean =
 /** Asks for Bluetooth permission alone, for a node already chosen; [granted] once it is given. */
 @Composable
 fun PermissionPrompt(modifier: Modifier = Modifier, granted: () -> Unit) {
-    val context = LocalContext.current
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        if (MainActivity.hasBluetoothPermissions(context)) granted()
-    }
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(R.string.connect_permissions))
-        Button(onClick = { ask.launch(MainActivity.bluetoothPermissions + MainActivity.notificationPermissions) }) {
-            Text(stringResource(R.string.connect_grant))
-        }
+        PermissionAsk(granted)
+    }
+}
+
+/**
+ * Why the app needs Bluetooth permission, and a button to give it. Once Android has been asked and
+ * the permission is still missing, it may not ask again (after two refusals it answers for the
+ * user), so the app's own settings page is offered beside it.
+ */
+@Composable
+private fun PermissionAsk(granted: () -> Unit) {
+    val context = LocalContext.current
+    var refused by remember { mutableStateOf(false) }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (MainActivity.hasBluetoothPermissions(context)) granted() else refused = true
+    }
+    Text(stringResource(R.string.connect_permissions))
+    Button(onClick = { ask.launch(MainActivity.bluetoothPermissions + MainActivity.notificationPermissions) }) {
+        Text(stringResource(R.string.connect_grant))
+    }
+    if (refused) {
+        Text(stringResource(R.string.connect_permissions_settings))
+        OutlinedButton(onClick = {
+            context.startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+            )
+        }) { Text(stringResource(R.string.connect_open_settings)) }
     }
 }
