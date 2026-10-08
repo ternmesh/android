@@ -250,6 +250,31 @@ class ConnectionTest {
         assertEquals(listOf<Body>(Body.Sync(4)), node.sent.map { Codec.decode(it).body })
     }
 
+    /** A sync that comes to nothing leaves what was missed marked: after ERROR 6 and a new HELLO, the next sync asks from 10 again, not from the 12 heard of since. */
+    @Test
+    fun whatWasMissedStaysMarkedUntilASyncFinishes() {
+        val node = synced(Node.message(10, MessageState.DELIVERED))
+        node.newsCount++ // MESSAGE 11, lost
+        node.news(Node.message(12, MessageState.DELIVERED))
+        val sync = Codec.decode(node.sent.removeFirst())
+        assertEquals(Body.Sync(10), sync.body)
+        node.connection.receive(Codec.encode(Frame(sync.seq, Body.Error(ErrorCode.HELLO_FIRST))))
+        node.answerOne() // INFO
+        node.answerOne() // OK to SET_TIME
+        assertEquals(listOf<Body>(Body.Sync(10)), node.sent.map { Codec.decode(it).body })
+    }
+
+    /** A client away from the node missed every change made meanwhile: a connection's first sync reaches back to the oldest message whose state may have changed. */
+    @Test
+    fun aConnectionStartsAsIfNewsWereMissed() {
+        val node = synced(Node.message(5, MessageState.SENT), Node.message(8, MessageState.DELIVERED))
+        node.connection.close()
+        node.connection.open()
+        node.answerOne() // INFO
+        node.answerOne() // OK to SET_TIME
+        assertEquals(listOf<Body>(Body.Sync(4)), node.sent.map { Codec.decode(it).body })
+    }
+
     /** A sync that missed some of its news proves nothing about what is gone: the next one does. */
     @Test
     fun aSyncThatMissedNewsForgetsNothing() {
