@@ -219,7 +219,8 @@ class BleLink(private val context: Context, private val handler: Handler) {
     private fun subscribe(g: BluetoothGatt) {
         val from = g.getService(SERVICE)?.getCharacteristic(FROM_NODE) ?: return fail(LinkFailure.NO_SERVICE)
         val cccd = from.getDescriptor(CCCD) ?: return fail(LinkFailure.NO_SERVICE)
-        g.setCharacteristicNotification(from, true)
+        // Android refusing to route notifications here would leave every answer unheard: start again.
+        if (!g.setCharacteristicNotification(from, true)) return fail(LinkFailure.LOST)
         val value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
         val started = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             g.writeDescriptor(cccd, value) == BluetoothStatusCodes.SUCCESS
