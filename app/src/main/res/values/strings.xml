@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tern</string>
+
+    <string name="channel_messages">Messages</string>
+    <string name="channel_link">Link to your node</string>
+    <string name="invite_received">Invited you to %1$s</string>
+
+    <!-- Tabs -->
+    <string name="tab_chats">Chats</string>
+    <string name="tab_contacts">Contacts</string>
+    <string name="tab_node">Node</string>
+
+    <!-- Where the link is -->
+    <string name="phase_none">No node chosen</string>
+    <string name="phase_connecting">Connecting…</string>
+    <string name="phase_pairing">Pairing: enter the passkey your node shows</string>
+    <string name="phase_greeting">Saying hello…</string>
+    <string name="phase_syncing">Catching up…</string>
+    <string name="phase_ready">Connected</string>
+    <string name="phase_stopped">Not connected</string>
+
+    <string name="problem_bluetooth_off">Bluetooth is off.</string>
+    <string name="problem_no_service">That device is not a Tern node, or its firmware is too old.</string>
+    <string name="problem_mtu">The phone and node could not agree a large enough packet size (MTU).</string>
+    <string name="problem_pairing">Pairing failed. Check the passkey and try again. If the node was reset, remove it from Android\'s Bluetooth settings first.</string>
+    <string name="problem_lost">The link dropped. Waiting for the node to come back.</string>
+    <string name="problem_gone">The node stopped answering. Reconnecting.</string>
+    <string name="problem_refused">The node refused the connection: %1$s</string>
+
+    <!-- ERROR codes -->
+    <string name="error_1">the node\'s firmware does not know this request</string>
+    <string name="error_2">the request was malformed</string>
+    <string name="error_3">the node refused that value</string>
+    <string name="error_4">not a valid address, or it is the node\'s own</string>
+    <string name="error_5">the node has no room for another</string>
+    <string name="error_6">the node had taken the app for gone</string>
+    <string name="error_7">the Bluetooth packet size (MTU) is too small</string>
+    <string name="error_8">the node is busy; try again shortly</string>
+    <string name="error_9">the node is not in that group, or no longer holds that invite</string>
+    <string name="error_other">error %1$d</string>
+
+    <string name="outcome_unsupported">Your node\'s firmware does not support this yet.</string>
+    <string name="outcome_no_answer">The node did not answer. It may have done it anyway.</string>
+    <string name="outcome_closed">Not connected to the node.</string>
+    <string name="outcome_invalid">That is too long.</string>
+    <string name="outcome_refused">Refused: %1$s</string>
+    <string name="done">Done</string>
+
+    <!-- Message states -->
+    <string name="state_waiting">Waiting</string>
+    <string name="state_sent">Sent</string>
+    <string name="state_delivered">Delivered</string>
+    <string name="state_not_delivered">Not delivered</string>
+    <string name="reason_1">looking for a route</string>
+    <string name="reason_2">setting up a secure session</string>
+    <string name="reason_3">the region\'s transmit limit</string>
+    <string name="reason_4">the airtime budget</string>
+    <string name="reason_5">the radio is busy</string>
+    <string name="waiting_for">Waiting for %1$s</string>
+    <string name="about_seconds">about %1$d s</string>
+
+    <!-- Connect -->
+    <string name="connect_title">Choose your node</string>
+    <string name="connect_scan">Scan</string>
+    <string name="connect_stop">Stop</string>
+    <string name="connect_none">No Tern nodes found yet. Make sure yours is on and nearby.</string>
+    <string name="connect_permissions">Tern needs Bluetooth permission to find and talk to your node.</string>
+    <string name="connect_grant">Allow</string>
+    <string name="connect_turn_on">Turn on Bluetooth</string>
+    <string name="unnamed_device">Unnamed node</string>
+    <string name="signal_dbm">%1$d dBm</string>
+    <string name="retry">Try again</string>
+    <string name="change_node">Change node</string>
+
+    <!-- Chats -->
+    <string name="chats_empty">No conversations yet. Start one from a contact, or make a group.</string>
+    <string name="new_chat">New chat</string>
+    <string name="new_group">New group</string>
+    <string name="make">Make</string>
+    <string name="cancel">Cancel</string>
+    <string name="group_label">Group</string>
+
+    <!-- Chat -->
+    <string name="message_hint">Message</string>
+    <string name="send">Send</string>
+    <string name="not_answered">The node did not confirm this.</string>
+    <string name="send_again">Send again</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="invite_to">Invite to %1$s</string>
+    <string name="invite_from">Invite to %1$s</string>
+    <string name="join">Join</string>
+    <string name="rename">Rename</string>
+    <string name="invite">Invite a contact</string>
+    <string name="leave">Leave group</string>
+    <string name="save_contact">Save as contact</string>
+    <string name="end_session">End secure session</string>
+    <string name="end_session_explained">The next message will set up a new session, with fresh keys.</string>
+    <string name="back">Back</string>
+    <string name="more">More</string>
+    <string name="choose_contact">Choose a contact</string>
+    <string name="no_contacts">No contacts yet.</string>
+
+    <!-- Contacts -->
+    <string name="contacts_empty">No contacts yet. Add one with their address.</string>
+    <string name="add_contact">Add contact</string>
+    <string name="name">Name</string>
+    <string name="address">Address (64 hex digits)</string>
+    <string name="address_invalid">That is not an address.</string>
+    <string name="save">Save</string>
+    <string name="remove">Remove</string>
+    <string name="message">Message</string>
+    <string name="session_yes">Secure session</string>
+    <string name="session_no">No session yet</string>
+    <string name="asked_title">Someone tried to reach you</string>
+    <string name="asked_not_contact">Your node turned away a message from %1$s because it is not a contact.</string>
+    <string name="asked_no_room">Your node turned away a message from %1$s because it has no room for another session.</string>
+
+    <!-- Node -->
+    <string name="node_identity">This node</string>
+    <string name="node_address">Address</string>
+    <string name="copy">Copy</string>
+    <string name="share">Share</string>
+    <string name="copied">Copied</string>
+    <string name="node_firmware">Firmware</string>
+    <string name="node_protocol">Protocol version %1$d</string>
+    <string name="node_clock">Clock</string>
+    <string name="clock_unset">Not set</string>
+    <string name="battery">Battery</string>
+    <string name="battery_value">%1$s, %2$.2f V</string>
+    <string name="unknown">Unknown</string>
+    <string name="charging">charging</string>
+    <string name="external_power">on external power</string>
+    <string name="airtime">Airtime</string>
+    <string name="airtime_value">%1$.1f of %2$.1f s used, every %3$s</string>
+    <string name="airtime_wait">Next send in about %1$.1f s</string>
+    <string name="airtime_unlimited">No limit in this region</string>
+    <string name="neighbours">Nodes heard</string>
+    <string name="neighbours_none">None heard yet.</string>
+    <string name="neighbour_line">%1$s · %2$.1f dB · %3$s</string>
+    <string name="heard_ago">heard %1$s ago</string>
+    <string name="settings">Settings</string>
+    <string name="region">Region</string>
+    <string name="region_none">Not set</string>
+    <string name="role">Role</string>
+    <string name="role_leaf">Leaf: sends and receives only</string>
+    <string name="role_relay">Relay: also passes on messages for others</string>
+    <string name="role_leaf_short">Leaf</string>
+    <string name="role_relay_short">Relay</string>
+    <string name="power">Transmit power</string>
+    <string name="power_value">%1$d dBm</string>
+    <string name="passkey">Bluetooth passkey</string>
+    <string name="passkey_hint">6 digits, or empty for a new random one each time</string>
+    <string name="set">Set</string>
+
+    <plurals name="bytes_left">
+        <item quantity="one">%1$d byte left</item>
+        <item quantity="other">%1$d bytes left</item>
+    </plurals>
+</resources>

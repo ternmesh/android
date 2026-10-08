@@ -7,14 +7,23 @@ in Kotlin.
 
 What the app is, and why it is native, is in
 [decisions/phone-apps.md](https://github.com/ternmesh/spec/blob/main/decisions/phone-apps.md).
-So far there is its protocol and the connection that speaks it, and no app around them.
+It finds a node, pairs with it, and keeps a link to it in the background; it shows conversations
+with contacts and groups, where each message is and what it waits for, the node's battery, airtime
+and the nodes it hears, and changes its region, role, power and passkey.
+
+**To try it**, install the APK from the latest CI run on `main` (the `tern-debug-apk` artifact)
+on Android 8 or later. Each build is signed with the same debug key, so a newer one installs over
+an older one. The first connection asks for the passkey your node shows, or the one set over USB.
 
 ```bash
-./gradlew test    # the companion protocol and the connection, against the specification's vectors
+./gradlew :protocol:test        # the companion protocol and the connection, against the specification's vectors
+./gradlew :app:assembleDebug    # the app: app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:installDebug     # onto a phone over adb
 ```
 
-JDK 17 or later. The `protocol` module is plain Kotlin with no Android in it, so its tests run on
-any JVM, and the app module (to come) depends on it.
+JDK 17 or later; the app also needs the Android SDK (platform 35), which Android Studio installs,
+or `sdk.dir` in `local.properties`. The `protocol` module is plain Kotlin with no Android in it, so
+its tests run on any JVM.
 
 ## Where things are
 
@@ -25,7 +34,12 @@ any JVM, and the app module (to come) depends on it.
 | `protocol/src/main/kotlin/org/ternmesh/companion/ByteStream.kt` | Frames on a byte stream (USB serial, TCP), with the node's console text between them. Bluetooth does not need it. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Connection.kt` | One connection, the client's half: `HELLO` and the version both speak, one request at a time, counted news, syncing again, and the `PING` that keeps a node from taking the app for gone. No I/O and no clock of its own: a link hands it frames and calls `tick()`. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Records.kt` | What the node has said it holds, as news leaves it, and the `after` the next sync asks from. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/RecordsFile.kt` | The records on disk, each as the frame that carried it, so the next run syncs only what is new. The Apple app keeps the same format. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Conversations.kt` | The records as conversations, and how far a `READ` may reach without marking another conversation's messages read. |
 | `protocol/src/test/` | The conformance section of the specification, as a client: the codec against every vector, and the connection as the client in `exchange` and `older`. |
+| `app/src/main/kotlin/org/ternmesh/app/link/` | Bluetooth LE: scanning for the node's service, and the GATT link (an MTU of at least 183, passkey pairing, one frame per write and per notification). |
+| `app/src/main/kotlin/org/ternmesh/app/node/` | The node the app drives: the link, the connection over it and the records on disk (`NodeRepository`), the foreground service that keeps it while the app is closed, and message notifications. |
+| `app/src/main/kotlin/org/ternmesh/app/ui/` | The screens, in Jetpack Compose: choosing a node, chats, one conversation, contacts and the node. Every word they show is in `res/values/strings.xml`. |
 
 The vectors' `group_ids` are not run here. A client never holds a group's secret, since no frame
 carries one, so working out an id from it is the node's part.
@@ -39,8 +53,11 @@ set `TERN_COMPANION_VECTORS` to its path.
 
 ## Still to come
 
-* Bluetooth LE: the service, an MTU of at least 183, and passkey pairing.
-* The app itself, with its module beside `protocol`.
+* Sharing an address as a QR code or link, once the specification's
+  [sharing draft](https://github.com/ternmesh/spec/blob/main/draft/sharing.md) settles.
+* A release build, signed and published.
+* What the specification does not define yet: positions and a map, telemetry, firmware updates
+  over the link.
 
 * [CONTRIBUTING.md](CONTRIBUTING.md) — DCO sign-off, and the specification first
 * [Governance](https://github.com/ternmesh/spec/blob/main/GOVERNANCE.md)
