@@ -104,13 +104,19 @@ class CompanionVectorsTest {
         }
     }
 
-    /** Each older connection's frames read by the version its client speaks, and build back. */
+    /** Each older connection's frames read by the version its client speaks, and build back; one that version does not define is undefined. */
     @Test
     fun olderEveryFrameReadsByItsVersion() {
         for (c in v.list("older")) {
             val version = c.int("version")
             for (f in c.list("frames")) {
                 val name = f.str("type")
+                // Version 1's client ends with a request its version does not define.
+                val latest = runCatching { Codec.decode(f.bytes("frame")) }.getOrNull()
+                if (latest != null && latest.body.since > version) {
+                    assertFailsWith<DecodeException>(name) { Codec.decode(f.bytes("frame"), version) }
+                    continue
+                }
                 val frame = Codec.decode(f.bytes("frame"), version)
                 assertEquals(name, frame.body.typeName)
                 assertEquals(f.str("frame"), Hex.encode(Codec.encode(frame)), "$version $name")
@@ -119,6 +125,17 @@ class CompanionVectorsTest {
         // And by version 3, version 2's SYNCED is cut short.
         assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x43, 0x02)) }
         assertEquals(Body.Synced(null), Codec.decode(byteArrayOf(0x43, 0x02), 2).body)
+    }
+
+    /** A frame of a later version than the one both ends speak is one that version does not define. */
+    @Test
+    fun aFrameOfALaterVersionIsUndefined() {
+        val gone = Codec.encode(Frame(1, Body.GroupGone(GroupId(ByteArray(8) { 1 }))))
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(gone, 1) }.reason)
+        Codec.decode(gone, 2)
+        val end = Codec.encode(Frame(1, Body.EndSession(Address(ByteArray(32) { 1 }))))
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(end, 0) }.reason)
+        Codec.decode(end, 1)
     }
 
     @Test

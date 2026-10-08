@@ -231,6 +231,7 @@ object Codec {
             )
             else -> throw DecodeException(Unreadable.UNDEFINED)
         }
+        if (body.since > version) throw DecodeException(Unreadable.UNDEFINED)
         return Frame(seq, body)
     }
 
