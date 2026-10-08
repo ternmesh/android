@@ -41,6 +41,10 @@ object RecordsFile {
         if (bytes.size < HEADER || !bytes.copyOfRange(0, 4).contentEquals(MAGIC) || bytes[4].toInt() != FORMAT) {
             return Records()
         }
+        // A synced version this client does not speak, or a flag neither 0 nor 1, is a spoiled file
+        // too: trusting it would sync from where it says, past what it lost.
+        val synced = bytes[5].toInt() and 0xFF
+        if (synced != 0xFF && synced > Companion.VERSION || (bytes[6].toInt() and 0xFF) > 1) return Records()
         val records = Records()
         var at = HEADER
         while (at < bytes.size) {
@@ -57,7 +61,6 @@ object RecordsFile {
             records.apply(body)
             at += 1 + n
         }
-        val synced = bytes[5].toInt() and 0xFF
         records.syncedVersion = if (synced == 0xFF) null else synced
         records.missedSince = if (bytes[6].toInt() == 0) null else
             (7 until 11).fold(0L) { v, i -> v shl 8 or (bytes[i].toLong() and 0xFF) }

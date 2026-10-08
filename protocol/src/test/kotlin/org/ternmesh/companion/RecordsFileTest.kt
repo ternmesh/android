@@ -53,6 +53,8 @@ class RecordsFileTest {
         assertEquals(empty, RecordsFile.decode(good.copyOf(good.size - 1)), "cut short")
         assertEquals(empty, RecordsFile.decode(good.copyOf().also { it[0] = 'X'.code.toByte() }), "not this format")
         assertEquals(empty, RecordsFile.decode(good.copyOf().also { it[4] = 2 }), "a later format")
+        assertEquals(empty, RecordsFile.decode(good.copyOf().also { it[5] = (Companion.VERSION + 1).toByte() }), "a version not spoken")
+        assertEquals(empty, RecordsFile.decode(good.copyOf().also { it[6] = 2 }), "a missed flag neither 0 nor 1")
         val notARecord = Codec.encode(Frame(0, Body.Ok))
         assertEquals(empty, RecordsFile.decode(good + byteArrayOf(notARecord.size.toByte()) + notARecord), "an answer is no record")
     }
