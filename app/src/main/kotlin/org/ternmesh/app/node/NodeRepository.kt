@@ -391,7 +391,10 @@ class NodeRepository(private val context: Context) {
     }
 
     private inline fun update(change: (NodeState) -> NodeState) {
-        _state.value = change(_state.value)
+        val before = _state.value
+        _state.value = change(before)
+        // The service's notification says where the link is: it follows every change of phase.
+        if (_state.value.phase != before.phase) NodeService.refresh(context, _state.value)
     }
 
     companion object {

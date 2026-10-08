@@ -32,7 +32,11 @@ class MainActivity : ComponentActivity() {
         val repository = (application as TernApplication).repository
         setContent {
             TernTheme {
-                TernApp(repository, opening.value) { opening.value = null }
+                TernApp(repository, opening.value) {
+                    // Consumed: an activity made again, on rotation, must not open it a second time.
+                    opening.value = null
+                    intent.removeExtra(Notifier.EXTRA_PEER)
+                }
             }
         }
     }
