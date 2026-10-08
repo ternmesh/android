@@ -195,16 +195,7 @@ class Connection(
         val f = inFlight
         if (f != null) {
             if (t < f.deadline) return
-            // Everything is cleared, and the app told, before any request's callback runs: an app that
-            // opens again from either keeps what it opens.
-            phase = Phase.CLOSED
-            records.abandonSync()
-            val queued = queue.toList()
-            inFlight = null
-            queue.clear()
-            onEvent(ConnectionEvent.Gone)
-            f.pending.then(Outcome.NoAnswer)
-            for (p in queued) p.then(Outcome.Closed)
+            shutDown(ConnectionEvent.Gone, unanswered = Outcome.NoAnswer)
         } else if (phase == Phase.OPEN && t >= lastAnswer + Companion.IDLE_MS) {
             if (syncOwed) {
                 syncOwed = false
@@ -259,8 +250,7 @@ class Connection(
                 onEvent(ConnectionEvent.Ready(body.version, body.firmware))
             }
             kind == Kind.Hello -> {
-                close()
-                onEvent(if (body is Body.Error) ConnectionEvent.Refused(body.code) else ConnectionEvent.Gone)
+                shutDown(if (body is Body.Error) ConnectionEvent.Refused(body.code) else ConnectionEvent.Gone)
                 return
             }
             body is Body.Error && body.code == ErrorCode.HELLO_FIRST -> {
@@ -327,6 +317,19 @@ class Connection(
         }
         inFlight = InFlight(p, seq, now() + Companion.ANSWER_WAIT_MS)
         send(bytes)
+    }
+
+    /** Closes on the node's account. Everything is cleared, and the app told, before any request's callback runs: an app that opens again from either keeps what it opens. */
+    private fun shutDown(event: ConnectionEvent, unanswered: Outcome = Outcome.Closed) {
+        phase = Phase.CLOSED
+        records.abandonSync()
+        val first = inFlight?.pending
+        inFlight = null
+        val rest = queue.toList()
+        queue.clear()
+        onEvent(event)
+        first?.then(unanswered)
+        for (p in rest) p.then(Outcome.Closed)
     }
 
     /** Every request held, unanswered or waiting, which the connection then no longer holds. A caller fails them only once its own state is settled, since a callback may open again. */

@@ -424,6 +424,22 @@ class ConnectionTest {
         assertEquals(Outcome.Closed, result)
     }
 
+    /** A refused HELLO is said before the requests waiting on it fail: one that opens again keeps the connection it opens. */
+    @Test
+    fun aRefusedHelloIsSaidBeforeTheRequestsWaitingOnIt() {
+        val node = Node()
+        var refused = false
+        node.connection.onEvent = { if (it is ConnectionEvent.Refused) refused = true }
+        node.connection.open()
+        node.connection.submit(Body.Ping) {
+            assertTrue(refused, "the app is told before the request's callback")
+            node.connection.open()
+        }
+        val hello = Codec.decode(node.sent.removeFirst())
+        node.connection.receive(Codec.encode(Frame(hello.seq, Body.Error(ErrorCode.MTU))))
+        assertEquals(listOf("HELLO"), node.sent.map { Codec.decode(it).body.typeName })
+    }
+
     @Test
     fun sendingAgainWithTheSameRef() {
         val node = Node()
