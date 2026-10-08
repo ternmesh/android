@@ -27,6 +27,13 @@ class Records {
      */
     var syncedVersion: Int? = null
 
+    /**
+     * The greatest `id` held when news was first missed, until a sync that asked again from it
+     * finishes; null when nothing is missed. Kept with the records, not the connection: what was
+     * lost may be below records received after it, in this run or the one before.
+     */
+    var missedSince: Long? = null
+
     /** What the sync under way has sent of the three lists a sync gives whole. */
     private var syncing: Seen? = null
 
@@ -68,11 +75,10 @@ class Records {
 
     /**
      * The `after` to sync with. Normally the greatest `id` held. After missed news, one less than the
-     * least `id` whose state may have changed unseen, and never more than [missedSince], the greatest
-     * `id` held when news was first missed: what was lost may be below records received after it.
-     * Speaking a later version to the node than at the last sync, 0, once.
+     * least `id` whose state may have changed unseen, and never more than [missedSince]. Speaking a
+     * later version to the node than at the last sync, 0, once.
      */
-    fun after(version: Int, missedSince: Long? = null): Long {
+    fun after(version: Int): Long {
         val synced = syncedVersion
         if (synced == null || synced < version) return 0
         val floor = missedSince ?: return greatest
@@ -82,6 +88,11 @@ class Records {
 
     /** The greatest `id` held, 0 for none. */
     val greatest: Long get() = items.keys.maxOrNull() ?: 0
+
+    /** News was missed: the next sync reaches back to what is held now, or to where it already did. */
+    internal fun missed() {
+        missedSince = minOf(missedSince ?: Long.MAX_VALUE, greatest)
+    }
 
     internal fun beginSync() {
         syncing = Seen()
@@ -95,6 +106,7 @@ class Records {
         if (version >= 2) groups.keys.retainAll(seen.groups)
         neighbours.keys.retainAll(seen.neighbours)
         syncedVersion = version
+        missedSince = null
         syncing = null
         return true
     }
@@ -114,13 +126,15 @@ class Records {
         it.airtime = airtime
         it.power = power
         it.syncedVersion = syncedVersion
+        it.missedSince = missedSince
     }
 
     override fun equals(other: Any?) = other is Records && self == other.self && contacts == other.contacts &&
         groups == other.groups && items == other.items && neighbours == other.neighbours &&
-        airtime == other.airtime && power == other.power && syncedVersion == other.syncedVersion
+        airtime == other.airtime && power == other.power && syncedVersion == other.syncedVersion &&
+        missedSince == other.missedSince
 
-    override fun hashCode() = listOf(self, contacts, groups, items, neighbours, airtime, power, syncedVersion).hashCode()
+    override fun hashCode() = listOf(self, contacts, groups, items, neighbours, airtime, power, syncedVersion, missedSince).hashCode()
 }
 
 /**

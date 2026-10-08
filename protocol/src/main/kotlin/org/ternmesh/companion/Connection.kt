@@ -92,8 +92,6 @@ class Connection(
     private var phase = Phase.CLOSED
     private var seq = 0
     private var expectedNews = 0
-    /** The greatest `id` held when news was first missed, until a sync that asked again from it finishes. A connection that starts has missed whatever changed while there was none. */
-    private var missedSince: Long? = null
     private var syncWanted = false
 
     /** A sync was refused: the next idle deadline asks again. */
@@ -223,7 +221,7 @@ class Connection(
         if (newsSeq != expectedNews || lost) {
             // What was lost may be a record this sync would have sent: it no longer proves what is
             // gone, and the one after it will.
-            if (missedSince == null) missedSince = records.greatest
+            records.missed()
             records.abandonSync()
             syncWanted = true
         }
@@ -246,7 +244,8 @@ class Connection(
                 firmware = body.firmware
                 phase = Phase.OPEN
                 expectedNews = 0
-                missedSince = minOf(missedSince ?: Long.MAX_VALUE, records.greatest)
+                // A connection that starts has missed whatever changed while there was none.
+                records.missed()
                 syncWanted = false
                 syncOwed = false
                 queue.addFirst(Pending(Kind.Sync))
@@ -275,7 +274,6 @@ class Connection(
             }
             kind == Kind.Sync && body == Body.Synced -> {
                 if (records.finishSync(agreed ?: version)) {
-                    missedSince = null
                     syncOwed = false
                     onEvent(ConnectionEvent.Synced)
                 }
@@ -310,7 +308,7 @@ class Connection(
             Kind.Ping -> Body.Ping
             // What was missed stays marked until a sync finishes: one refused, given up on or
             // abandoned asks again from the same place.
-            Kind.Sync -> Body.Sync(records.after(agreed ?: version, missedSince)).also { records.beginSync() }
+            Kind.Sync -> Body.Sync(records.after(agreed ?: version)).also { records.beginSync() }
         }
         seq = (seq + 1) and 0xFF
         val bytes = try {

@@ -239,7 +239,9 @@ class ConnectionTest {
         r.syncedVersion = 2
         r.items[4L] = Node.message(4, MessageState.DELIVERED)
         r.items[8L] = Node.groupMessage(8, MessageState.SENT)
-        assertEquals(8, r.after(2, missedSince = 8))
+        r.missedSince = 8
+        assertEquals(8, r.after(2))
+        r.missedSince = null
         assertEquals(8, r.after(2))
         // Speaking a later version than at the last sync: everything, once.
         r.syncedVersion = 1
@@ -253,6 +255,24 @@ class ConnectionTest {
         node.newsCount++ // MESSAGE 11, lost
         node.news(Node.message(12, MessageState.RECEIVED))
         assertEquals(listOf<Body>(Body.Sync(10)), node.sent.map { Codec.decode(it).body })
+    }
+
+    /** What was missed is kept with the records: an app that stops before the sync after a gap finishes, and starts again from what it saved, still asks again from before the gap. */
+    @Test
+    fun missedNewsOutlivesTheConnection() {
+        val node = synced(Node.message(10, MessageState.DELIVERED))
+        node.newsCount++ // MESSAGE 11, lost
+        node.news(Node.message(12, MessageState.RECEIVED))
+        val saved = node.connection.records.copy()
+        assertEquals(10L, saved.missedSince)
+
+        val next = Node(records = saved)
+        next.connection.open()
+        next.answerOne()
+        next.answerOne()
+        assertEquals(listOf<Body>(Body.Sync(10)), next.sent.map { Codec.decode(it).body })
+        next.answerOne()
+        assertNull(next.connection.records.missedSince)
     }
 
     /** Another client's READ may have been the news lost: a received message still unread is asked for again. */
@@ -527,7 +547,7 @@ private class Link(val connection: Connection) {
 }
 
 /** A node played by hand: it answers each request as a node with nothing to report would, and sends news when told to. */
-private class Node(val version: Int = 2) {
+private class Node(val version: Int = 2, records: Records = Records()) {
     var time = 0L
     var newsCount = 0
     val sent = ArrayDeque<ByteArray>()
@@ -536,7 +556,7 @@ private class Node(val version: Int = 2) {
     /** The seq of the last request. */
     var seq = 0
 
-    val connection = Connection(now = { time }, wallTime = { 1_790_000_000 }).also {
+    val connection = Connection(records = records, now = { time }, wallTime = { 1_790_000_000 }).also {
         it.send = { bytes ->
             sent.addLast(bytes)
             seq = bytes[1].toInt() and 0xFF
