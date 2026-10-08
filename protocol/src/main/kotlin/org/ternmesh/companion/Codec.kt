@@ -175,6 +175,8 @@ object Codec {
     fun decode(bytes: ByteArray, version: Int = Companion.VERSION): Frame {
         if (bytes.size < 2) throw DecodeException(Unreadable.SHORT)
         if (bytes.size > Companion.MAX_FRAME) throw DecodeException(Unreadable.MALFORMED)
+        // A type the version spoken does not define is undefined however its fields read.
+        if (Companion.since(bytes[0].toInt() and 0xFF) > version) throw DecodeException(Unreadable.UNDEFINED)
         val r = Reader(bytes)
         val type = r.u8()
         val seq = r.u8()
@@ -231,7 +233,6 @@ object Codec {
             )
             else -> throw DecodeException(Unreadable.UNDEFINED)
         }
-        if (body.since > version) throw DecodeException(Unreadable.UNDEFINED)
         return Frame(seq, body)
     }
 

@@ -136,6 +136,10 @@ class CompanionVectorsTest {
         val end = Codec.encode(Frame(1, Body.EndSession(Address(ByteArray(32) { 1 }))))
         assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(end, 0) }.reason)
         Codec.decode(end, 1)
+        // Undefined before its fields are read: cut short, it is still a type the version lacks.
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x1A, 1), 0) }.reason)
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x1A, 1), 1) }.reason)
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x8A.toByte(), 1), 1) }.reason)
     }
 
     @Test

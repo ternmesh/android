@@ -9,7 +9,7 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 1 is this without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    /** The version this client speaks. Version 2 is this without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
     const val VERSION = 3
     const val MAX_FRAME = 180
     const val TEXT_MAX = 128
@@ -46,6 +46,13 @@ object Companion {
     fun isRequest(type: Int) = type in 0x01..0x3F
     fun isAnswer(type: Int) = type in 0x40..0x7F
     fun isNews(type: Int) = type in 0x80..0xBF
+
+    /** The least version that defines the frame type [type]. */
+    fun since(type: Int): Int = when (type) {
+        0x1A, 0x89 -> 1
+        in 0x20..0x25, 0x45, in 0x8A..0x8D -> 2
+        else -> 0
+    }
 }
 
 /** A node's address: an Ed25519 public key. */
@@ -173,7 +180,10 @@ object MessageState {
 }
 
 /** What a frame says: every frame of version 3. [since] is the least version that defines it. */
-sealed class Body(val type: Int, val typeName: String, val since: Int = 0) {
+sealed class Body(val type: Int, val typeName: String) {
+    /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
+    val since: Int get() = Companion.since(type)
+
     // Requests, sent by the client.
     data class Hello(val version: Int) : Body(0x01, "HELLO")
     data class Sync(val after: Long) : Body(0x02, "SYNC")
@@ -184,13 +194,13 @@ sealed class Body(val type: Int, val typeName: String, val since: Int = 0) {
     data class Read(val through: Long) : Body(0x11, "READ")
     data class SaveContact(val address: Address, val name: String) : Body(0x18, "SAVE_CONTACT")
     data class RemoveContact(val address: Address) : Body(0x19, "REMOVE_CONTACT")
-    data class EndSession(val address: Address) : Body(0x1A, "END_SESSION", since = 1)
-    data class MakeGroup(val name: String) : Body(0x20, "MAKE_GROUP", since = 2)
-    data class LeaveGroup(val group: GroupId) : Body(0x21, "LEAVE_GROUP", since = 2)
-    data class NameGroup(val group: GroupId, val name: String) : Body(0x22, "NAME_GROUP", since = 2)
-    data class SendGroup(val ref: Long, val group: GroupId, val text: String) : Body(0x23, "SEND_GROUP", since = 2)
-    data class SendInvite(val group: GroupId, val to: Address) : Body(0x24, "SEND_INVITE", since = 2)
-    data class Join(val id: Long) : Body(0x25, "JOIN", since = 2)
+    data class EndSession(val address: Address) : Body(0x1A, "END_SESSION")
+    data class MakeGroup(val name: String) : Body(0x20, "MAKE_GROUP")
+    data class LeaveGroup(val group: GroupId) : Body(0x21, "LEAVE_GROUP")
+    data class NameGroup(val group: GroupId, val name: String) : Body(0x22, "NAME_GROUP")
+    data class SendGroup(val ref: Long, val group: GroupId, val text: String) : Body(0x23, "SEND_GROUP")
+    data class SendInvite(val group: GroupId, val to: Address) : Body(0x24, "SEND_INVITE")
+    data class Join(val id: Long) : Body(0x25, "JOIN")
 
     // Answers, sent by the node with the request's seq.
     data object Ok : Body(0x40, "OK")
@@ -199,7 +209,7 @@ sealed class Body(val type: Int, val typeName: String, val since: Int = 0) {
     /** The sync is done. [news] is the node's count as it answers, the `seq` of its next news frame; null from a node of version 2 or earlier, whose `SYNCED` has no fields. */
     data class Synced(val news: Int? = null) : Body(0x43, "SYNCED")
     data class Queued(val id: Long) : Body(0x44, "QUEUED")
-    data class Made(val group: GroupId) : Body(0x45, "MADE", since = 2)
+    data class Made(val group: GroupId) : Body(0x45, "MADE")
 
     // News, sent by the node with its count as seq.
 
@@ -254,12 +264,12 @@ sealed class Body(val type: Int, val typeName: String, val since: Int = 0) {
      * The node refused first contact from [address], which proved itself: [why] is 1 if it is not a
      * contact, 2 if the node has no room for another session.
      */
-    data class Asked(val address: Address, val why: Int) : Body(0x89, "ASKED", since = 1)
+    data class Asked(val address: Address, val why: Int) : Body(0x89, "ASKED")
 
     /** A group the node holds, with the user's name for it. */
-    data class Group(val group: GroupId, val name: String) : Body(0x8A, "GROUP", since = 2)
+    data class Group(val group: GroupId, val name: String) : Body(0x8A, "GROUP")
 
-    data class GroupGone(val group: GroupId) : Body(0x8B, "GROUP_GONE", since = 2)
+    data class GroupGone(val group: GroupId) : Body(0x8B, "GROUP_GONE")
 
     /**
      * One message written to a group or received from one. [from] is the routing id its writer
@@ -275,7 +285,7 @@ sealed class Body(val type: Int, val typeName: String, val since: Int = 0) {
         override val reason: Int,
         override val wait: Int,
         val text: String,
-    ) : Body(0x8C, "GROUP_MESSAGE", since = 2), Item {
+    ) : Body(0x8C, "GROUP_MESSAGE"), Item {
         override fun with(s: State) = copy(state = s.state, reason = s.reason, wait = s.wait)
     }
 
@@ -293,7 +303,7 @@ sealed class Body(val type: Int, val typeName: String, val since: Int = 0) {
         override val reason: Int,
         override val wait: Int,
         val name: String,
-    ) : Body(0x8D, "INVITE", since = 2), Item {
+    ) : Body(0x8D, "INVITE"), Item {
         override fun with(s: State) = copy(state = s.state, reason = s.reason, wait = s.wait)
     }
 }
