@@ -358,6 +358,19 @@ class ConnectionTest {
         assertEquals(listOf("SYNC"), node.sent.map { Codec.decode(it).body.typeName }, "and it syncs again")
     }
 
+    /** Records kept from a version 2 connection, synced with a node that speaks an earlier version, keep their groups: that sync could not have sent them. */
+    @Test
+    fun aSyncOfAnEarlierVersionKeepsTheGroups() {
+        val r = Records()
+        r.apply(Body.Group(Node.HUT, "Hut"))
+        r.beginSync()
+        assertTrue(r.finishSync(1))
+        assertEquals(setOf(Node.HUT), r.groups.keys)
+        r.beginSync()
+        assertTrue(r.finishSync(2))
+        assertEquals(emptyMap(), r.groups)
+    }
+
     @Test
     fun newsOfATypeThisClientDoesNotKnowIsCountedAndIgnored() {
         val node = Node()

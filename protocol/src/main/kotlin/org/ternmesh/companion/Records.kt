@@ -91,7 +91,8 @@ class Records {
     internal fun finishSync(version: Int): Boolean {
         val seen = syncing ?: return false
         contacts.keys.retainAll(seen.contacts)
-        groups.keys.retainAll(seen.groups)
+        // A sync of version 1 or earlier sends no groups: it says nothing of whether they are gone.
+        if (version >= 2) groups.keys.retainAll(seen.groups)
         neighbours.keys.retainAll(seen.neighbours)
         syncedVersion = version
         syncing = null
