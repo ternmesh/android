@@ -69,11 +69,15 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
     val report = rememberReport()
 
     // While this is on screen its new messages are read as they come, and need no notification.
+    // Only while the chat is resumed: covered by a dialog or another app, it is not being read.
     LifecycleResumeEffect(peer) {
         repository.viewing = peer
+        repository.markRead(peer)
         onPauseOrDispose { if (repository.viewing == peer) repository.viewing = null }
     }
-    LaunchedEffect(conversation.unread, state.phase) { if (conversation.unread > 0) repository.markRead(peer) }
+    LaunchedEffect(conversation.unread, state.phase) {
+        if (conversation.unread > 0 && repository.viewing == peer) repository.markRead(peer)
+    }
     LaunchedEffect(conversation.items.size) {
         if (conversation.items.isNotEmpty()) list.animateScrollToItem(conversation.items.size - 1)
     }

@@ -2,6 +2,8 @@
 // the node is whenever it is not simply connected.
 package org.ternmesh.app.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,10 +47,13 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.launch
 import org.ternmesh.app.R
+import org.ternmesh.app.link.BleLink
+import org.ternmesh.app.link.LinkFailure
 import org.ternmesh.app.node.NodeRepository
 import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Notifier
 import org.ternmesh.app.node.Phase
+import org.ternmesh.app.node.Problem
 import org.ternmesh.companion.Outcome
 import org.ternmesh.companion.Peer
 
@@ -166,7 +171,17 @@ private fun LinkBanner(repository: NodeRepository, state: NodeState) {
                 state.problem?.let { Text(problemText(context, it), style = MaterialTheme.typography.bodySmall) }
             }
             if (state.phase == Phase.STOPPED) {
-                TextButton(onClick = repository::retry) { Text(stringResource(R.string.retry)) }
+                if (state.problem == Problem.Link(LinkFailure.BLUETOOTH_OFF)) {
+                    // Bluetooth off: turning it on is the way back, and the link is tried again after.
+                    val enable = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                        if (BleLink.isOn(context)) repository.retry()
+                    }
+                    TextButton(onClick = { enable.launch(BleLink.enableIntent()) }) {
+                        Text(stringResource(R.string.connect_turn_on))
+                    }
+                } else {
+                    TextButton(onClick = repository::retry) { Text(stringResource(R.string.retry)) }
+                }
             }
         }
     }
