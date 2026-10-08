@@ -52,11 +52,22 @@ object Conversations {
      * A `READ` marks every received item up to `through`, in every conversation, so it stops short
      * of the first unread item elsewhere: an item here past that stays unread until that one is read.
      */
-    fun readThrough(records: Records, peer: Peer): Long? {
-        val (here, elsewhere) = records.ordered.filter { it.isUnread }.partition { peerOf(it) == peer }
-        if (here.isEmpty()) return null
-        val through = minOf(here.last().id, (elsewhere.firstOrNull()?.id ?: Long.MAX_VALUE) - 1)
-        return through.takeIf { it >= here.first().id }
+    fun readThrough(records: Records, peer: Peer): Long? = readThrough(records, mapOf(peer to Long.MAX_VALUE))
+
+    /**
+     * The `through` to send a `READ` with, given the conversations the user has seen, each up to the
+     * greatest id it held when seen: as far up the unread items as each is in a conversation seen
+     * that far. A conversation seen while another's unread item came first is read once that one is.
+     */
+    fun readThrough(records: Records, seen: Map<Peer, Long>): Long? {
+        var through: Long? = null
+        for (item in records.ordered) {
+            if (!item.isUnread) continue
+            val upTo = seen[peerOf(item)] ?: break
+            if (item.id > upTo) break
+            through = item.id
+        }
+        return through
     }
 
     /**

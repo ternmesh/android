@@ -109,4 +109,18 @@ class RecordsFileTest {
         assertFalse(Conversations.holdsSent(r, Peer.Contact(alice), "hi 5", 3), "received, not sent")
         assertTrue(Conversations.holdsSent(r, Peer.Group(hikers), "all", 0))
     }
+
+    /** A conversation seen behind another's unread item is read once that one is. */
+    @Test
+    fun aConversationSeenWaitsForTheOneBeforeIt() {
+        val r = Records().apply {
+            apply(received(1, alice))
+            apply(received(2, bob))
+            apply(received(3, bob))
+        }
+        val bobSeen = mapOf<Peer, Long>(Peer.Contact(bob) to 3)
+        assertNull(Conversations.readThrough(r, bobSeen), "Alice's 1 is unread and unseen")
+        assertEquals(3, Conversations.readThrough(r, bobSeen + (Peer.Contact(alice) to 1L)), "both seen: all three")
+        assertEquals(2, Conversations.readThrough(r, mapOf(Peer.Contact(alice) to 1L, Peer.Contact(bob) to 2L)), "Bob's 3 came after he was seen")
+    }
 }

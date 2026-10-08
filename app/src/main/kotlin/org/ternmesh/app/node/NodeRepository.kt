@@ -97,6 +97,12 @@ class NodeRepository(private val context: Context) {
     /** Ids already notified or already held, so one item makes one notification. */
     private val notified = mutableSetOf<Long>()
 
+    /**
+     * Conversations the user has seen and the node has not yet been told of, each up to the greatest
+     * id it held when seen. One seen behind another's unread item waits here until that one is read.
+     */
+    private val seen = mutableMapOf<Peer, Long>()
+
     private val _state = MutableStateFlow(NodeState())
     val state: StateFlow<NodeState> = _state
 
@@ -277,12 +283,24 @@ class NodeRepository(private val context: Context) {
 
     /** The user has seen [peer]'s conversation: tell the node, as far as a READ may reach. */
     fun markRead(peer: Peer) {
+        val upTo = Conversations.of(connection.records, peer).last?.id ?: return
+        seen[peer] = maxOf(seen[peer] ?: 0, upTo)
+        notifier.cancel(peer)
+        flushRead()
+    }
+
+    /** Sends the READ the conversations seen allow, if it reaches further than the last. */
+    private fun flushRead() {
         if (_state.value.phase != Phase.READY) return
-        val through = Conversations.readThrough(connection.records, peer) ?: return
+        val records = connection.records
+        seen.entries.removeAll { (peer, upTo) ->
+            records.ordered.none { it.isUnread && it.id <= upTo && Conversations.peerOf(it) == peer }
+        }
+        val through = Conversations.readThrough(records, seen) ?: return
         if (through == readSent) return
         readSent = through
-        submit(Body.Read(through)) { if (it !is Outcome.Answered) readSent = 0 }
-        notifier.cancel(peer)
+        // Tried again with the next news or sync; a closed link starts over from 0 when it reopens.
+        submit(Body.Read(through)) { if (it is Outcome.NoAnswer || it is Outcome.Refused) readSent = 0 }
     }
 
     // MARK: -
@@ -299,6 +317,7 @@ class NodeRepository(private val context: Context) {
     /** Takes up records kept from before: what they hold was notified then, or seen. */
     private fun adopt(records: Records) {
         connection = newConnection(records)
+        seen.clear()
         notified.clear()
         notified += records.items.keys
     }
@@ -391,6 +410,8 @@ class NodeRepository(private val context: Context) {
         }
         update { it.copy(records = connection.records.copy()) }
         NodeService.refresh(context, _state.value)
+        // What was seen may now be readable: news read on another client, or a sync come in.
+        handler.post(::flushRead)
     }
 
     private val tick = Runnable {
