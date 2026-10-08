@@ -160,14 +160,16 @@ class Connection(
         if (phase == Phase.CLOSED || bytes.size < 2) return
         val type = bytes[0].toInt() and 0xFF
         val frameSeq = bytes[1].toInt() and 0xFF
+        var malformed = false
         val frame = try {
             Codec.decode(bytes)
         } catch (e: DecodeException) {
+            malformed = e.reason == Unreadable.MALFORMED
             null
         }
         val f = inFlight
         if (Companion.isNews(type)) {
-            news(frameSeq, frame?.body)
+            news(frameSeq, frame?.body, lost = malformed)
         } else if (Companion.isAnswer(type) && f != null && frameSeq == f.seq && frame != null) {
             // An answer whose seq is not the request's is to one given up on, and is ignored.
             answer(f.pending, frame.body)
@@ -201,10 +203,11 @@ class Connection(
         transmit(Pending(Kind.Hello))
     }
 
-    private fun news(newsSeq: Int, body: Body?) {
+    /** [lost]: the frame was news of a type this client knows that it could not read, a record lost as surely as one never received. */
+    private fun news(newsSeq: Int, body: Body?, lost: Boolean) {
         if (phase != Phase.OPEN) return
         // News of a type this client does not know is ignored, but the node counted it.
-        if (newsSeq != expectedNews) {
+        if (newsSeq != expectedNews || lost) {
             // What was lost may be a record this sync would have sent: it no longer proves what is
             // gone, and the one after it will.
             if (missedSince == null) missedSince = records.greatest

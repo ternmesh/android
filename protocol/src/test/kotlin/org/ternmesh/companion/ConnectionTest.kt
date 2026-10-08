@@ -240,6 +240,16 @@ class ConnectionTest {
         assertEquals(listOf<Body>(Body.Sync(3)), node.sent.map { Codec.decode(it).body })
     }
 
+    /** News of a type this client knows that it cannot read is a record lost: it syncs again. */
+    @Test
+    fun newsItCannotReadIsNewsMissed() {
+        val node = synced(Node.message(4, MessageState.DELIVERED))
+        val message = Codec.encode(Frame(node.newsCount, Node.message(5, MessageState.RECEIVED)))
+        node.connection.receive(message.copyOf(20))
+        node.newsCount++
+        assertEquals(listOf<Body>(Body.Sync(4)), node.sent.map { Codec.decode(it).body })
+    }
+
     /** A sync that missed some of its news proves nothing about what is gone: the next one does. */
     @Test
     fun aSyncThatMissedNewsForgetsNothing() {
