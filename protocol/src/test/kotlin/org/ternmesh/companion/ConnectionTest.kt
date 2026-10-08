@@ -139,6 +139,21 @@ class ConnectionTest {
         assertNull(node.connection.nextDeadline)
     }
 
+    /** An app that opens again from the timed-out request's callback keeps the HELLO it sent. */
+    @Test
+    fun openingAgainFromTheCallbackOfARequestGivenUpOn() {
+        val node = Node()
+        node.connection.open()
+        node.answerAll()
+        node.connection.submit(Body.Ping) { node.connection.open() }
+        node.connection.submit(Body.Ping)
+        node.sent.removeFirst()
+        node.time += Companion.ANSWER_WAIT_MS
+        node.connection.tick()
+        assertEquals(listOf("HELLO", "SET_TIME", "SYNC"), node.answerAll().map { it.typeName })
+        assertEquals(2, node.connection.agreed)
+    }
+
     @Test
     fun eachNewsFrameOfASyncStartsTheWaitAgain() {
         val node = Node()

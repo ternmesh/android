@@ -180,11 +180,15 @@ class Connection(
         val f = inFlight
         if (f != null) {
             if (t < f.deadline) return
+            // Everything is cleared before any callback runs, so one that opens again at once keeps
+            // what it opens.
             phase = Phase.CLOSED
             records.abandonSync()
+            val queued = queue.toList()
             inFlight = null
+            queue.clear()
             f.pending.then(Outcome.NoAnswer)
-            failAll(Outcome.Closed)
+            for (p in queued) p.then(Outcome.Closed)
             onEvent(ConnectionEvent.Gone)
         } else if (phase == Phase.OPEN && t >= lastAnswer + Companion.IDLE_MS) {
             transmit(Pending(Kind.Ping))
