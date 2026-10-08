@@ -19,12 +19,7 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 class CompanionVectorsTest {
-    private val v: JsonObject = run {
-        // CI sets this to run against the specification's own vectors as they are on main.
-        val text = System.getProperty("tern.companion.vectors")?.let { File(it).readText() }
-            ?: javaClass.getResource("/vectors/companion.json")!!.readText()
-        Json.parseToJsonElement(text).jsonObject
-    }
+    private val v = vectors
 
     @Test
     fun crcCheck() {
@@ -35,7 +30,7 @@ class CompanionVectorsTest {
     @Test
     fun framesBuiltReadWrappedAndFound() {
         val cases = v.list("frames")
-        assertTrue(cases.size >= 34)
+        assertTrue(cases.size >= 53)
         for (c in cases) {
             val name = c.str("type")
             val frame = Frame(c.int("seq"), body(name, c.obj("fields")))
@@ -109,6 +104,44 @@ class CompanionVectorsTest {
         }
     }
 
+    /** Each older connection's frames read by the version its client speaks, and build back; one that version does not define is undefined. */
+    @Test
+    fun olderEveryFrameReadsByItsVersion() {
+        for (c in v.list("older")) {
+            val version = c.int("version")
+            for (f in c.list("frames")) {
+                val name = f.str("type")
+                // Version 1's client ends with a request its version does not define.
+                val latest = runCatching { Codec.decode(f.bytes("frame")) }.getOrNull()
+                if (latest != null && latest.body.since > version) {
+                    assertFailsWith<DecodeException>(name) { Codec.decode(f.bytes("frame"), version) }
+                    continue
+                }
+                val frame = Codec.decode(f.bytes("frame"), version)
+                assertEquals(name, frame.body.typeName)
+                assertEquals(f.str("frame"), Hex.encode(Codec.encode(frame)), "$version $name")
+            }
+        }
+        // And by version 3, version 2's SYNCED is cut short.
+        assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x43, 0x02)) }
+        assertEquals(Body.Synced(null), Codec.decode(byteArrayOf(0x43, 0x02), 2).body)
+    }
+
+    /** A frame of a later version than the one both ends speak is one that version does not define. */
+    @Test
+    fun aFrameOfALaterVersionIsUndefined() {
+        val gone = Codec.encode(Frame(1, Body.GroupGone(GroupId(ByteArray(8) { 1 }))))
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(gone, 1) }.reason)
+        Codec.decode(gone, 2)
+        val end = Codec.encode(Frame(1, Body.EndSession(Address(ByteArray(32) { 1 }))))
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(end, 0) }.reason)
+        Codec.decode(end, 1)
+        // Undefined before its fields are read: cut short, it is still a type the version lacks.
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x1A, 1), 0) }.reason)
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x1A, 1), 1) }.reason)
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x8A.toByte(), 1), 1) }.reason)
+    }
+
     @Test
     fun aFrameThatNeverFinishesIsGivenUpAsText() {
         val r = StreamReader()
@@ -151,11 +184,19 @@ class CompanionVectorsTest {
         "READ" -> Body.Read(f.long("through"))
         "SAVE_CONTACT" -> Body.SaveContact(f.addr("address"), f.str("name"))
         "REMOVE_CONTACT" -> Body.RemoveContact(f.addr("address"))
+        "END_SESSION" -> Body.EndSession(f.addr("address"))
+        "MAKE_GROUP" -> Body.MakeGroup(f.str("name"))
+        "LEAVE_GROUP" -> Body.LeaveGroup(f.gid("group"))
+        "NAME_GROUP" -> Body.NameGroup(f.gid("group"), f.str("name"))
+        "SEND_GROUP" -> Body.SendGroup(f.long("ref"), f.gid("group"), f.str("text"))
+        "SEND_INVITE" -> Body.SendInvite(f.gid("group"), f.addr("to"))
+        "JOIN" -> Body.Join(f.long("id"))
         "OK" -> Body.Ok
         "ERROR" -> Body.Error(f.int("code"))
         "INFO" -> Body.Info(f.int("version"), f.str("firmware"))
-        "SYNCED" -> Body.Synced
+        "SYNCED" -> Body.Synced(if (f.containsKey("news")) f.int("news") else null)
         "QUEUED" -> Body.Queued(f.long("id"))
+        "MADE" -> Body.Made(f.gid("group"))
         "SELF" -> Body.Self(f.addr("address"), f.int("role"), f.str("region"), f.int("power"), f.long("time"))
         "CONTACT" -> Body.Contact(f.addr("address"), f.int("session"), f.str("name"))
         "CONTACT_GONE" -> Body.ContactGone(f.addr("address"))
@@ -168,14 +209,33 @@ class CompanionVectorsTest {
         "NEIGHBOUR_GONE" -> Body.NeighbourGone(f.long("routing_id"))
         "AIRTIME" -> Body.Airtime(f.long("period"), f.long("allowed"), f.long("used"), f.long("wait"))
         "POWER" -> Body.Power(f.int("millivolts"), f.int("percent"), f.int("flags"))
+        "ASKED" -> Body.Asked(f.addr("address"), f.int("why"))
+        "GROUP" -> Body.Group(f.gid("group"), f.str("name"))
+        "GROUP_GONE" -> Body.GroupGone(f.gid("group"))
+        "GROUP_MESSAGE" -> Body.GroupMessage(
+            f.long("id"), f.gid("group"), f.long("from"), f.long("time"), f.int("flags"), f.int("state"),
+            f.int("reason"), f.int("wait"), f.str("text"),
+        )
+        "INVITE" -> Body.Invite(
+            f.long("id"), f.addr("contact"), f.gid("group"), f.long("time"), f.int("flags"), f.int("state"),
+            f.int("reason"), f.int("wait"), f.str("name"),
+        )
         else -> fail("no frame named $name")
     }
 }
 
-private fun JsonObject.obj(k: String) = getValue(k).jsonObject
-private fun JsonObject.list(k: String): List<JsonObject> = getValue(k).jsonArray.map(JsonElement::jsonObject)
-private fun JsonObject.str(k: String) = getValue(k).jsonPrimitive.content
-private fun JsonObject.int(k: String) = getValue(k).jsonPrimitive.int
-private fun JsonObject.long(k: String) = getValue(k).jsonPrimitive.long
-private fun JsonObject.bytes(k: String) = Hex.decode(str(k))!!
-private fun JsonObject.addr(k: String) = Address(bytes(k))
+/** The vectors: CI sets the property to run against the specification's own, as they are on main. */
+internal val vectors: JsonObject by lazy {
+    val text = System.getProperty("tern.companion.vectors")?.let { File(it).readText() }
+        ?: CompanionVectorsTest::class.java.getResource("/vectors/companion.json")!!.readText()
+    Json.parseToJsonElement(text).jsonObject
+}
+
+internal fun JsonObject.obj(k: String) = getValue(k).jsonObject
+internal fun JsonObject.list(k: String): List<JsonObject> = getValue(k).jsonArray.map(JsonElement::jsonObject)
+internal fun JsonObject.str(k: String) = getValue(k).jsonPrimitive.content
+internal fun JsonObject.int(k: String) = getValue(k).jsonPrimitive.int
+internal fun JsonObject.long(k: String) = getValue(k).jsonPrimitive.long
+internal fun JsonObject.bytes(k: String) = Hex.decode(str(k))!!
+internal fun JsonObject.addr(k: String) = Address(bytes(k))
+internal fun JsonObject.gid(k: String) = GroupId(bytes(k))

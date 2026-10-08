@@ -36,7 +36,8 @@ object Codec {
         when (b) {
             is Body.Hello -> w.u8(b.version)
             is Body.Sync -> w.u32(b.after)
-            Body.Ping, Body.Ok, Body.Synced -> {}
+            Body.Ping, Body.Ok -> {}
+            is Body.Synced -> b.news?.let { w.u8(it) }
             is Body.SetTime -> w.u32(b.time)
             is Body.Set -> {
                 w.u8(b.setting.number)
@@ -58,12 +59,30 @@ object Codec {
                 w.str(b.name, Companion.NAME_MAX)
             }
             is Body.RemoveContact -> w.addr(b.address)
+            is Body.EndSession -> w.addr(b.address)
+            is Body.MakeGroup -> w.str(b.name, Companion.NAME_MAX)
+            is Body.LeaveGroup -> w.gid(b.group)
+            is Body.NameGroup -> {
+                w.gid(b.group)
+                w.str(b.name, Companion.NAME_MAX)
+            }
+            is Body.SendGroup -> {
+                w.u32(b.ref)
+                w.gid(b.group)
+                w.str(b.text, Companion.TEXT_MAX)
+            }
+            is Body.SendInvite -> {
+                w.gid(b.group)
+                w.addr(b.to)
+            }
+            is Body.Join -> w.u32(b.id)
             is Body.Error -> w.u8(b.code)
             is Body.Info -> {
                 w.u8(b.version)
                 w.str(b.firmware, Companion.FIRMWARE_MAX)
             }
             is Body.Queued -> w.u32(b.id)
+            is Body.Made -> w.gid(b.group)
             is Body.Self -> {
                 w.addr(b.address)
                 w.u8(b.role)
@@ -111,6 +130,37 @@ object Codec {
                 w.u8(b.percent)
                 w.u8(b.flags)
             }
+            is Body.Asked -> {
+                w.addr(b.address)
+                w.u8(b.why)
+            }
+            is Body.Group -> {
+                w.gid(b.group)
+                w.str(b.name, Companion.NAME_MAX)
+            }
+            is Body.GroupGone -> w.gid(b.group)
+            is Body.GroupMessage -> {
+                w.u32(b.id)
+                w.gid(b.group)
+                w.u32(b.from)
+                w.u32(b.time)
+                w.u8(b.flags)
+                w.u8(b.state)
+                w.u8(b.reason)
+                w.u16(b.wait)
+                w.str(b.text, Companion.TEXT_MAX)
+            }
+            is Body.Invite -> {
+                w.u32(b.id)
+                w.addr(b.contact)
+                w.gid(b.group)
+                w.u32(b.time)
+                w.u8(b.flags)
+                w.u8(b.state)
+                w.u8(b.reason)
+                w.u16(b.wait)
+                w.str(b.name, Companion.NAME_MAX)
+            }
         }
         val out = w.toByteArray()
         require(out.size <= Companion.MAX_FRAME) { "${b.typeName} is ${out.size} bytes, more than a frame holds" }
@@ -118,12 +168,15 @@ object Codec {
     }
 
     /**
-     * Reads a frame, or throws [DecodeException]. Bytes after the fields this version defines are
-     * ignored, as the specification requires: that is how a later version adds a field.
+     * Reads a frame by [version], the one both ends speak, or throws [DecodeException]. Bytes after
+     * the fields that version defines are ignored, as the specification requires: that is how a
+     * later version adds a field.
      */
-    fun decode(bytes: ByteArray): Frame {
+    fun decode(bytes: ByteArray, version: Int = Companion.VERSION): Frame {
         if (bytes.size < 2) throw DecodeException(Unreadable.SHORT)
         if (bytes.size > Companion.MAX_FRAME) throw DecodeException(Unreadable.MALFORMED)
+        // A type the version spoken does not define is undefined however its fields read.
+        if (Companion.since(bytes[0].toInt() and 0xFF) > version) throw DecodeException(Unreadable.UNDEFINED)
         val r = Reader(bytes)
         val type = r.u8()
         val seq = r.u8()
@@ -145,11 +198,19 @@ object Codec {
             0x11 -> Body.Read(r.u32())
             0x18 -> Body.SaveContact(r.addr(), r.str(Companion.NAME_MAX))
             0x19 -> Body.RemoveContact(r.addr())
+            0x1A -> Body.EndSession(r.addr())
+            0x20 -> Body.MakeGroup(r.str(Companion.NAME_MAX))
+            0x21 -> Body.LeaveGroup(r.gid())
+            0x22 -> Body.NameGroup(r.gid(), r.str(Companion.NAME_MAX))
+            0x23 -> Body.SendGroup(r.u32(), r.gid(), r.str(Companion.TEXT_MAX))
+            0x24 -> Body.SendInvite(r.gid(), r.addr())
+            0x25 -> Body.Join(r.u32())
             0x40 -> Body.Ok
             0x41 -> Body.Error(r.u8())
             0x42 -> Body.Info(r.u8(), r.str(Companion.FIRMWARE_MAX))
-            0x43 -> Body.Synced
+            0x43 -> Body.Synced(if (version >= 3) r.u8() else null)
             0x44 -> Body.Queued(r.u32())
+            0x45 -> Body.Made(r.gid())
             0x80 -> Body.Self(r.addr(), r.u8(), r.str(Companion.REGION_MAX), r.i8(), r.u32())
             0x81 -> Body.Contact(r.addr(), r.u8(), r.str(Companion.NAME_MAX))
             0x82 -> Body.ContactGone(r.addr())
@@ -161,6 +222,15 @@ object Codec {
             0x86 -> Body.NeighbourGone(r.u32())
             0x87 -> Body.Airtime(r.u32(), r.u32(), r.u32(), r.u32())
             0x88 -> Body.Power(r.u16(), r.u8(), r.u8())
+            0x89 -> Body.Asked(r.addr(), r.u8())
+            0x8A -> Body.Group(r.gid(), r.str(Companion.NAME_MAX))
+            0x8B -> Body.GroupGone(r.gid())
+            0x8C -> Body.GroupMessage(
+                r.u32(), r.gid(), r.u32(), r.u32(), r.u8(), r.u8(), r.u8(), r.u16(), r.str(Companion.TEXT_MAX),
+            )
+            0x8D -> Body.Invite(
+                r.u32(), r.addr(), r.gid(), r.u32(), r.u8(), r.u8(), r.u8(), r.u16(), r.str(Companion.NAME_MAX),
+            )
             else -> throw DecodeException(Unreadable.UNDEFINED)
         }
         return Frame(seq, body)
@@ -196,6 +266,7 @@ private class Writer {
     }
 
     fun addr(a: Address) = out.write(a.toByteArray())
+    fun gid(g: GroupId) = out.write(g.toByteArray())
 
     fun str(s: String, limit: Int) {
         val utf8 = s.toByteArray(Charsets.UTF_8)
@@ -228,6 +299,11 @@ private class Reader(private val bytes: ByteArray) {
     fun addr(): Address {
         if (at + Address.LENGTH > bytes.size) throw DecodeException(Unreadable.MALFORMED)
         return Address(bytes.copyOfRange(at, at + Address.LENGTH)).also { at += Address.LENGTH }
+    }
+
+    fun gid(): GroupId {
+        if (at + GroupId.LENGTH > bytes.size) throw DecodeException(Unreadable.MALFORMED)
+        return GroupId(bytes.copyOfRange(at, at + GroupId.LENGTH)).also { at += GroupId.LENGTH }
     }
 
     fun str(limit: Int): String {
