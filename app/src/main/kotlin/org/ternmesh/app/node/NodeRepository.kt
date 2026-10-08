@@ -306,8 +306,14 @@ class NodeRepository(private val context: Context) {
         val through = Conversations.readThrough(records, seen) ?: return
         if (through == readSent) return
         readSent = through
-        // Tried again with the next news or sync; a closed link starts over from 0 when it reopens.
-        submit(Body.Read(through)) { if (it is Outcome.NoAnswer || it is Outcome.Refused) readSent = 0 }
+        // Refused (not now) or unanswered: asked again shortly, or what is on screen stays unread
+        // until something else happens. A closed link starts over from 0 when it reopens.
+        submit(Body.Read(through)) {
+            if (it is Outcome.NoAnswer || it is Outcome.Refused) {
+                readSent = 0
+                handler.postDelayed(::flushRead, 3_000)
+            }
+        }
     }
 
     // MARK: -
