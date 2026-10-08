@@ -103,6 +103,12 @@ class NodeRepository(private val context: Context) {
      */
     private val seen = mutableMapOf<Peer, Long>()
 
+    /**
+     * The greatest id the node has answered a send with. Its record may not have come yet, so a send
+     * made now matches only records past it: one the node queues for it is given a greater id.
+     */
+    private var queuedFloor = 0L
+
     private val _state = MutableStateFlow(NodeState())
     val state: StateFlow<NodeState> = _state
 
@@ -182,12 +188,13 @@ class NodeRepository(private val context: Context) {
         peer: Peer,
         text: String,
         ref: Long = Random.nextLong(1, 0x1_0000_0000L),
-        after: Long = connection.records.greatest,
+        after: Long = maxOf(connection.records.greatest, queuedFloor),
         then: (Outcome) -> Unit = {},
     ) {
         sending[ref] = peer to text
         val done = { outcome: Outcome ->
             sending -= ref
+            ((outcome as? Outcome.Answered)?.body as? Body.Queued)?.let { queuedFloor = maxOf(queuedFloor, it.id) }
             val keep = outcome == Outcome.NoAnswer || outcome == Outcome.Closed
             setUnanswered { list ->
                 val rest = list.filter { it.ref != ref }
@@ -318,6 +325,7 @@ class NodeRepository(private val context: Context) {
     private fun adopt(records: Records) {
         connection = newConnection(records)
         seen.clear()
+        queuedFloor = 0
         notified.clear()
         notified += records.items.keys
     }
