@@ -115,7 +115,7 @@ private fun AskedCard(repository: NodeRepository, state: NodeState, a: Body.Aske
             Text(stringResource(if (a.why == 2) R.string.asked_no_room else R.string.asked_not_contact, who))
             Text(a.address.toString(), style = MaterialTheme.typography.bodySmall)
             Row {
-                if (a.why != 2) TextButton(onClick = { saving = true }) { Text(stringResource(R.string.save_contact)) }
+                if (a.why != 2 && a.address !in state.records.contacts) TextButton(onClick = { saving = true }) { Text(stringResource(R.string.save_contact)) }
                 TextButton(onClick = { repository.dismissAsked(a) }) { Text(stringResource(R.string.dismiss)) }
             }
         }

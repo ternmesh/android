@@ -196,6 +196,12 @@ class NodeRepository(private val context: Context) {
         scheduleTick()
     }
 
+    /**
+     * Whether a message may be written now. Not until the first sync has finished: before it the
+     * records are the ones on disk, and the `after` a send is matched from must be the node's.
+     */
+    val canWrite: Boolean get() = _state.value.phase == Phase.READY
+
     /** Sends in flight, by ref: what was sent to whom, until the node answers. */
     private val sending = mutableMapOf<Long, Pair<Peer, String>>()
 
@@ -205,6 +211,7 @@ class NodeRepository(private val context: Context) {
      * say which of them went.
      */
     fun write(peer: Peer, text: String, then: (Outcome) -> Unit) {
+        if (!canWrite) return
         if (sending.values.any { it == peer to text }) return
         _state.value.unanswered.firstOrNull { it.peer == peer && it.text == text }?.let { return resend(it, then) }
         send(peer, text, then = then)
@@ -212,6 +219,7 @@ class NodeRepository(private val context: Context) {
 
     /** Sends [u] again, unless the node turns out to hold it already: then it went, and is dropped. */
     fun resend(u: Unanswered, then: (Outcome) -> Unit) {
+        if (!canWrite) return
         if (Conversations.holdsSent(connection.records, u.peer, u.text, u.after)) return dismissUnanswered(u)
         send(u.peer, u.text, u.ref, u.after, then)
     }

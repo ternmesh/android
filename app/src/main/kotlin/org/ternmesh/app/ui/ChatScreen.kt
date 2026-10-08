@@ -50,6 +50,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import org.ternmesh.app.R
 import org.ternmesh.app.node.NodeRepository
 import org.ternmesh.app.node.NodeState
+import org.ternmesh.app.node.Phase
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Companion
 import org.ternmesh.companion.Conversations
@@ -122,14 +123,14 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
                         Text(u.text)
                         Text(stringResource(R.string.not_answered), style = MaterialTheme.typography.bodySmall)
                         Row {
-                            TextButton(onClick = { repository.resend(u, report) }) { Text(stringResource(R.string.send_again)) }
+                            TextButton(onClick = { repository.resend(u, report) }, enabled = state.phase == Phase.READY) { Text(stringResource(R.string.send_again)) }
                             TextButton(onClick = { repository.dismissUnanswered(u) }) { Text(stringResource(R.string.dismiss)) }
                         }
                     }
                 }
             }
         }
-        Composer { text -> repository.write(peer, text, report) }
+        Composer(enabled = state.phase == Phase.READY) { text -> repository.write(peer, text, report) }
     }
 
     when (dialog) {
@@ -208,7 +209,7 @@ private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {
 }
 
 @Composable
-private fun Composer(send: (String) -> Unit) {
+private fun Composer(enabled: Boolean, send: (String) -> Unit) {
     var text by rememberSaveable { mutableStateOf("") }
     val left = Companion.TEXT_MAX - utf8Length(text)
     Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -225,7 +226,7 @@ private fun Composer(send: (String) -> Unit) {
                 send(text.trim())
                 text = ""
             },
-            enabled = text.isNotBlank(),
+            enabled = enabled && text.isNotBlank(),
         ) { Icon(Icons.AutoMirrored.Filled.Send, stringResource(R.string.send)) }
     }
 }
