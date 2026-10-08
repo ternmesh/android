@@ -310,8 +310,12 @@ class NodeRepository(private val context: Context) {
         // until something else happens. A closed link starts over from 0 when it reopens.
         submit(Body.Read(through)) {
             if (it is Outcome.NoAnswer || it is Outcome.Refused) {
-                readSent = 0
-                handler.postDelayed(::flushRead, 3_000)
+                // Not now: the same `through` stays sent until the retry, so the publish that follows
+                // this answer does not send it again at once, and again, while the node is busy.
+                handler.postDelayed({
+                    if (readSent == through) readSent = 0
+                    flushRead()
+                }, 3_000)
             }
         }
     }
