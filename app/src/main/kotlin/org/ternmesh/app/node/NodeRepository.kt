@@ -86,6 +86,7 @@ class NodeRepository(private val context: Context) {
     private val link = BleLink(context, handler)
     private val prefs = context.getSharedPreferences("node", Context.MODE_PRIVATE)
     private val unansweredPrefs = context.getSharedPreferences("unanswered", Context.MODE_PRIVATE)
+    private val askedPrefs = context.getSharedPreferences("asked", Context.MODE_PRIVATE)
     private val notifier = Notifier(context)
     private var connection = newConnection(Records())
 
@@ -111,7 +112,7 @@ class NodeRepository(private val context: Context) {
         if (address != null) {
             val node = ChosenNode(address, prefs.getString(KEY_NAME, null))
             adopt(load(address))
-            update { it.copy(node = node, records = connection.records.copy(), unanswered = loadUnanswered(address)) }
+            update { it.copy(node = node, records = connection.records.copy(), unanswered = loadUnanswered(address), asked = loadAsked(address)) }
         }
     }
 
@@ -130,7 +131,7 @@ class NodeRepository(private val context: Context) {
             forget()
             prefs.edit().putString(KEY_ADDRESS, node.address).putString(KEY_NAME, node.name).apply()
             adopt(load(node.address))
-            update { NodeState(node = node, records = connection.records.copy(), unanswered = loadUnanswered(node.address)) }
+            update { NodeState(node = node, records = connection.records.copy(), unanswered = loadUnanswered(node.address), asked = loadAsked(node.address)) }
         }
         connectTo(node, waitForIt = false)
     }
@@ -147,6 +148,9 @@ class NodeRepository(private val context: Context) {
         save()
         prefs.edit().clear().apply()
         NodeService.stop(context)
+        // A notification names only an address or group: opened after another node is chosen, it
+        // would open that conversation against the wrong node.
+        notifier.cancelAll()
         update { NodeState() }
     }
 
@@ -206,7 +210,24 @@ class NodeRepository(private val context: Context) {
             Unanswered(ref, peer, text)
         }.sortedBy { it.ref }
 
-    fun dismissAsked(a: Body.Asked) = update { s -> s.copy(asked = s.asked.filter { it.address != a.address }) }
+    fun dismissAsked(a: Body.Asked) = setAsked { list -> list.filter { it.address != a.address } }
+
+    /**
+     * The node does not keep an ASKED, and a sync does not send it again, so the app keeps each on
+     * disk until the user saves the address or dismisses it.
+     */
+    private fun setAsked(change: (List<Body.Asked>) -> List<Body.Asked>) {
+        update { it.copy(asked = change(it.asked)) }
+        val address = _state.value.node?.address ?: return
+        askedPrefs.edit().putString(address, _state.value.asked.joinToString(",") { "${it.address}:${it.why}" }).apply()
+    }
+
+    private fun loadAsked(address: String): List<Body.Asked> =
+        askedPrefs.getString(address, null).orEmpty().split(',').mapNotNull { entry ->
+            val (hex, why) = entry.split(':').takeIf { it.size == 2 } ?: return@mapNotNull null
+            val a = org.ternmesh.companion.Address.fromHex(hex) ?: return@mapNotNull null
+            Body.Asked(a, why.toIntOrNull() ?: return@mapNotNull null)
+        }
 
     /** The user has seen [peer]'s conversation: tell the node, as far as a READ may reach. */
     fun markRead(peer: Peer) {
@@ -297,7 +318,7 @@ class NodeRepository(private val context: Context) {
 
     private fun news(body: Body) {
         if (body is Body.Asked) {
-            update { s -> s.copy(asked = s.asked.filter { it.address != body.address } + body) }
+            setAsked { list -> list.filter { it.address != body.address } + body }
             return
         }
         if (body is Item && body.isUnread && body.state == MessageState.RECEIVED && body.id !in notified &&

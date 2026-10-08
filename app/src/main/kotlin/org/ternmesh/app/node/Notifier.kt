@@ -59,6 +59,8 @@ class Notifier(private val context: Context) {
 
     fun cancel(peer: Peer) = NotificationManagerCompat.from(context).cancel(idOf(peer))
 
+    fun cancelAll() = NotificationManagerCompat.from(context).cancelAll()
+
     private fun idOf(peer: Peer) = 1000 + (key(peer).hashCode() and 0x3FFF_FFFF)
 
     companion object {

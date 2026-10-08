@@ -26,7 +26,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,14 +64,12 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
     }
     // Android 11 and earlier report no scan results while the phone's location setting is off.
     var located by remember { mutableStateOf(locationReady(context)) }
-    LifecycleResumeEffect(Unit) {
+    // Scans only while the screen is in front: a low-latency scan left running costs battery.
+    LifecycleResumeEffect(permitted, on, located) {
         located = locationReady(context)
         on = BleLink.isOn(context)
-        onPauseOrDispose {}
-    }
-    DisposableEffect(permitted, on, located) {
         if (permitted && on && located) scanner.start()
-        onDispose { scanner.stop() }
+        onPauseOrDispose { scanner.stop() }
     }
 
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
