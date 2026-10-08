@@ -331,6 +331,23 @@ class ConnectionTest {
     }
 
     /** A sync the node refuses is said, and asked for again at the next idle deadline in place of a PING: not at once, which a node that keeps refusing would answer for ever. */
+    /** News missed while a sync is out, and then that sync refused: the sync it wanted waits for the idle deadline with the one refused, rather than going out at once. */
+    @Test
+    fun aSyncWantedWhileTheRefusedOneWasOutWaitsToo() {
+        val node = Node()
+        node.connection.open()
+        node.answerOne() // INFO
+        node.answerOne() // OK to SET_TIME
+        val sync = Codec.decode(node.sent.removeFirst())
+        node.newsCount++ // one lost
+        node.news(Body.Power(3900, 80, 0))
+        node.connection.receive(Codec.encode(Frame(sync.seq, Body.Error(ErrorCode.NOT_NOW))))
+        assertEquals(0, node.sent.size)
+        node.time = Companion.IDLE_MS
+        node.connection.tick()
+        assertEquals(listOf("SYNC"), node.sent.map { Codec.decode(it).body.typeName })
+    }
+
     @Test
     fun aRefusedSyncIsAskedForAgainWhenIdle() {
         val node = Node()

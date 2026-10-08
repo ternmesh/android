@@ -267,6 +267,9 @@ class Connection(
             body is Body.Error -> {
                 if (kind == Kind.Sync) {
                     records.abandonSync()
+                    // A sync wanted while this one was out is the one owed: it waits for the idle
+                    // deadline too, or a node that keeps refusing is asked again at once, forever.
+                    syncWanted = false
                     syncOwed = true
                     onEvent(ConnectionEvent.SyncRefused(body.code))
                 }
