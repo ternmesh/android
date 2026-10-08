@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # The specification moves on its own: once a week, check this still conforms to it.
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew test
+
+  # The tests above read this repository's copy of the vectors. This runs them against the
+  # specification's own, as it is on main today: it fails if the app no longer conforms, and says
+  # so if the copy is out of date.
+  specification:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ternmesh/spec
+          path: spec
+          sparse-checkout: vectors
+      - name: Is the copy the specification's?
+        run: |
+          if ! cmp -s spec/vectors/companion.json protocol/src/test/resources/vectors/companion.json; then
+            echo "::warning::protocol/src/test/resources/vectors/companion.json differs from the specification's. Copy the new file in the pull request that changes the code to match."
+          fi
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew test
+        env:
+          TERN_COMPANION_VECTORS: ${{ github.workspace }}/spec/vectors/companion.json
