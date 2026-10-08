@@ -179,7 +179,9 @@ class NodeRepository(private val context: Context) {
         after: Long = connection.records.greatest,
         then: (Outcome) -> Unit = {},
     ) {
+        sending[ref] = peer to text
         val done = { outcome: Outcome ->
+            sending -= ref
             val keep = outcome == Outcome.NoAnswer || outcome == Outcome.Closed
             setUnanswered { list ->
                 val rest = list.filter { it.ref != ref }
@@ -192,6 +194,20 @@ class NodeRepository(private val context: Context) {
             is Peer.Group -> connection.sendToGroup(text, peer.group, ref, done)
         }
         scheduleTick()
+    }
+
+    /** Sends in flight, by ref: what was sent to whom, until the node answers. */
+    private val sending = mutableMapOf<Long, Pair<Peer, String>>()
+
+    /**
+     * Sends [text] the user just wrote. The same text to the same peer while one is unresolved is
+     * that one again, under its ref: two the node could not tell apart would leave a sync unable to
+     * say which of them went.
+     */
+    fun write(peer: Peer, text: String, then: (Outcome) -> Unit) {
+        if (sending.values.any { it == peer to text }) return
+        _state.value.unanswered.firstOrNull { it.peer == peer && it.text == text }?.let { return resend(it, then) }
+        send(peer, text, then = then)
     }
 
     /** Sends [u] again, unless the node turns out to hold it already: then it went, and is dropped. */

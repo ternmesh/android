@@ -129,7 +129,7 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
                 }
             }
         }
-        Composer { text -> repository.send(peer, text, then = report) }
+        Composer { text -> repository.write(peer, text, report) }
     }
 
     when (dialog) {
