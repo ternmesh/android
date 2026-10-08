@@ -275,6 +275,27 @@ class ConnectionTest {
         assertEquals(listOf<Body>(Body.Sync(4)), node.sent.map { Codec.decode(it).body })
     }
 
+    /** A sync the node refuses is said, and asked for again at the next idle deadline in place of a PING: not at once, which a node that keeps refusing would answer for ever. */
+    @Test
+    fun aRefusedSyncIsAskedForAgainWhenIdle() {
+        val node = Node()
+        node.connection.open()
+        node.answerOne() // INFO
+        node.answerOne() // OK to SET_TIME
+        val sync = Codec.decode(node.sent.removeFirst())
+        node.connection.receive(Codec.encode(Frame(sync.seq, Body.Error(ErrorCode.NOT_NOW))))
+        assertEquals(ConnectionEvent.SyncRefused(ErrorCode.NOT_NOW), node.events.last())
+        assertEquals(0, node.sent.size)
+        node.time = Companion.IDLE_MS
+        node.connection.tick()
+        assertEquals(listOf("SYNC"), node.sent.map { Codec.decode(it).body.typeName })
+        node.answerAll()
+        assertEquals(ConnectionEvent.Synced, node.events.last())
+        node.time = 2 * Companion.IDLE_MS
+        node.connection.tick()
+        assertEquals(listOf("PING"), node.sent.map { Codec.decode(it).body.typeName })
+    }
+
     /** A sync that missed some of its news proves nothing about what is gone: the next one does. */
     @Test
     fun aSyncThatMissedNewsForgetsNothing() {

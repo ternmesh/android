@@ -43,6 +43,9 @@ sealed interface ConnectionEvent {
     /** A sync finished: the records are the node's, as of now. */
     data object Synced : ConnectionEvent
 
+    /** The node refused a sync with this code (8: not now). The connection asks again at the next idle deadline, in place of a `PING`. */
+    data class SyncRefused(val code: Int) : ConnectionEvent
+
     /** The node refused the `HELLO` with this code: 7 if the Bluetooth link's MTU is too small. */
     data class Refused(val code: Int) : ConnectionEvent
 
@@ -88,6 +91,9 @@ class Connection(
     /** The greatest `id` held when news was first missed, until a sync that asked again from it finishes. A connection that starts has missed whatever changed while there was none. */
     private var missedSince: Long? = null
     private var syncWanted = false
+
+    /** A sync was refused: the next idle deadline asks again. */
+    private var syncOwed = false
     private val queue = ArrayDeque<Pending>()
     private var inFlight: InFlight? = null
     private var lastAnswer = 0L
@@ -193,7 +199,12 @@ class Connection(
             for (p in queued) p.then(Outcome.Closed)
             onEvent(ConnectionEvent.Gone)
         } else if (phase == Phase.OPEN && t >= lastAnswer + Companion.IDLE_MS) {
-            transmit(Pending(Kind.Ping))
+            if (syncOwed) {
+                syncOwed = false
+                resync()
+            } else {
+                transmit(Pending(Kind.Ping))
+            }
         }
     }
 
@@ -235,6 +246,7 @@ class Connection(
                 expectedNews = 0
                 missedSince = minOf(missedSince ?: Long.MAX_VALUE, records.greatest)
                 syncWanted = false
+                syncOwed = false
                 queue.addFirst(Pending(Kind.Sync))
                 if (wallTime != null) queue.addFirst(Pending(Kind.SetTime))
                 onEvent(ConnectionEvent.Ready(body.version, body.firmware))
@@ -253,7 +265,11 @@ class Connection(
                 return
             }
             body is Body.Error -> {
-                if (kind == Kind.Sync) records.abandonSync()
+                if (kind == Kind.Sync) {
+                    records.abandonSync()
+                    syncOwed = true
+                    onEvent(ConnectionEvent.SyncRefused(body.code))
+                }
                 p.then(Outcome.Refused(body.code))
             }
             kind == Kind.Sync && body == Body.Synced -> {
