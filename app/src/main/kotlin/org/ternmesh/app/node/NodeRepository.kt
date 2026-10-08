@@ -208,13 +208,19 @@ class NodeRepository(private val context: Context) {
     /**
      * Sends [text] the user just wrote. The same text to the same peer while one is unresolved is
      * that one again, under its ref: two the node could not tell apart would leave a sync unable to
-     * say which of them went.
+     * say which of them went. Returns whether it was taken; one the same as a send still in flight
+     * is not, and waits with the writer.
      */
-    fun write(peer: Peer, text: String, then: (Outcome) -> Unit) {
-        if (!canWrite) return
-        if (sending.values.any { it == peer to text }) return
-        _state.value.unanswered.firstOrNull { it.peer == peer && it.text == text }?.let { return resend(it, then) }
+    fun write(peer: Peer, text: String, then: (Outcome) -> Unit): Boolean {
+        if (!canWrite) return false
+        // The same again while the first is unanswered is refused, not dropped: the writer keeps it.
+        if (sending.values.any { it == peer to text }) return false
+        _state.value.unanswered.firstOrNull { it.peer == peer && it.text == text }?.let {
+            resend(it, then)
+            return true
+        }
         send(peer, text, then = then)
+        return true
     }
 
     /** Sends [u] again, unless the node turns out to hold it already: then it went, and is dropped. */

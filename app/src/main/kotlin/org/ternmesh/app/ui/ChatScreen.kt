@@ -130,7 +130,11 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
                 }
             }
         }
-        Composer(enabled = state.phase == Phase.READY) { text -> repository.write(peer, text, report) }
+        val say = LocalSay.current
+        val still = stringResource(R.string.still_sending)
+        Composer(enabled = state.phase == Phase.READY) { text ->
+            repository.write(peer, text, report).also { taken -> if (!taken) say(still) }
+        }
     }
 
     when (dialog) {
@@ -209,7 +213,7 @@ private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {
 }
 
 @Composable
-private fun Composer(enabled: Boolean, send: (String) -> Unit) {
+private fun Composer(enabled: Boolean, send: (String) -> Boolean) {
     var text by rememberSaveable { mutableStateOf("") }
     val left = Companion.TEXT_MAX - utf8Length(text)
     Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -223,8 +227,7 @@ private fun Composer(enabled: Boolean, send: (String) -> Unit) {
         )
         IconButton(
             onClick = {
-                send(text.trim())
-                text = ""
+                if (send(text.trim())) text = ""
             },
             enabled = enabled && text.isNotBlank(),
         ) { Icon(Icons.AutoMirrored.Filled.Send, stringResource(R.string.send)) }

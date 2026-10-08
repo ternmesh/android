@@ -90,6 +90,7 @@
     <string name="send">Send</string>
     <string name="not_answered">The node did not confirm this.</string>
     <string name="send_again">Send again</string>
+    <string name="still_sending">Still sending the same message. Send it again once the node answers.</string>
     <string name="dismiss">Dismiss</string>
     <string name="invite_to">Invite to %1$s</string>
     <string name="invite_from">Invite to %1$s</string>
