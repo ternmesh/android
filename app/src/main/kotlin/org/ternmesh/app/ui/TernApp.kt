@@ -25,6 +25,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -34,6 +36,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -73,6 +76,12 @@ fun TernApp(repository: NodeRepository, opening: String?, opened: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val say: (String) -> Unit = remember { { text -> scope.launch { snackbar.showSnackbar(text) } } }
+    val context = LocalContext.current
+    var permitted by remember { mutableStateOf(MainActivity.hasBluetoothPermissions(context)) }
+    LifecycleResumeEffect(Unit) {
+        permitted = MainActivity.hasBluetoothPermissions(context)
+        onPauseOrDispose {}
+    }
 
     LaunchedEffect(opening, state.node) {
         val peer = opening?.let(Notifier::peer)
@@ -83,6 +92,16 @@ fun TernApp(repository: NodeRepository, opening: String?, opened: () -> Unit) {
     }
 
     CompositionLocalProvider(LocalSay provides say) {
+        if (state.node != null && !permitted) {
+            // Permission taken away after a node was chosen: ask again, then pick the link back up.
+            Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+                PermissionPrompt(Modifier.padding(padding)) {
+                    permitted = true
+                    repository.resume()
+                }
+            }
+            return@CompositionLocalProvider
+        }
         if (state.node == null) {
             Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
                 ConnectScreen(repository, state, Modifier.padding(padding))

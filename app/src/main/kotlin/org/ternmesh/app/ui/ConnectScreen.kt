@@ -102,3 +102,18 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
         }
     }
 }
+
+/** Asks for Bluetooth permission alone, for a node already chosen; [granted] once it is given. */
+@Composable
+fun PermissionPrompt(modifier: Modifier = Modifier, granted: () -> Unit) {
+    val context = LocalContext.current
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (MainActivity.hasBluetoothPermissions(context)) granted()
+    }
+    Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(R.string.connect_permissions))
+        Button(onClick = { ask.launch(MainActivity.bluetoothPermissions + MainActivity.notificationPermissions) }) {
+            Text(stringResource(R.string.connect_grant))
+        }
+    }
+}
