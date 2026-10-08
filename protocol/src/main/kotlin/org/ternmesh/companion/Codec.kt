@@ -36,7 +36,8 @@ object Codec {
         when (b) {
             is Body.Hello -> w.u8(b.version)
             is Body.Sync -> w.u32(b.after)
-            Body.Ping, Body.Ok, Body.Synced -> {}
+            Body.Ping, Body.Ok -> {}
+            is Body.Synced -> b.news?.let { w.u8(it) }
             is Body.SetTime -> w.u32(b.time)
             is Body.Set -> {
                 w.u8(b.setting.number)
@@ -167,10 +168,11 @@ object Codec {
     }
 
     /**
-     * Reads a frame, or throws [DecodeException]. Bytes after the fields this version defines are
-     * ignored, as the specification requires: that is how a later version adds a field.
+     * Reads a frame by [version], the one both ends speak, or throws [DecodeException]. Bytes after
+     * the fields that version defines are ignored, as the specification requires: that is how a
+     * later version adds a field.
      */
-    fun decode(bytes: ByteArray): Frame {
+    fun decode(bytes: ByteArray, version: Int = Companion.VERSION): Frame {
         if (bytes.size < 2) throw DecodeException(Unreadable.SHORT)
         if (bytes.size > Companion.MAX_FRAME) throw DecodeException(Unreadable.MALFORMED)
         val r = Reader(bytes)
@@ -204,7 +206,7 @@ object Codec {
             0x40 -> Body.Ok
             0x41 -> Body.Error(r.u8())
             0x42 -> Body.Info(r.u8(), r.str(Companion.FIRMWARE_MAX))
-            0x43 -> Body.Synced
+            0x43 -> Body.Synced(if (version >= 3) r.u8() else null)
             0x44 -> Body.Queued(r.u32())
             0x45 -> Body.Made(r.gid())
             0x80 -> Body.Self(r.addr(), r.u8(), r.str(Companion.REGION_MAX), r.i8(), r.u32())

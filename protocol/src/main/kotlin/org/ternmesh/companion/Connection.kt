@@ -177,7 +177,7 @@ class Connection(
         val frameSeq = bytes[1].toInt() and 0xFF
         var malformed = false
         val frame = try {
-            Codec.decode(bytes)
+            Codec.decode(bytes, agreed ?: version)
         } catch (e: DecodeException) {
             malformed = e.reason == Unreadable.MALFORMED
             null
@@ -272,7 +272,17 @@ class Connection(
                 }
                 p.then(Outcome.Refused(body.code))
             }
-            kind == Kind.Sync && body == Body.Synced -> {
+            kind == Kind.Sync && body is Body.Synced -> {
+                val news = body.news
+                if (news != null && news != expectedNews) {
+                    // The sync's last news frames were lost, with nothing after them to show the gap:
+                    // the node's count says so. What it sent is held; what it did not prove gone is
+                    // not forgotten, and the next sync asks again.
+                    records.missed()
+                    records.abandonSync()
+                    syncWanted = true
+                    expectedNews = news
+                }
                 if (records.finishSync(agreed ?: version)) {
                     syncOwed = false
                     onEvent(ConnectionEvent.Synced)

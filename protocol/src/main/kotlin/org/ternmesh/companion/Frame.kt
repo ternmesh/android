@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 2: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 3: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -10,7 +10,7 @@ package org.ternmesh.companion
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
     /** The version this client speaks. Version 1 is this without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 2
+    const val VERSION = 3
     const val MAX_FRAME = 180
     const val TEXT_MAX = 128
     const val NAME_MAX = 31
@@ -172,7 +172,7 @@ object MessageState {
     const val RECEIVED = 4
 }
 
-/** What a frame says: every frame of version 2. [since] is the least version that defines it. */
+/** What a frame says: every frame of version 3. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String, val since: Int = 0) {
     // Requests, sent by the client.
     data class Hello(val version: Int) : Body(0x01, "HELLO")
@@ -196,7 +196,8 @@ sealed class Body(val type: Int, val typeName: String, val since: Int = 0) {
     data object Ok : Body(0x40, "OK")
     data class Error(val code: Int) : Body(0x41, "ERROR")
     data class Info(val version: Int, val firmware: String) : Body(0x42, "INFO")
-    data object Synced : Body(0x43, "SYNCED")
+    /** The sync is done. [news] is the node's count as it answers, the `seq` of its next news frame; null from a node of version 2 or earlier, whose `SYNCED` has no fields. */
+    data class Synced(val news: Int? = null) : Body(0x43, "SYNCED")
     data class Queued(val id: Long) : Body(0x44, "QUEUED")
     data class Made(val group: GroupId) : Body(0x45, "MADE", since = 2)
 

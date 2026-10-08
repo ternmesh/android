@@ -29,7 +29,7 @@ class ConnectionTest {
         assertTrue(answers.all { it is Outcome.Answered }, "every request answered: $answers")
         val r = link.connection.records
         assertEquals("EU868", r.self?.region)
-        assertEquals(2, r.syncedVersion)
+        assertEquals(3, r.syncedVersion)
         assertEquals(listOf("Bob", "Carol"), r.contacts.values.map { it.name }.sorted())
         assertEquals(listOf(0, 0), r.contacts.values.map { it.session }, "Bob's session ended; Carol never had one")
         assertEquals(listOf("Ridge walkers"), r.groups.values.map { it.name }, "the group made was left, the one joined renamed")
@@ -73,7 +73,18 @@ class ConnectionTest {
         assertEquals(3, link.connection.records.items.size)
     }
 
-    /** A client of version 2 talking to a node of version 1 does the same. */
+    /** A client of version 2 reads the node's `SYNCED` as version 2's, without the count. */
+    @Test
+    fun olderVersion2() {
+        val frames = vectors.list("older").first { it.int("version") == 2 }.list("frames")
+        val link = Link(Connection(version = 2, now = { 0 }, wallTime = null))
+        link.replay(frames)
+        assertEquals(2, link.connection.agreed)
+        assertEquals(1, link.events.count { it == ConnectionEvent.Synced })
+        assertEquals(2, link.connection.records.syncedVersion)
+    }
+
+    /** A client of version 3 talking to a node of version 1 does the same. */
     @Test
     fun aNodeOfAnEarlierVersionIsNotAskedWhatItCannotDo() {
         val node = Node(version = 1)
@@ -157,7 +168,7 @@ class ConnectionTest {
         node.time += Companion.ANSWER_WAIT_MS
         node.connection.tick()
         assertEquals(listOf("HELLO", "SET_TIME", "SYNC"), node.answerAll().map { it.typeName })
-        assertEquals(2, node.connection.agreed)
+        assertEquals(3, node.connection.agreed)
     }
 
     /** Opening again fails what was held only once the new HELLO is out, so a callback that opens again too sends no second one: one request at a time holds. */
@@ -224,8 +235,8 @@ class ConnectionTest {
         node.news(Node.message(7, MessageState.SENT))
         node.news(Node.groupMessage(6, MessageState.SENT))
         node.news(Node.message(9, MessageState.RECEIVED))
-        node.connection.receive(Codec.encode(Frame(node.seq, Body.Synced)))
-        assertEquals(2, node.connection.records.syncedVersion)
+        node.answerSync()
+        assertEquals(3, node.connection.records.syncedVersion)
 
         node.newsCount++ // one lost
         node.news(Body.State(9, MessageState.RECEIVED, 0, 0))
@@ -366,17 +377,55 @@ class ConnectionTest {
         node.answerOne()
         node.sent.removeFirst() // SYNC
         node.news(Body.Contact(Node.BOB, 1, "Bob"))
-        node.connection.receive(Codec.encode(Frame(node.seq, Body.Synced)))
+        node.answerSync()
         assertEquals(1, node.connection.records.contacts.size)
 
         node.connection.resync()
         node.sent.removeFirst()
         node.newsCount++ // CONTACT Bob, lost
         node.news(Body.Power(3900, 80, 0))
-        node.connection.receive(Codec.encode(Frame(node.seq, Body.Synced)))
+        node.answerSync()
         assertEquals(1, node.connection.records.contacts.size, "Bob is not taken for gone")
         assertEquals(1, node.events.count { it == ConnectionEvent.Synced })
         assertEquals(listOf("SYNC"), node.sent.map { Codec.decode(it).body.typeName }, "and it syncs again")
+    }
+
+    /** The sync's last news lost, with nothing after it to show a gap: `SYNCED`'s count does, and the client forgets nothing on that sync's account and syncs again. */
+    @Test
+    fun aSyncWhoseLastNewsWasLostIsToldBySyncedsCount() {
+        val node = synced(Node.message(10, MessageState.DELIVERED))
+        node.connection.resync()
+        node.sent.removeFirst() // SYNC
+        node.news(Body.Contact(Node.BOB, 1, "Bob"))
+        node.answerSync()
+        assertEquals(1, node.connection.records.contacts.size)
+
+        node.connection.resync()
+        node.sent.removeFirst()
+        node.newsCount++ // CONTACT Bob, the sync's last news, lost
+        val synceds = node.events.count { it == ConnectionEvent.Synced }
+        node.answerSync()
+        assertEquals(1, node.connection.records.contacts.size, "Bob is not taken for gone")
+        assertEquals(synceds, node.events.count { it == ConnectionEvent.Synced })
+        assertEquals(listOf<Body>(Body.Sync(10)), node.sent.map { Codec.decode(it).body }, "and it syncs again")
+        node.sent.removeFirst()
+
+        // News after it is not taken for another gap.
+        node.news(Body.Power(3900, 80, 0))
+        node.answerSync()
+        assertEquals(0, node.sent.size)
+        assertEquals(ConnectionEvent.Synced, node.events.last())
+    }
+
+    /** A client of version 3 reads a node of version 2's `SYNCED` as the two bytes it is. */
+    @Test
+    fun aNodeOfVersion2SyncsWithoutTheCount() {
+        val node = Node(version = 2)
+        node.connection.open()
+        node.answerAll()
+        assertEquals(2, node.connection.agreed)
+        assertEquals(ConnectionEvent.Synced, node.events.last())
+        assertEquals(2, node.connection.records.syncedVersion)
     }
 
     /** Records kept from a version 2 connection, synced with a node that speaks an earlier version, keep their groups: that sync could not have sent them. */
@@ -417,12 +466,12 @@ class ConnectionTest {
         node.news(Body.Group(Node.HUT, "Hut"))
         node.news(Body.Neighbour(7, 1, 20, 3))
         node.news(Node.message(3, MessageState.RECEIVED))
-        node.connection.receive(Codec.encode(Frame(node.seq, Body.Synced)))
+        node.answerSync()
 
         node.connection.resync()
         node.sent.removeFirst()
         node.news(Body.Contact(Node.BOB, 1, "Bob"))
-        node.connection.receive(Codec.encode(Frame(node.seq, Body.Synced)))
+        node.answerSync()
         val r = node.connection.records
         assertEquals(setOf(Node.BOB), r.contacts.keys)
         assertEquals(emptyMap(), r.groups)
@@ -505,7 +554,7 @@ private fun synced(vararg messages: Body.Message): Node {
     node.answerOne()
     node.sent.removeFirst()
     for (m in messages) node.news(m)
-    node.connection.receive(Codec.encode(Frame(node.seq, Body.Synced)))
+    node.answerSync()
     assertEquals(0, node.sent.size)
     return node
 }
@@ -547,7 +596,10 @@ private class Link(val connection: Connection) {
 }
 
 /** A node played by hand: it answers each request as a node with nothing to report would, and sends news when told to. */
-private class Node(val version: Int = 2, records: Records = Records()) {
+/** The version a [Node] speaks unless told otherwise: Node's own companion object hides [Companion]. */
+private const val LATEST = Companion.VERSION
+
+private class Node(val version: Int = LATEST, records: Records = Records()) {
     var time = 0L
     var newsCount = 0
     val sent = ArrayDeque<ByteArray>()
@@ -569,6 +621,12 @@ private class Node(val version: Int = 2, records: Records = Records()) {
         newsCount = (newsCount + 1) and 0xFF
     }
 
+    /** `SYNCED` as this node answers it: with its count from version 3. */
+    fun syncedAnswer() = Body.Synced(if (minOf(version, connection.version) >= 3) newsCount else null)
+
+    /** Answers the last request, a `SYNC`, now. */
+    fun answerSync() = connection.receive(Codec.encode(Frame(seq, syncedAnswer())))
+
     /** Answers the oldest request sent. */
     fun answerOne(): Body {
         val request = Codec.decode(sent.removeFirst())
@@ -577,7 +635,7 @@ private class Node(val version: Int = 2, records: Records = Records()) {
                 newsCount = 0
                 Body.Info(version, "test")
             }
-            is Body.Sync -> Body.Synced
+            is Body.Sync -> syncedAnswer()
             is Body.Send, is Body.SendGroup, is Body.SendInvite -> Body.Queued(1)
             is Body.MakeGroup -> Body.Made(HUT)
             else -> Body.Ok

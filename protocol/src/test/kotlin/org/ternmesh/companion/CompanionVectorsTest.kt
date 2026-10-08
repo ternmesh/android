@@ -104,6 +104,23 @@ class CompanionVectorsTest {
         }
     }
 
+    /** Each older connection's frames read by the version its client speaks, and build back. */
+    @Test
+    fun olderEveryFrameReadsByItsVersion() {
+        for (c in v.list("older")) {
+            val version = c.int("version")
+            for (f in c.list("frames")) {
+                val name = f.str("type")
+                val frame = Codec.decode(f.bytes("frame"), version)
+                assertEquals(name, frame.body.typeName)
+                assertEquals(f.str("frame"), Hex.encode(Codec.encode(frame)), "$version $name")
+            }
+        }
+        // And by version 3, version 2's SYNCED is cut short.
+        assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x43, 0x02)) }
+        assertEquals(Body.Synced(null), Codec.decode(byteArrayOf(0x43, 0x02), 2).body)
+    }
+
     @Test
     fun aFrameThatNeverFinishesIsGivenUpAsText() {
         val r = StreamReader()
@@ -156,7 +173,7 @@ class CompanionVectorsTest {
         "OK" -> Body.Ok
         "ERROR" -> Body.Error(f.int("code"))
         "INFO" -> Body.Info(f.int("version"), f.str("firmware"))
-        "SYNCED" -> Body.Synced
+        "SYNCED" -> Body.Synced(if (f.containsKey("news")) f.int("news") else null)
         "QUEUED" -> Body.Queued(f.long("id"))
         "MADE" -> Body.Made(f.gid("group"))
         "SELF" -> Body.Self(f.addr("address"), f.int("role"), f.str("region"), f.int("power"), f.long("time"))
