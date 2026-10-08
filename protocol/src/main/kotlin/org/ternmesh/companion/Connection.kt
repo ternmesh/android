@@ -85,7 +85,8 @@ class Connection(
     private var phase = Phase.CLOSED
     private var seq = 0
     private var expectedNews = 0
-    private var missedNews = false
+    /** The greatest `id` held when news was first missed, until a sync asks again from it. */
+    private var missedSince: Long? = null
     private var syncWanted = false
     private val queue = ArrayDeque<Pending>()
     private var inFlight: InFlight? = null
@@ -200,7 +201,10 @@ class Connection(
         if (phase != Phase.OPEN) return
         // News of a type this client does not know is ignored, but the node counted it.
         if (newsSeq != expectedNews) {
-            missedNews = true
+            // What was lost may be a record this sync would have sent: it no longer proves what is
+            // gone, and the one after it will.
+            if (missedSince == null) missedSince = records.greatest
+            records.abandonSync()
             syncWanted = true
         }
         expectedNews = (newsSeq + 1) and 0xFF
@@ -222,7 +226,7 @@ class Connection(
                 firmware = body.firmware
                 phase = Phase.OPEN
                 expectedNews = 0
-                missedNews = false
+                missedSince = null
                 syncWanted = false
                 queue.addFirst(Pending(Kind.Sync))
                 if (wallTime != null) queue.addFirst(Pending(Kind.SetTime))
@@ -246,8 +250,7 @@ class Connection(
                 p.then(Outcome.Refused(body.code))
             }
             kind == Kind.Sync && body == Body.Synced -> {
-                records.finishSync(agreed ?: version)
-                onEvent(ConnectionEvent.Synced)
+                if (records.finishSync(agreed ?: version)) onEvent(ConnectionEvent.Synced)
                 p.then(Outcome.Answered(body))
             }
             else -> p.then(Outcome.Answered(body))
@@ -277,8 +280,8 @@ class Connection(
             Kind.Hello -> Body.Hello(version)
             Kind.SetTime -> Body.SetTime(wallTime?.invoke() ?: 0)
             Kind.Ping -> Body.Ping
-            Kind.Sync -> Body.Sync(records.after(agreed ?: version, missedNews)).also {
-                missedNews = false
+            Kind.Sync -> Body.Sync(records.after(agreed ?: version, missedSince)).also {
+                missedSince = null
                 records.beginSync()
             }
         }

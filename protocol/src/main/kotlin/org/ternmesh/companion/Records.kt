@@ -68,30 +68,34 @@ class Records {
 
     /**
      * The `after` to sync with. Normally the greatest `id` held. After missed news, one less than the
-     * least `id` whose state may have changed unseen. Speaking a later version to the node than at
-     * the last sync, 0, once.
+     * least `id` whose state may have changed unseen, and never more than [missedSince], the greatest
+     * `id` held when news was first missed: what was lost may be below records received after it.
+     * Speaking a later version to the node than at the last sync, 0, once.
      */
-    fun after(version: Int, missed: Boolean): Long {
+    fun after(version: Int, missedSince: Long? = null): Long {
         val synced = syncedVersion
         if (synced == null || synced < version) return 0
-        if (missed) {
-            items.values.filter(::mayChange).minOfOrNull { it.id }?.let { return it - 1 }
-        }
-        return items.keys.maxOrNull() ?: 0
+        val floor = missedSince ?: return greatest
+        val least = items.values.filter(::mayChange).minOfOrNull { it.id }
+        return minOf(floor, least?.let { it - 1 } ?: floor)
     }
+
+    /** The greatest `id` held, 0 for none. */
+    val greatest: Long get() = items.keys.maxOrNull() ?: 0
 
     internal fun beginSync() {
         syncing = Seen()
     }
 
-    /** `SYNCED`: whatever of the three whole lists the sync did not send is gone. */
-    internal fun finishSync(version: Int) {
-        val seen = syncing ?: return
+    /** `SYNCED`: whatever of the three whole lists the sync did not send is gone. Returns false, and changes nothing, for a sync abandoned on the way. */
+    internal fun finishSync(version: Int): Boolean {
+        val seen = syncing ?: return false
         contacts.keys.retainAll(seen.contacts)
         groups.keys.retainAll(seen.groups)
         neighbours.keys.retainAll(seen.neighbours)
         syncedVersion = version
         syncing = null
+        return true
     }
 
     /** A sync that never finished proves nothing about what is gone. */
@@ -119,10 +123,11 @@ class Records {
 }
 
 /**
- * Whether its state may yet change: a sync after missed news has to reach back to it. A group
- * message that is sent stays sent, so only a waiting one counts.
+ * Whether it may yet change: a sync after missed news has to reach back to it. A message that is
+ * waiting or sent may be delivered; a received one still unread may be read, on another client. A
+ * group message that is sent stays sent, so only a waiting one counts.
  */
-private fun mayChange(item: Item) = when (item) {
+private fun mayChange(item: Item) = item.isUnread || when (item) {
     is Body.GroupMessage -> item.state == MessageState.WAITING
     else -> item.state == MessageState.WAITING || item.state == MessageState.SENT
 }

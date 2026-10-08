@@ -200,11 +200,51 @@ class ConnectionTest {
         r.syncedVersion = 2
         r.items[4L] = Node.message(4, MessageState.DELIVERED)
         r.items[8L] = Node.groupMessage(8, MessageState.SENT)
-        assertEquals(8, r.after(2, missed = true))
-        assertEquals(8, r.after(2, missed = false))
+        assertEquals(8, r.after(2, missedSince = 8))
+        assertEquals(8, r.after(2))
         // Speaking a later version than at the last sync: everything, once.
         r.syncedVersion = 1
-        assertEquals(0, r.after(2, missed = false))
+        assertEquals(0, r.after(2))
+    }
+
+    /** What was lost may be older than what came after it: losing 11 and then hearing of 12 asks again from 10, not 12. */
+    @Test
+    fun missedNewsSyncsFromNoLaterThanWhatWasHeldBeforeTheGap() {
+        val node = synced(Node.message(10, MessageState.DELIVERED))
+        node.newsCount++ // MESSAGE 11, lost
+        node.news(Node.message(12, MessageState.RECEIVED))
+        assertEquals(listOf<Body>(Body.Sync(10)), node.sent.map { Codec.decode(it).body })
+    }
+
+    /** Another client's READ may have been the news lost: a received message still unread is asked for again. */
+    @Test
+    fun missedNewsSyncsFromAMessageStillUnread() {
+        val node = synced(Node.message(4, MessageState.RECEIVED), Node.message(5, MessageState.DELIVERED))
+        node.newsCount++ // MESSAGE 4, read, lost
+        node.news(Body.Power(3900, 80, 0))
+        assertEquals(listOf<Body>(Body.Sync(3)), node.sent.map { Codec.decode(it).body })
+    }
+
+    /** A sync that missed some of its news proves nothing about what is gone: the next one does. */
+    @Test
+    fun aSyncThatMissedNewsForgetsNothing() {
+        val node = Node()
+        node.connection.open()
+        node.answerOne()
+        node.answerOne()
+        node.sent.removeFirst() // SYNC
+        node.news(Body.Contact(Node.BOB, 1, "Bob"))
+        node.connection.receive(Codec.encode(Frame(node.seq, Body.Synced)))
+        assertEquals(1, node.connection.records.contacts.size)
+
+        node.connection.resync()
+        node.sent.removeFirst()
+        node.newsCount++ // CONTACT Bob, lost
+        node.news(Body.Power(3900, 80, 0))
+        node.connection.receive(Codec.encode(Frame(node.seq, Body.Synced)))
+        assertEquals(1, node.connection.records.contacts.size, "Bob is not taken for gone")
+        assertEquals(1, node.events.count { it == ConnectionEvent.Synced })
+        assertEquals(listOf("SYNC"), node.sent.map { Codec.decode(it).body.typeName }, "and it syncs again")
     }
 
     @Test
@@ -287,6 +327,19 @@ class ConnectionTest {
         assertTrue(result is Outcome.Invalid, "$result")
         assertEquals(0, node.sent.size)
     }
+}
+
+/** A node and a connection to it that has synced, the node holding [messages]. */
+private fun synced(vararg messages: Body.Message): Node {
+    val node = Node()
+    node.connection.open()
+    node.answerOne()
+    node.answerOne()
+    node.sent.removeFirst()
+    for (m in messages) node.news(m)
+    node.connection.receive(Codec.encode(Frame(node.seq, Body.Synced)))
+    assertEquals(0, node.sent.size)
+    return node
 }
 
 /** A connection with its frames caught, and a replay of the specification's. */
