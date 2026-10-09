@@ -31,7 +31,17 @@ class LocationFeed(private val context: Context, private val give: (Body.SetPosi
     /** How exact the last position given was, in metres; [Float.MAX_VALUE] for unknown. */
     private var lastAccuracy = Float.MAX_VALUE
 
-    private val listener = LocationListener { location -> take(location) }
+    // Every method spelled out: before Android 11 the three beside onLocationChanged have no
+    // default, and a provider registered while off calls them.
+    private val listener = object : LocationListener {
+        override fun onLocationChanged(location: Location) = take(location)
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
+
+        @Deprecated("Called only before Android 10")
+        @Suppress("OVERRIDE_DEPRECATION")
+        override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+    }
 
     /** Listens while [wanted] and the user allows it; stops otherwise. */
     @SuppressLint("MissingPermission") // permitted() is asked first, and a permission taken away since only fails the call
