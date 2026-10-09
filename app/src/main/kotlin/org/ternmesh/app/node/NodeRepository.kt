@@ -434,17 +434,25 @@ class NodeRepository(private val context: Context) {
      * update goes on across a dropped link, and after the node restarts into the image, the release
      * its `INFO` gives says whether it runs it.
      */
+    /**
+     * Whether the node is still what [image] was chosen for, asked before downloading and again
+     * before sending: its region may have changed since the check, by this client or another, and
+     * so may its firmware, so that what was newer is not. An image is for one board and one region.
+     */
+    private fun stillFor(image: Manifest.Image): Boolean {
+        val s = _state.value
+        if (image.board.equals(s.board, ignoreCase = true) &&
+            image.region.equals(connection.records.self?.region, ignoreCase = true) && s.release == checkedAgainst
+        ) {
+            return true
+        }
+        setUpdate(FirmwareUpdate.Failed(FirmwareFailure.CHANGED))
+        return false
+    }
+
     fun startUpdate(release: String, image: Manifest.Image) {
         if (busyUpdating(_state.value.update)) return
-        // The region may have been changed since the check: an image is for one region.
-        val self = connection.records.self?.region
-        // So may its firmware, by another client: what was newer then may not be now.
-        if (!image.board.equals(_state.value.board, ignoreCase = true) || !image.region.equals(self, ignoreCase = true) ||
-            _state.value.release != checkedAgainst
-        ) {
-            setUpdate(FirmwareUpdate.Failed(FirmwareFailure.CHANGED))
-            return
-        }
+        if (!stillFor(image)) return
         // The service keeps the process, and so the link, while the app is not on screen.
         NodeService.start(context)
         setUpdate(FirmwareUpdate.Downloading(release, 0, image.size))
@@ -467,6 +475,7 @@ class NodeRepository(private val context: Context) {
             } finally {
                 downloading = null
             }
+            if (!stillFor(image)) return@launch
             val u = Updater(bytes)
             updater = u
             updatingTo = release
