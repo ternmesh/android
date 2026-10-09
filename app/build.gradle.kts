@@ -65,4 +65,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.8.7")
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // QR codes: ZXing's encoder draws a node's link, and its embedded scanner reads one with the
+    // camera. Neither needs Google Play services, which not every phone that runs a node has.
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0") { isTransitive = false }
 }

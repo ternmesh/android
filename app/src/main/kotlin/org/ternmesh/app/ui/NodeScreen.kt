@@ -1,12 +1,13 @@
-// The node itself: its address to give others, its battery and airtime, the nodes it hears, and the
-// four settings a client may change; and disconnecting from it, changing it, or forgetting it.
+// The node itself: its address to give others, as a QR code, a link and the short code; its battery
+// and airtime, the nodes it hears, and the four settings a client may change; and disconnecting
+// from it, changing it, or forgetting it.
 package org.ternmesh.app.ui
 
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -44,6 +45,7 @@ import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Setting
+import org.ternmesh.companion.Sharing
 
 /** The regions the specification's profiles define. */
 private val REGIONS = listOf("EU868", "US915")
@@ -69,17 +71,19 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
             }
             self?.let { s ->
                 Text(stringResource(R.string.node_address), style = MaterialTheme.typography.labelLarge)
-                SelectionContainer { Text(s.address.toString(), fontFamily = FontFamily.Monospace) }
+                QrCode(s.address, Modifier.fillMaxWidth().align(Alignment.CenterHorizontally))
+                Text(stringResource(R.string.qr_explained), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.short_code), style = MaterialTheme.typography.labelLarge)
+                Text(Sharing.shortCode(s.address), style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Monospace)
+                Text(stringResource(R.string.short_code_explained), style = MaterialTheme.typography.bodySmall)
+                SelectionContainer { Text(Sharing.grouped(s.address), fontFamily = FontFamily.Monospace) }
                 Row {
                     TextButton(onClick = {
                         context.getSystemService(ClipboardManager::class.java)
-                            .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.node_address), s.address.toString()))
+                            .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.node_address), Sharing.text(s.address)))
                         say(context.getString(R.string.copied))
                     }) { Text(stringResource(R.string.copy)) }
-                    TextButton(onClick = {
-                        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, s.address.toString())
-                        context.startActivity(Intent.createChooser(send, null))
-                    }) { Text(stringResource(R.string.share)) }
+                    TextButton(onClick = { shareLink(context, s.address) }) { Text(stringResource(R.string.share)) }
                 }
                 Text("${stringResource(R.string.node_clock)}: ${timeText(context, s.time).ifEmpty { stringResource(R.string.clock_unset) }}")
             }
@@ -177,7 +181,7 @@ fun ForgetDialog(node: ChosenNode, onDismiss: () -> Unit, forget: () -> Unit) {
 }
 
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
+private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
