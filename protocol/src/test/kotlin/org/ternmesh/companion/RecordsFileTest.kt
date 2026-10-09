@@ -26,15 +26,23 @@ class RecordsFileTest {
         }
     }
 
+    /** The records a file keeps: all but positions and sharing, which the next sync sends whole. */
+    private fun kept(r: Records) = r.copy().apply {
+        positions.clear()
+        groupPositions.clear()
+        sharing.clear()
+        groupSharing.clear()
+    }
+
     @Test
     fun keepsEveryRecord() {
         val r = fromVectors().apply {
             apply(received(40, alice))
             apply(Body.Group(hikers, "Hikers"))
-            syncedVersion = 2
+            syncedVersion = Companion.VERSION
             missedSince = 0xFFFF_FFF0L
         }
-        assertEquals(r, RecordsFile.decode(RecordsFile.encode(r)))
+        assertEquals(kept(r), RecordsFile.decode(RecordsFile.encode(r)))
     }
 
     @Test
@@ -43,7 +51,23 @@ class RecordsFileTest {
         val back = RecordsFile.decode(RecordsFile.encode(r))
         assertNull(back.syncedVersion)
         assertNull(back.missedSince)
-        assertEquals(r, back)
+        assertEquals(kept(r), back)
+    }
+
+    /** Positions and sharing are not kept: their counts would go stale on disk. A file that has them is read all the same. */
+    @Test
+    fun positionsAndSharingAreNotKept() {
+        val r = Records().apply {
+            apply(Body.Position(bob, 16, 603_945_922, 52_871_704, Companion.NO_ALTITUDE, 0, 40))
+            apply(Body.GroupPosition(hikers, 0x1234, 24, 1, 2, 3, 4, 5))
+            apply(Body.Sharing(bob, 20, 3, 900, 60))
+            apply(Body.GroupSharing(hikers, 12, 0, 300, 0))
+            syncedVersion = Companion.VERSION
+        }
+        val file = RecordsFile.encode(r)
+        assertEquals(Records().apply { syncedVersion = Companion.VERSION }, RecordsFile.decode(file))
+        val sharing = Codec.encode(Frame(0, r.sharing.values.single()))
+        assertEquals(r.sharing, RecordsFile.decode(file + byteArrayOf(sharing.size.toByte()) + sharing).sharing)
     }
 
     /** What cannot be read whole starts again from nothing, and a sync from 0 refills it. */

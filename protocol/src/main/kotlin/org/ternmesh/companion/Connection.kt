@@ -13,7 +13,7 @@ import kotlin.random.Random
 
 /** What became of a request. */
 sealed interface Outcome {
-    /** The node's answer: `OK`, `QUEUED` or `MADE`. */
+    /** The node's answer: `OK`, `QUEUED`, `MADE` or `UPDATING`. */
     data class Answered(val body: Body) : Outcome
 
     /** The node answered `ERROR` with this code. */
@@ -34,8 +34,16 @@ sealed interface Outcome {
 
 /** What a connection tells the app, besides each request's outcome. */
 sealed interface ConnectionEvent {
-    /** The node answered `HELLO`. [version] is the node's; the connection speaks the lesser of it and its own. */
-    data class Ready(val version: Int, val firmware: String) : ConnectionEvent
+    /**
+     * The node answered `HELLO`. [version] is the node's; the connection speaks the lesser of it and
+     * its own. [board] and [release] are null unless both speak version 4.
+     */
+    data class Ready(
+        val version: Int,
+        val firmware: String,
+        val board: String? = null,
+        val release: String? = null,
+    ) : ConnectionEvent
 
     /** A news frame, already applied to the records. `ASKED` is one, and is applied to nothing. */
     data class News(val body: Body) : ConnectionEvent
@@ -78,6 +86,12 @@ class Connection(
     var nodeVersion: Int? = null
         private set
     var firmware: String? = null
+        private set
+
+    /** The hardware the node's firmware is built for, and its release: null unless both speak version 4. */
+    var board: String? = null
+        private set
+    var release: String? = null
         private set
 
     /** The version both ends speak, once the node has said its own. */
@@ -124,6 +138,8 @@ class Connection(
         phase = Phase.GREETING
         nodeVersion = null
         firmware = null
+        board = null
+        release = null
         hello()
         for (p in old) p.then(Outcome.Closed)
     }
@@ -242,6 +258,8 @@ class Connection(
             kind == Kind.Hello && body is Body.Info -> {
                 nodeVersion = body.version
                 firmware = body.firmware
+                board = body.board
+                release = body.release
                 phase = Phase.OPEN
                 expectedNews = 0
                 // A connection that starts has missed whatever changed while there was none.
@@ -250,7 +268,7 @@ class Connection(
                 syncOwed = false
                 queue.addFirst(Pending(Kind.Sync))
                 if (wallTime != null) queue.addFirst(Pending(Kind.SetTime))
-                onEvent(ConnectionEvent.Ready(body.version, body.firmware))
+                onEvent(ConnectionEvent.Ready(body.version, body.firmware, body.board, body.release))
             }
             kind == Kind.Hello -> {
                 shutDown(if (body is Body.Error) ConnectionEvent.Refused(body.code) else ConnectionEvent.Gone)

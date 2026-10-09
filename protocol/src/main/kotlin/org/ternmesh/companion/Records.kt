@@ -1,6 +1,7 @@
 // What a client holds of a node: the records its news gave, kept as the specification's "What the
-// node holds" says. A record replaces the one before it; STATE changes a message in place; a sync
-// is the whole list of contacts, groups and neighbours, but not of messages.
+// node holds" says. A record replaces the one before it; STATE changes a message in place; a
+// position or sharing of precision 0 is none; a sync is the whole list of contacts, groups,
+// neighbours, positions and sharing, but not of messages.
 package org.ternmesh.companion
 
 /**
@@ -16,6 +17,15 @@ class Records {
     /** Messages, group messages and invites, by `id`. */
     val items = mutableMapOf<Long, Item>()
     val neighbours = mutableMapOf<Long, Body.Neighbour>()
+
+    /** Positions received, from contacts and from routing ids in groups. None of precision 0 is held. */
+    val positions = mutableMapOf<Address, Body.Position>()
+    val groupPositions = mutableMapOf<Pair<GroupId, Long>, Body.GroupPosition>()
+
+    /** Whom the node shares its position with, and how. Sharing that is off is not held. */
+    val sharing = mutableMapOf<Address, Body.Sharing>()
+    val groupSharing = mutableMapOf<GroupId, Body.GroupSharing>()
+
     var airtime: Body.Airtime? = null
         private set
     var power: Body.Power? = null
@@ -34,13 +44,17 @@ class Records {
      */
     var missedSince: Long? = null
 
-    /** What the sync under way has sent of the three lists a sync gives whole. */
+    /** What the sync under way has sent of the lists a sync gives whole. */
     private var syncing: Seen? = null
 
     private class Seen {
         val contacts = mutableSetOf<Address>()
         val groups = mutableSetOf<GroupId>()
         val neighbours = mutableSetOf<Long>()
+        val positions = mutableSetOf<Address>()
+        val groupPositions = mutableSetOf<Pair<GroupId, Long>>()
+        val sharing = mutableSetOf<Address>()
+        val groupSharing = mutableSetOf<GroupId>()
     }
 
     /** The items in the order the node gave them `id`s. */
@@ -67,6 +81,23 @@ class Records {
                 syncing?.neighbours?.add(news.routingId)
             }
             is Body.NeighbourGone -> neighbours.remove(news.routingId)
+            is Body.Position -> {
+                if (news.precision == 0) positions.remove(news.contact) else positions[news.contact] = news
+                syncing?.positions?.add(news.contact)
+            }
+            is Body.GroupPosition -> {
+                val key = news.group to news.from
+                if (news.precision == 0) groupPositions.remove(key) else groupPositions[key] = news
+                syncing?.groupPositions?.add(key)
+            }
+            is Body.Sharing -> {
+                if (news.precision == 0) sharing.remove(news.contact) else sharing[news.contact] = news
+                syncing?.sharing?.add(news.contact)
+            }
+            is Body.GroupSharing -> {
+                if (news.precision == 0) groupSharing.remove(news.group) else groupSharing[news.group] = news
+                syncing?.groupSharing?.add(news.group)
+            }
             is Body.Airtime -> airtime = news
             is Body.Power -> power = news
             else -> {}
@@ -98,13 +129,20 @@ class Records {
         syncing = Seen()
     }
 
-    /** `SYNCED`: whatever of the three whole lists the sync did not send is gone. Returns false, and changes nothing, for a sync abandoned on the way. */
+    /** `SYNCED`: whatever of the whole lists the sync did not send is gone, and sharing it did not send is off. Returns false, and changes nothing, for a sync abandoned on the way. */
     internal fun finishSync(version: Int): Boolean {
         val seen = syncing ?: return false
         contacts.keys.retainAll(seen.contacts)
         // A sync of version 1 or earlier sends no groups: it says nothing of whether they are gone.
         if (version >= 2) groups.keys.retainAll(seen.groups)
         neighbours.keys.retainAll(seen.neighbours)
+        // Nor one of version 4 or earlier of positions and sharing.
+        if (version >= 5) {
+            positions.keys.retainAll(seen.positions)
+            groupPositions.keys.retainAll(seen.groupPositions)
+            sharing.keys.retainAll(seen.sharing)
+            groupSharing.keys.retainAll(seen.groupSharing)
+        }
         syncedVersion = version
         missedSince = null
         syncing = null
@@ -123,6 +161,10 @@ class Records {
         it.groups += groups
         it.items += items
         it.neighbours += neighbours
+        it.positions += positions
+        it.groupPositions += groupPositions
+        it.sharing += sharing
+        it.groupSharing += groupSharing
         it.airtime = airtime
         it.power = power
         it.syncedVersion = syncedVersion
@@ -131,10 +173,14 @@ class Records {
 
     override fun equals(other: Any?) = other is Records && self == other.self && contacts == other.contacts &&
         groups == other.groups && items == other.items && neighbours == other.neighbours &&
-        airtime == other.airtime && power == other.power && syncedVersion == other.syncedVersion &&
-        missedSince == other.missedSince
+        positions == other.positions && groupPositions == other.groupPositions && sharing == other.sharing &&
+        groupSharing == other.groupSharing && airtime == other.airtime && power == other.power &&
+        syncedVersion == other.syncedVersion && missedSince == other.missedSince
 
-    override fun hashCode() = listOf(self, contacts, groups, items, neighbours, airtime, power, syncedVersion, missedSince).hashCode()
+    override fun hashCode() = listOf(
+        self, contacts, groups, items, neighbours, positions, groupPositions, sharing, groupSharing,
+        airtime, power, syncedVersion, missedSince,
+    ).hashCode()
 }
 
 /**

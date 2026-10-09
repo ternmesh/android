@@ -1,5 +1,5 @@
-// Building and reading frames, field by field: big-endian numbers, 32-byte addresses, and text as
-// a length byte then UTF-8.
+// Building and reading frames, field by field: big-endian numbers, signed ones in two's complement,
+// 32-byte addresses and digests, and text and bytes as a length byte then the bytes.
 package org.ternmesh.companion
 
 import java.io.ByteArrayOutputStream
@@ -15,7 +15,7 @@ enum class Unreadable {
     /** A type, or a setting, this version does not define. */
     UNDEFINED,
 
-    /** Shorter than its fields, a string too long or not UTF-8, or longer than a frame may be. */
+    /** Shorter than its fields, a string or bytes too long, a string not UTF-8, or longer than a frame may be. */
     MALFORMED,
 }
 
@@ -76,13 +76,44 @@ object Codec {
                 w.addr(b.to)
             }
             is Body.Join -> w.u32(b.id)
+            is Body.UpdateBegin -> {
+                w.u32(b.size)
+                w.raw(b.digest)
+            }
+            is Body.UpdateData -> {
+                w.u32(b.offset)
+                w.bytes(b.data, Companion.UPDATE_CHUNK)
+            }
+            Body.UpdateEnd -> {}
+            is Body.SetPosition -> {
+                w.i32(b.lat)
+                w.i32(b.lon)
+                w.i16(b.altitude)
+                w.u16(b.accuracy)
+                w.u16(b.age)
+            }
+            is Body.Share -> {
+                w.addr(b.contact)
+                w.sharing(b.precision, b.fields, b.interval, b.minutes)
+            }
+            is Body.ShareGroup -> {
+                w.gid(b.group)
+                w.sharing(b.precision, b.fields, b.interval, b.minutes)
+            }
             is Body.Error -> w.u8(b.code)
             is Body.Info -> {
                 w.u8(b.version)
                 w.str(b.firmware, Companion.FIRMWARE_MAX)
+                // Both or neither: the two are one addition, of version 4.
+                require((b.board == null) == (b.release == null)) { "INFO has board and release, or neither" }
+                if (b.board != null && b.release != null) {
+                    w.str(b.board, Companion.BOARD_MAX)
+                    w.str(b.release, Companion.RELEASE_MAX)
+                }
             }
             is Body.Queued -> w.u32(b.id)
             is Body.Made -> w.gid(b.group)
+            is Body.Updating -> w.u32(b.offset)
             is Body.Self -> {
                 w.addr(b.address)
                 w.u8(b.role)
@@ -161,6 +192,23 @@ object Codec {
                 w.u16(b.wait)
                 w.str(b.name, Companion.NAME_MAX)
             }
+            is Body.Position -> {
+                w.addr(b.contact)
+                w.position(b.precision, b.lat, b.lon, b.altitude, b.accuracy, b.age)
+            }
+            is Body.GroupPosition -> {
+                w.gid(b.group)
+                w.u32(b.from)
+                w.position(b.precision, b.lat, b.lon, b.altitude, b.accuracy, b.age)
+            }
+            is Body.Sharing -> {
+                w.addr(b.contact)
+                w.sharing(b.precision, b.fields, b.interval, b.minutes)
+            }
+            is Body.GroupSharing -> {
+                w.gid(b.group)
+                w.sharing(b.precision, b.fields, b.interval, b.minutes)
+            }
         }
         val out = w.toByteArray()
         require(out.size <= Companion.MAX_FRAME) { "${b.typeName} is ${out.size} bytes, more than a frame holds" }
@@ -205,12 +253,29 @@ object Codec {
             0x23 -> Body.SendGroup(r.u32(), r.gid(), r.str(Companion.TEXT_MAX))
             0x24 -> Body.SendInvite(r.gid(), r.addr())
             0x25 -> Body.Join(r.u32())
+            0x30 -> Body.UpdateBegin(r.u32(), r.raw(Companion.DIGEST))
+            0x31 -> Body.UpdateData(r.u32(), r.bytes(Companion.UPDATE_CHUNK))
+            0x32 -> Body.UpdateEnd
+            0x33 -> Body.SetPosition(r.i32(), r.i32(), r.i16(), r.u16(), r.u16())
+            0x34 -> Body.Share(r.addr(), r.u8(), r.u8(), r.u16(), r.u16())
+            0x35 -> Body.ShareGroup(r.gid(), r.u8(), r.u8(), r.u16(), r.u16())
             0x40 -> Body.Ok
             0x41 -> Body.Error(r.u8())
-            0x42 -> Body.Info(r.u8(), r.str(Companion.FIRMWARE_MAX))
+            0x42 -> {
+                val v = r.u8()
+                val firmware = r.str(Companion.FIRMWARE_MAX)
+                // Before the node has said its version the client's is all a reader has; INFO says
+                // the node's, and the two fields are there only if both speak 4.
+                if (minOf(v, version) >= 4) {
+                    Body.Info(v, firmware, r.str(Companion.BOARD_MAX), r.str(Companion.RELEASE_MAX))
+                } else {
+                    Body.Info(v, firmware)
+                }
+            }
             0x43 -> Body.Synced(if (version >= 3) r.u8() else null)
             0x44 -> Body.Queued(r.u32())
             0x45 -> Body.Made(r.gid())
+            0x46 -> Body.Updating(r.u32())
             0x80 -> Body.Self(r.addr(), r.u8(), r.str(Companion.REGION_MAX), r.i8(), r.u32())
             0x81 -> Body.Contact(r.addr(), r.u8(), r.str(Companion.NAME_MAX))
             0x82 -> Body.ContactGone(r.addr())
@@ -231,6 +296,10 @@ object Codec {
             0x8D -> Body.Invite(
                 r.u32(), r.addr(), r.gid(), r.u32(), r.u8(), r.u8(), r.u8(), r.u16(), r.str(Companion.NAME_MAX),
             )
+            0x8E -> Body.Position(r.addr(), r.u8(), r.i32(), r.i32(), r.i16(), r.u8(), r.u32())
+            0x8F -> Body.GroupPosition(r.gid(), r.u32(), r.u8(), r.i32(), r.i32(), r.i16(), r.u8(), r.u32())
+            0x90 -> Body.Sharing(r.addr(), r.u8(), r.u8(), r.u16(), r.u16())
+            0x91 -> Body.GroupSharing(r.gid(), r.u8(), r.u8(), r.u16(), r.u16())
             else -> throw DecodeException(Unreadable.UNDEFINED)
         }
         return Frame(seq, body)
@@ -265,6 +334,34 @@ private class Writer {
         out.write(v and 0xFF)
     }
 
+    fun i16(v: Int) {
+        require(v in Short.MIN_VALUE..Short.MAX_VALUE) { "$v does not fit two signed bytes" }
+        out.write(v shr 8 and 0xFF)
+        out.write(v and 0xFF)
+    }
+
+    fun i32(v: Int) {
+        for (shift in intArrayOf(24, 16, 8, 0)) out.write(v shr shift and 0xFF)
+    }
+
+    /** `precision`, `fields`, `interval` and `minutes`: `SHARE`'s, `SHARE_GROUP`'s and their news'. */
+    fun sharing(precision: Int, fields: Int, interval: Int, minutes: Int) {
+        u8(precision)
+        u8(fields)
+        u16(interval)
+        u16(minutes)
+    }
+
+    /** `POSITION`'s and `GROUP_POSITION`'s fields after the sender's. */
+    fun position(precision: Int, lat: Int, lon: Int, altitude: Int, accuracy: Int, age: Long) {
+        u8(precision)
+        i32(lat)
+        i32(lon)
+        i16(altitude)
+        u8(accuracy)
+        u32(age)
+    }
+
     fun addr(a: Address) = out.write(a.toByteArray())
     fun gid(g: GroupId) = out.write(g.toByteArray())
 
@@ -274,6 +371,14 @@ private class Writer {
         out.write(utf8.size)
         out.write(utf8)
     }
+
+    fun bytes(b: ByteArray, limit: Int) {
+        require(b.size <= limit) { "${b.size} bytes, longer than $limit" }
+        out.write(b.size)
+        out.write(b)
+    }
+
+    fun raw(b: ByteArray) = out.write(b)
 
     fun toByteArray(): ByteArray = out.toByteArray()
 
@@ -294,7 +399,9 @@ private class Reader(private val bytes: ByteArray) {
     fun u8() = next()
     fun i8() = next().toByte().toInt()
     fun u16() = next() shl 8 or next()
+    fun i16() = u16().toShort().toInt()
     fun u32(): Long = (0 until 4).fold(0L) { v, _ -> v shl 8 or next().toLong() }
+    fun i32() = u32().toInt()
 
     fun addr(): Address {
         if (at + Address.LENGTH > bytes.size) throw DecodeException(Unreadable.MALFORMED)
@@ -304,6 +411,17 @@ private class Reader(private val bytes: ByteArray) {
     fun gid(): GroupId {
         if (at + GroupId.LENGTH > bytes.size) throw DecodeException(Unreadable.MALFORMED)
         return GroupId(bytes.copyOfRange(at, at + GroupId.LENGTH)).also { at += GroupId.LENGTH }
+    }
+
+    fun raw(n: Int): ByteArray {
+        if (at + n > bytes.size) throw DecodeException(Unreadable.MALFORMED)
+        return bytes.copyOfRange(at, at + n).also { at += n }
+    }
+
+    fun bytes(limit: Int): ByteArray {
+        val n = next()
+        if (n > limit) throw DecodeException(Unreadable.MALFORMED)
+        return raw(n)
     }
 
     fun str(limit: Int): String {

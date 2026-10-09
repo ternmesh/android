@@ -1,6 +1,6 @@
 // A foreground service, so Android keeps the app's process, and with it the link to the node, while
 // the app is not on screen. It does nothing itself: the repository holds the link. Its notification
-// says where the link is.
+// says where the link is, or how far an update of the node's firmware has gone.
 package org.ternmesh.app.node
 
 import android.Manifest
@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import org.ternmesh.app.R
 import org.ternmesh.app.TernApplication
 import org.ternmesh.app.ui.phaseText
+import org.ternmesh.app.ui.updateNotificationText
 
 class NodeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
@@ -58,7 +59,7 @@ class NodeService : Service() {
             NotificationCompat.Builder(context, Notifier.LINK)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(state.node?.name ?: context.getString(R.string.app_name))
-                .setContentText(phaseText(context, state))
+                .setContentText(updateNotificationText(context, state) ?: phaseText(context, state))
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setContentIntent(Notifier.open(context, null))

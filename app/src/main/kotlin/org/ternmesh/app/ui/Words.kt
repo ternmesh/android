@@ -5,9 +5,11 @@ import android.content.Context
 import android.text.format.DateUtils
 import org.ternmesh.app.R
 import org.ternmesh.app.link.LinkFailure
+import org.ternmesh.app.node.FirmwareUpdate
 import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
 import org.ternmesh.app.node.Problem
+import org.ternmesh.app.node.percent
 import org.ternmesh.companion.Item
 import org.ternmesh.companion.MessageState
 import org.ternmesh.companion.Outcome
@@ -49,6 +51,9 @@ fun errorText(context: Context, code: Int): String = when (code) {
     7 -> context.getString(R.string.error_7)
     8 -> context.getString(R.string.error_8)
     9 -> context.getString(R.string.error_9)
+    10 -> context.getString(R.string.error_10)
+    11 -> context.getString(R.string.error_11)
+    12 -> context.getString(R.string.error_12)
     else -> context.getString(R.string.error_other, code)
 }
 
@@ -97,3 +102,12 @@ fun spanText(seconds: Long): String = when {
 
 /** The UTF-8 bytes of [text], which is what the protocol's limits count. */
 fun utf8Length(text: String) = text.toByteArray(Charsets.UTF_8).size
+
+/** What the service's notification says of an update under way, or null for none. */
+fun updateNotificationText(context: Context, state: NodeState): String? = when (val u = state.update) {
+    is FirmwareUpdate.Downloading -> context.getString(R.string.update_notification_downloading, percent(u))
+    is FirmwareUpdate.Sending ->
+        if (u.waiting) context.getString(R.string.update_waiting) else context.getString(R.string.update_notification_sending, percent(u))
+    is FirmwareUpdate.Restarting -> context.getString(R.string.update_restarting)
+    else -> null
+}

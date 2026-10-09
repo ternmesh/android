@@ -30,7 +30,7 @@ class CompanionVectorsTest {
     @Test
     fun framesBuiltReadWrappedAndFound() {
         val cases = v.list("frames")
-        assertTrue(cases.size >= 53)
+        assertTrue(cases.size >= 64)
         for (c in cases) {
             val name = c.str("type")
             val frame = Frame(c.int("seq"), body(name, c.obj("fields")))
@@ -122,9 +122,42 @@ class CompanionVectorsTest {
                 assertEquals(f.str("frame"), Hex.encode(Codec.encode(frame)), "$version $name")
             }
         }
-        // And by version 3, version 2's SYNCED is cut short.
+        // And by version 3 or later, version 2's SYNCED is cut short.
         assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x43, 0x02)) }
         assertEquals(Body.Synced(null), Codec.decode(byteArrayOf(0x43, 0x02), 2).body)
+    }
+
+    /** The update's and the refusals' frames, each read and built back; the image's digest is the one given. */
+    @Test
+    fun updateEveryFrameReadsAndBuildsBack() {
+        val image = v.bytes("image")
+        assertEquals(v.str("image_digest"), Hex.encode(java.security.MessageDigest.getInstance("SHA-256").digest(image)))
+        val connections = v.getValue("update").jsonArray.map { c -> c.jsonArray.map { it.jsonObject } }
+        assertEquals(2, connections.size)
+        for (f in connections.flatten() + v.list("refusals")) {
+            val name = f.str("type")
+            val frame = Codec.decode(f.bytes("frame"))
+            assertEquals(name, frame.body.typeName)
+            assertEquals(f.int("seq"), frame.seq, name)
+            assertEquals(f.str("from") == "client", Companion.isRequest(frame.body.type), name)
+            assertEquals(f.str("frame"), Hex.encode(Codec.encode(frame)), name)
+        }
+    }
+
+    /** `INFO`'s board and release are version 4's: a client of 4 reads a node of 3's without them, and a client of 3 a node of 4's. */
+    @Test
+    fun infoHasBoardAndReleaseOnlyWhenBothSpeak4() {
+        val four = Codec.encode(Frame(1, Body.Info(4, "tern", "heltec-v3", "0.2.0")))
+        assertEquals(Body.Info(4, "tern", "heltec-v3", "0.2.0"), Codec.decode(four).body)
+        assertEquals(Body.Info(4, "tern"), Codec.decode(four, 3).body)
+        val three = Codec.encode(Frame(1, Body.Info(3, "tern")))
+        assertEquals(Body.Info(3, "tern"), Codec.decode(three).body)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Info(4, "tern", "heltec-v3", null))) }
+        // Version 3 does not define updates.
+        val begin = Codec.encode(Frame(1, Body.UpdateBegin(1, ByteArray(32))))
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(begin, 3) }.reason)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.UpdateData(0, ByteArray(173)))) }
+        assertFailsWith<IllegalArgumentException> { Body.UpdateBegin(1, ByteArray(31)) }
     }
 
     /** A frame of a later version than the one both ends speak is one that version does not define. */
@@ -140,6 +173,41 @@ class CompanionVectorsTest {
         assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x1A, 1), 0) }.reason)
         assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x1A, 1), 1) }.reason)
         assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x8A.toByte(), 1), 1) }.reason)
+    }
+
+    /**
+     * A frame of a type only a later version defines is, to a receiver speaking an earlier one, a
+     * type it does not know, whatever its own version: a node answers the code given, and a client
+     * reads nothing from it. The connection's half, news ignored and answers discarded, is in
+     * ConnectionTest.
+     */
+    @Test
+    fun unknownToOlderIsUndefinedByTheVersionSpoken() {
+        val cases = v.list("unknown_to_older")
+        assertTrue(cases.isNotEmpty())
+        for (c in cases) {
+            val name = c.str("type")
+            val version = c.int("version")
+            val bytes = c.bytes("frame")
+            assertEquals(name, Codec.decode(bytes).body.typeName)
+            assertTrue(Codec.decode(bytes).body.since > version, name)
+            val e = assertFailsWith<DecodeException>("$version $name") { Codec.decode(bytes, version) }
+            assertEquals(Unreadable.UNDEFINED, e.reason, "$version $name")
+            val answer = c["answer"].let { if (it == null || it is JsonNull) null else it.jsonPrimitive.int }
+            assertEquals(answer, Codec.errorCode(bytes, e.reason), "$version $name")
+        }
+    }
+
+    /** Positions' signed fields, at their ends, build and read back. */
+    @Test
+    fun positionsSignedFieldsAtTheirEnds() {
+        val south = Body.SetPosition(-900_000_000, -1_800_000_000, Companion.NO_ALTITUDE, 0xFFFF, 0xFFFF)
+        assertEquals(south, Codec.decode(Codec.encode(Frame(1, south))).body)
+        val group = GroupId(ByteArray(8) { 1 })
+        val there = Body.GroupPosition(group, 0xFFFF_FFFFL, 24, Int.MAX_VALUE, Int.MIN_VALUE, 32767, 255, 0xFFFF_FFFFL)
+        assertEquals(there, Codec.decode(Codec.encode(Frame(0, there))).body)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, south.copy(altitude = -32769))) }
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, south.copy(accuracy = 0x10000))) }
     }
 
     @Test
@@ -191,12 +259,23 @@ class CompanionVectorsTest {
         "SEND_GROUP" -> Body.SendGroup(f.long("ref"), f.gid("group"), f.str("text"))
         "SEND_INVITE" -> Body.SendInvite(f.gid("group"), f.addr("to"))
         "JOIN" -> Body.Join(f.long("id"))
+        "UPDATE_BEGIN" -> Body.UpdateBegin(f.long("size"), f.bytes("digest"))
+        "UPDATE_DATA" -> Body.UpdateData(f.long("offset"), f.bytes("data"))
+        "UPDATE_END" -> Body.UpdateEnd
+        "SET_POSITION" -> Body.SetPosition(f.int("lat"), f.int("lon"), f.int("altitude"), f.int("accuracy"), f.int("age"))
+        "SHARE" -> Body.Share(f.addr("contact"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"))
+        "SHARE_GROUP" -> Body.ShareGroup(f.gid("group"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"))
         "OK" -> Body.Ok
         "ERROR" -> Body.Error(f.int("code"))
-        "INFO" -> Body.Info(f.int("version"), f.str("firmware"))
+        "INFO" -> Body.Info(
+            f.int("version"), f.str("firmware"),
+            if (f.containsKey("board")) f.str("board") else null,
+            if (f.containsKey("release")) f.str("release") else null,
+        )
         "SYNCED" -> Body.Synced(if (f.containsKey("news")) f.int("news") else null)
         "QUEUED" -> Body.Queued(f.long("id"))
         "MADE" -> Body.Made(f.gid("group"))
+        "UPDATING" -> Body.Updating(f.long("offset"))
         "SELF" -> Body.Self(f.addr("address"), f.int("role"), f.str("region"), f.int("power"), f.long("time"))
         "CONTACT" -> Body.Contact(f.addr("address"), f.int("session"), f.str("name"))
         "CONTACT_GONE" -> Body.ContactGone(f.addr("address"))
@@ -219,6 +298,18 @@ class CompanionVectorsTest {
         "INVITE" -> Body.Invite(
             f.long("id"), f.addr("contact"), f.gid("group"), f.long("time"), f.int("flags"), f.int("state"),
             f.int("reason"), f.int("wait"), f.str("name"),
+        )
+        "POSITION" -> Body.Position(
+            f.addr("contact"), f.int("precision"), f.int("lat"), f.int("lon"), f.int("altitude"), f.int("accuracy"),
+            f.long("age"),
+        )
+        "GROUP_POSITION" -> Body.GroupPosition(
+            f.gid("group"), f.long("from"), f.int("precision"), f.int("lat"), f.int("lon"), f.int("altitude"),
+            f.int("accuracy"), f.long("age"),
+        )
+        "SHARING" -> Body.Sharing(f.addr("contact"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"))
+        "GROUP_SHARING" -> Body.GroupSharing(
+            f.gid("group"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"),
         )
         else -> fail("no frame named $name")
     }

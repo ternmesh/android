@@ -2,6 +2,10 @@
 // the frame that carried it, which the codec already builds and reads; the Apple app keeps the same
 // format.
 //
+// Positions and sharing are not kept. Each carries a count (`age`, `minutes`) as of when it was
+// sent, which a file would leave standing as the time passed, and every sync sends both whole, so
+// the next connection has them again at once. A file with them in is read all the same.
+//
 //   "TRNR", the format (1), syncedVersion (0xFF for none), 1 if missedSince is set, missedSince as a
 //   big-endian u32; then, to the end, one byte n and n bytes of a frame of seq 0, for each record.
 package org.ternmesh.companion
