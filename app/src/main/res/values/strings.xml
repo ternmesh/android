@@ -5,6 +5,9 @@
     <string name="channel_messages">Messages</string>
     <string name="channel_link">Link to your node</string>
     <string name="invite_received">Invited you to %1$s</string>
+    <string name="reply">Reply</string>
+    <string name="reply_sent">You: %1$s</string>
+    <string name="reply_not_connected">Not sent: the node is not connected. Open Tern to write it again.</string>
 
     <!-- Tabs -->
     <string name="tab_chats">Chats</string>

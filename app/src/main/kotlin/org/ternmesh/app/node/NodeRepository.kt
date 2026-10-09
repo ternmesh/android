@@ -21,9 +21,11 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.ternmesh.app.R
 import org.ternmesh.app.link.BleLink
 import org.ternmesh.app.link.LinkFailure
 import org.ternmesh.app.link.LinkState
+import org.ternmesh.app.ui.outcomeText
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Connection
 import org.ternmesh.companion.ConnectionEvent
@@ -367,6 +369,25 @@ class NodeRepository(private val context: Context) {
         }
         send(peer, text, then = then)
         return true
+    }
+
+    /**
+     * Sends [text], written as a reply in [peer]'s notification, and says there what came of it. To
+     * reply is to have seen the conversation, so it is read. One that cannot go now is not kept: the
+     * notification says so, and the user writes it again in the app.
+     */
+    fun reply(peer: Peer, text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return notifier.cancel(peer)
+        val taken = write(peer, trimmed) { outcome ->
+            if (outcome !is Outcome.Answered) notifier.replied(connection.records, peer, outcomeText(context, outcome))
+        }
+        if (taken) {
+            markRead(peer)
+            notifier.replied(connection.records, peer, context.getString(R.string.reply_sent, trimmed))
+        } else {
+            notifier.replied(connection.records, peer, context.getString(if (canWrite) R.string.still_sending else R.string.reply_not_connected))
+        }
     }
 
     /** Sends [u] again, unless the node turns out to hold it already: then it went, and is dropped. */
