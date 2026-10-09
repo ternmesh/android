@@ -52,7 +52,7 @@ object Sharing {
     fun shortCode(address: Address): String = format(shortCodeValue(address))
 
     /** A code's value written as it is shown, leading zeros kept. */
-    fun format(value: Long): String = "%012d".format(value).chunked(4).joinToString(" ")
+    fun format(value: Long): String = value.toString().padStart(12, '0').chunked(4).joinToString(" ")
 
     private fun asciiUpper(s: String) = String(CharArray(s.length) { val c = s[it]; if (c in 'a'..'z') c - 32 else c })
 

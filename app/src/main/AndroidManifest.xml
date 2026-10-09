@@ -50,6 +50,19 @@
                 <data android:pathPrefix="/a/" />
                 <data android:pathPrefix="/A/" />
             </intent-filter>
+            <!-- The same link as a QR code holds it, upper-case throughout. Android matches a
+                 scheme and host case-sensitively, and a scanner may pass the link on as it read
+                 it, so this filter is upper-case on purpose (lint takes it for a mistake). It is
+                 kept apart from the filter above, whose hosts Android verifies. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="HTTPS" tools:ignore="AppLinkUrlError" />
+                <data android:host="TERNMESH.ORG" tools:ignore="AppLinkUrlError" />
+                <data android:pathPrefix="/A/" />
+                <data android:pathPrefix="/a/" />
+            </intent-filter>
         </activity>
 
         <!-- The code scanner's camera screen, turned with the phone rather than held landscape. -->
