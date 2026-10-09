@@ -138,6 +138,9 @@ class NodeRepository(private val context: Context) {
     /** The last check's answer, which a cancelled update goes back to. */
     private var checked: FirmwareUpdate.Checked? = null
 
+    /** The release the node ran when it was last checked for an update: what the offer was weighed against. */
+    private var checkedAgainst: String? = null
+
     private val _state = MutableStateFlow(NodeState())
     val state: StateFlow<NodeState> = _state
 
@@ -412,6 +415,7 @@ class NodeRepository(private val context: Context) {
         val board = s.board?.takeIf { it.isNotEmpty() } ?: return
         if (busyUpdating(s.update)) return
         setUpdate(FirmwareUpdate.Checking)
+        checkedAgainst = s.release
         scope.launch {
             val next = try {
                 val manifest = FirmwareDownload.manifest()
@@ -434,7 +438,10 @@ class NodeRepository(private val context: Context) {
         if (busyUpdating(_state.value.update)) return
         // The region may have been changed since the check: an image is for one region.
         val self = connection.records.self?.region
-        if (!image.board.equals(_state.value.board, ignoreCase = true) || !image.region.equals(self, ignoreCase = true)) {
+        // So may its firmware, by another client: what was newer then may not be now.
+        if (!image.board.equals(_state.value.board, ignoreCase = true) || !image.region.equals(self, ignoreCase = true) ||
+            _state.value.release != checkedAgainst
+        ) {
             setUpdate(FirmwareUpdate.Failed(FirmwareFailure.CHANGED))
             return
         }
