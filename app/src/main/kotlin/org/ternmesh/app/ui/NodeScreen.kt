@@ -48,7 +48,7 @@ import org.ternmesh.companion.Setting
 import org.ternmesh.companion.Sharing
 
 /** The regions the specification's profiles define. */
-private val REGIONS = listOf("EU868", "US915")
+internal val REGIONS = listOf("EU868", "US915")
 
 @Composable
 fun NodeScreen(repository: NodeRepository, state: NodeState) {

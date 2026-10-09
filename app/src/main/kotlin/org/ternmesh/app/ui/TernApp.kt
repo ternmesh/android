@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -55,6 +57,7 @@ import org.ternmesh.app.node.Notifier
 import org.ternmesh.app.node.Phase
 import org.ternmesh.app.node.Problem
 import org.ternmesh.companion.Address
+import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.Outcome
 import org.ternmesh.companion.Peer
 
@@ -125,6 +128,13 @@ fun TernApp(repository: NodeRepository, opening: String?, incoming: Address?, op
             }
             return@CompositionLocalProvider
         }
+        if (needsSetup(state)) {
+            Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+                SetupScreen(repository, state, Modifier.padding(padding))
+            }
+            return@CompositionLocalProvider
+        }
+        val unread = remember(state.records) { Conversations.of(state.records).sumOf { it.unread } }
         val back by nav.currentBackStackEntryAsState()
         val route = back?.destination?.route
         val onTab = Tab.entries.any { it.route == route }
@@ -143,7 +153,15 @@ fun TernApp(repository: NodeRepository, opening: String?, incoming: Address?, op
                                         restoreState = true
                                     }
                                 },
-                                icon = { Icon(tab.icon, contentDescription = null) },
+                                icon = {
+                                    if (tab == Tab.CHATS && unread > 0) {
+                                        BadgedBox(badge = { Badge { Text(if (unread > 99) "99+" else "$unread") } }) {
+                                            Icon(tab.icon, contentDescription = null)
+                                        }
+                                    } else {
+                                        Icon(tab.icon, contentDescription = null)
+                                    }
+                                },
                                 label = { Text(stringResource(tab.label)) },
                             )
                         }

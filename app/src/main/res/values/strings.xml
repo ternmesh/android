@@ -89,6 +89,8 @@
     <string name="forget_node_explained">Tern disconnects and deletes the messages and contacts it saved from this node. They stay on the node, and come back if you connect to it again.</string>
 
     <!-- Chats -->
+    <string name="search">Search</string>
+    <string name="search_none">Nothing matches.</string>
     <string name="chats_empty">No conversations yet. Start one from a contact, or make a group.</string>
     <string name="new_chat">New chat</string>
     <string name="new_group">New group</string>
@@ -182,4 +184,24 @@
         <item quantity="one">%1$d byte left</item>
         <item quantity="other">%1$d bytes left</item>
     </plurals>
+
+    <!-- First-run setup -->
+    <string name="setup_region_title">Where are you?</string>
+    <string name="setup_region_explained">Your node does not transmit until it knows which radio rules to follow. Choose the region you are in.</string>
+    <string name="region_eu868">Europe and the UK</string>
+    <string name="region_us915">The United States, Canada and Mexico</string>
+    <string name="setup_region_law">Only use a region that is legal where you are. You can change it later on the Node tab.</string>
+    <string name="setup_role_title">Should your node help others?</string>
+    <string name="setup_role_explained">A relay passes on messages for nodes it can hear, which helps the mesh reach further but uses more battery. You can change this later.</string>
+    <string name="setup_role_leaf">Sends and receives its own messages only. Best for a node you carry.</string>
+    <string name="setup_role_relay">Also passes on messages for others. Best for a node left somewhere high, on power.</string>
+    <string name="setup_contact_title">Add someone to talk to</string>
+    <string name="setup_contact_explained">Your node only accepts messages from contacts. Have a friend scan your code, and scan theirs: each of you adds the other.</string>
+    <plurals name="setup_contacts_count">
+        <item quantity="one">You have %1$d contact.</item>
+        <item quantity="other">You have %1$d contacts.</item>
+    </plurals>
+    <string name="setup_next">Next</string>
+    <string name="setup_done">Done</string>
+    <string name="setup_skip">Skip</string>
 </resources>
