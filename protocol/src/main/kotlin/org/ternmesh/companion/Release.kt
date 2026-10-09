@@ -43,6 +43,9 @@ data class Manifest(val release: String, val images: List<Image>) {
 
         /** A file name, which cannot lead out of [BASE]. */
         private val FILE = Regex("[A-Za-z0-9_][A-Za-z0-9._-]*")
+
+        /** The largest image taken: more than any node's slot, and an array a phone can hold. */
+        const val IMAGE_MAX = 16L * 1024 * 1024
         private val SHA256 = Regex("[0-9a-fA-F]{64}")
 
         /** Reads a manifest, or throws IllegalArgumentException if it is not one. */
@@ -55,7 +58,7 @@ data class Manifest(val release: String, val images: List<Image>) {
                 val board = o["board"] as? String ?: return@mapNotNull null
                 val region = o["region"] as? String ?: return@mapNotNull null
                 val file = (o["file"] as? String)?.takeIf(FILE::matches) ?: return@mapNotNull null
-                val size = (o["size"] as? Long)?.takeIf { it in 1..0xFFFF_FFFFL } ?: return@mapNotNull null
+                val size = (o["size"] as? Long)?.takeIf { it in 1..IMAGE_MAX } ?: return@mapNotNull null
                 val sha256 = (o["sha256"] as? String)?.takeIf(SHA256::matches)?.lowercase() ?: return@mapNotNull null
                 Image(board, region, file, size, sha256)
             }

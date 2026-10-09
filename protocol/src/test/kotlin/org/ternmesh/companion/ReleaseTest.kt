@@ -18,6 +18,7 @@ class ReleaseTest {
            {"board": "rak4631", "region": "EU868", "file": "../../etc/passwd", "size": 10, "sha256": "$digest"},
            {"board": "t-echo", "region": "EU868", "file": "t.bin", "size": 1.5, "sha256": "$digest"},
            {"board": "t-beam", "region": "EU868", "file": "t.bin", "size": 10, "sha256": "abc"},
+           {"board": "t-deck", "region": "EU868", "file": "t.bin", "size": 3000000000, "sha256": "$digest"},
            "not an image"
          ]}
     """.trimIndent()
