@@ -138,10 +138,13 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Un
 private fun AskedCard(repository: NodeRepository, state: NodeState, a: Body.Asked) {
     var saving by remember { mutableStateOf(false) }
     val who = Conversations.short(a.address.toString())
+    val card = state.records.cards[a.address]
     Card(Modifier.padding(12.dp)) {
         Column(Modifier.padding(16.dp)) {
             Text(stringResource(R.string.asked_title), style = MaterialTheme.typography.titleSmall)
             Text(stringResource(if (a.why == 2) R.string.asked_no_room else R.string.asked_not_contact, who))
+            // The address in an ASKED is proved, and a card from it is signed by it: its name is still only a claim.
+            card?.name?.takeIf { it.isNotEmpty() }?.let { Text(stringResource(R.string.asked_card, it)) }
             Text(a.address.toString(), style = MaterialTheme.typography.bodySmall)
             Row {
                 if (a.why != 2 && a.address !in state.records.contacts) TextButton(onClick = { saving = true }) { Text(stringResource(R.string.save_contact)) }
@@ -151,7 +154,7 @@ private fun AskedCard(repository: NodeRepository, state: NodeState, a: Body.Aske
     }
     if (saving) {
         val report = rememberReport()
-        NameDialog(stringResource(R.string.save_contact), "", Companion.NAME_MAX, stringResource(R.string.save), onDismiss = { saving = false }) { name ->
+        NameDialog(stringResource(R.string.save_contact), card?.name.orEmpty(), Companion.NAME_MAX, stringResource(R.string.save), onDismiss = { saving = false }) { name ->
             saving = false
             repository.submit(Body.SaveContact(a.address, name)) { o ->
                 report(o)

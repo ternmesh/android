@@ -175,9 +175,19 @@ fun TernApp(repository: NodeRepository, opening: String?, incoming: Address?, op
                 LinkBanner(repository, state)
                 NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.weight(1f)) {
                     composable(Tab.CHATS.route) { ChatsScreen(repository, state) { nav.navigate(chatRoute(it)) } }
-                    composable(Tab.CONTACTS.route) { ContactsScreen(repository, state, incoming, taken) { nav.navigate(chatRoute(it)) } }
+                    composable(Tab.CONTACTS.route) {
+                        ContactsScreen(repository, state, incoming, taken, about = { nav.navigate(CARDS_ROUTE) }) { nav.navigate(chatRoute(it)) }
+                    }
                     composable(Tab.MAP.route) { MapScreen(repository, state) }
                     composable(Tab.NODE.route) { NodeScreen(repository, state) }
+                    composable(CARDS_ROUTE) {
+                        // A node of version 5 or earlier holds no cards: back to the contacts, should it change under the screen.
+                        if (hasCards(state)) {
+                            CardsScreen(repository, state, open = { nav.navigate(chatRoute(it)) }) { nav.popBackStack() }
+                        } else {
+                            LaunchedEffect(Unit) { nav.popBackStack() }
+                        }
+                    }
                     composable("chat/{peer}") { entry ->
                         val peer = entry.arguments?.getString("peer")?.let(Notifier::peer)
                         if (peer != null) ChatScreen(repository, state, peer) { nav.popBackStack() }
@@ -189,6 +199,9 @@ fun TernApp(repository: NodeRepository, opening: String?, incoming: Address?, op
 }
 
 fun chatRoute(peer: Peer) = "chat/${Notifier.key(peer)}"
+
+/** Who is about: the cards the node holds, reached from the contacts. */
+private const val CARDS_ROUTE = "cards"
 
 /** Where the link is, unless it is simply up. */
 @Composable

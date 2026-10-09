@@ -111,8 +111,8 @@ data class NodeState(
     /** The first-run setup was finished, or skipped, for this node. */
     val setUp: Boolean = true,
     /**
-     * When each position and sharing record held arrived, on the elapsed clock: the `age` and
-     * `minutes` each gives are as of then.
+     * When each position, sharing and card record held arrived, on the elapsed clock: the `age`,
+     * `minutes` and `heard` each gives are as of then.
      */
     val arrived: Map<Body, Long> = emptyMap(),
 )
@@ -172,7 +172,7 @@ class NodeRepository(private val context: Context) {
     /** The conversation on screen, whose new messages need no notification. */
     var viewing: Peer? = null
 
-    /** When each position and sharing record arrived; see [NodeState.arrived]. */
+    /** When each position, sharing and card record arrived; see [NodeState.arrived]. */
     private val arrived = mutableMapOf<Body, Long>()
 
     /** The `through` of the READ last sent, so the same one is not sent again and again. */
@@ -823,7 +823,9 @@ class NodeRepository(private val context: Context) {
             setAsked { list -> list.filter { it.address != body.address } + body }
             return
         }
-        if (body is Body.Position || body is Body.GroupPosition || body is Body.Sharing || body is Body.GroupSharing) {
+        if (body is Body.Position || body is Body.GroupPosition || body is Body.Sharing || body is Body.GroupSharing ||
+            body is Body.Card
+        ) {
             arrived[body] = SystemClock.elapsedRealtime()
         }
         if (body is Item && body.isUnread && body.state == MessageState.RECEIVED && body.id !in notified &&
@@ -848,7 +850,8 @@ class NodeRepository(private val context: Context) {
         if (_state.value.unanswered.any { Conversations.holdsSent(records, it.peer, it.text, it.after) }) {
             setUnanswered { list -> list.filterNot { Conversations.holdsSent(records, it.peer, it.text, it.after) } }
         }
-        val held = records.positions.values + records.groupPositions.values + records.sharing.values + records.groupSharing.values
+        val held = records.positions.values + records.groupPositions.values + records.sharing.values + records.groupSharing.values +
+            records.cards.values
         arrived.keys.retainAll(held.toSet())
         update {
             it.copy(
