@@ -116,8 +116,9 @@ fun MapScreen(repository: NodeRepository, state: NodeState) {
     val marks = remember(state.records, state.arrived, now) { marks(state, now) }
     var selected by remember { mutableStateOf<String?>(null) }
     var sharing by remember { mutableStateOf<Peer?>(null) }
-    val shared = remember(state.records) {
-        state.records.sharing.keys.map { Peer.Contact(it) } + state.records.groupSharing.keys.map { Peer.Group(it) }
+    val shared = remember(state.records, state.arrived, now) {
+        (state.records.sharing.keys.map { Peer.Contact(it) } + state.records.groupSharing.keys.map { Peer.Group(it) })
+            .filter { sharedWith(state, it, now) != null }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -129,7 +130,7 @@ fun MapScreen(repository: NodeRepository, state: NodeState) {
             if (shared.isNotEmpty()) {
                 item { SectionTitle(R.string.map_sharing_with) }
                 items(shared, key = { "s:${Notifier.key(it)}" }) { peer ->
-                    val s = sharedWith(state, peer) ?: return@items
+                    val s = sharedWith(state, peer, now) ?: return@items
                     ListItem(
                         headlineContent = { Text(Conversations.name(state.records, peer)) },
                         supportingContent = { Text("${precisionText(context, s.precision)} · ${leftText(context, state, s, now)}") },

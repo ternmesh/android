@@ -61,9 +61,19 @@ private const val ACCURACY = 2
 /** How the node shares with one contact or group: a `SHARING` or `GROUP_SHARING` in one shape. */
 data class Shared(val precision: Int, val fields: Int, val interval: Int, val minutes: Int, val record: Body)
 
-fun sharedWith(state: NodeState, peer: Peer): Shared? = when (peer) {
+fun sharedWith(state: NodeState, peer: Peer, now: Long = SystemClock.elapsedRealtime()): Shared? = when (peer) {
     is Peer.Contact -> state.records.sharing[peer.address]?.let { Shared(it.precision, it.fields, it.interval, it.minutes, it) }
     is Peer.Group -> state.records.groupSharing[peer.group]?.let { Shared(it.precision, it.fields, it.interval, it.minutes, it) }
+}?.takeUnless { ended(state, it, now) }
+
+/**
+ * Sharing for a time that has run out: the node has turned it off, though with the link down no
+ * record has come to say so.
+ */
+private fun ended(state: NodeState, s: Shared, now: Long): Boolean {
+    if (s.minutes == 0) return false
+    val since = (now - (state.arrived[s.record] ?: now)) / 1000
+    return since >= s.minutes * 60L
 }
 
 /** Whether the node speaks positions: version 5 or later. */
@@ -121,9 +131,9 @@ fun rememberNow(): Long {
 @Composable
 fun SharingLine(state: NodeState, peer: Peer, open: () -> Unit) {
     if (!hasPositions(state)) return
-    val s = sharedWith(state, peer) ?: return
-    val context = LocalContext.current
     val now = rememberNow()
+    val s = sharedWith(state, peer, now) ?: return
+    val context = LocalContext.current
     Surface(color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth().clickable(onClick = open)) {
         Text(
             stringResource(R.string.sharing_line, precisionText(context, s.precision), leftText(context, state, s, now)),
