@@ -83,33 +83,39 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
                 permitted = true
                 if (BleLink.isOn(context)) scanner.start()
             }
-            !on -> Button(onClick = { enable.launch(BleLink.enableIntent()) }) { Text(stringResource(R.string.connect_turn_on)) }
-            !located -> {
-                Text(stringResource(R.string.connect_location))
-                Button(onClick = { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }) {
-                    Text(stringResource(R.string.connect_turn_on_location))
-                }
-            }
             else -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (scanning) {
-                        LinearProgressIndicator(Modifier.weight(1f))
-                        OutlinedButton(onClick = scanner::stop, Modifier.padding(start = 12.dp)) { Text(stringResource(R.string.connect_stop)) }
-                    } else {
-                        Button(onClick = scanner::start) { Text(stringResource(R.string.connect_scan)) }
+                // The nodes used before need no scan, so they are offered whatever stops one.
+                val canScan = on && located
+                when {
+                    !on -> Button(onClick = { enable.launch(BleLink.enableIntent()) }) { Text(stringResource(R.string.connect_turn_on)) }
+                    !located -> {
+                        Text(stringResource(R.string.connect_location))
+                        Button(onClick = { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }) {
+                            Text(stringResource(R.string.connect_turn_on_location))
+                        }
+                    }
+                    else -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (scanning) {
+                                LinearProgressIndicator(Modifier.weight(1f))
+                                OutlinedButton(onClick = scanner::stop, Modifier.padding(start = 12.dp)) { Text(stringResource(R.string.connect_stop)) }
+                            } else {
+                                Button(onClick = scanner::start) { Text(stringResource(R.string.connect_scan)) }
+                            }
+                        }
+                        state.problem?.let { Text(problemText(context, it), color = MaterialTheme.colorScheme.error) }
+                        if (found.isEmpty()) {
+                            Text(stringResource(R.string.connect_none), style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
-                state.problem?.let { Text(problemText(context, it), color = MaterialTheme.colorScheme.error) }
                 val known = state.known.map { it.address }.toSet()
-                val nearby = found.filter { it.address !in known }
-                if (found.isEmpty()) {
-                    Text(stringResource(R.string.connect_none), style = MaterialTheme.typography.bodyMedium)
-                }
+                val nearby = if (canScan) found.filter { it.address !in known } else emptyList()
                 LazyColumn(Modifier.fillMaxWidth()) {
                     if (state.known.isNotEmpty()) {
                         item { Heading(stringResource(R.string.known_nodes)) }
                         items(state.known, key = { "k" + it.address }) { node ->
-                            val here = found.any { it.address == node.address }
+                            val here = canScan && found.any { it.address == node.address }
                             ListItem(
                                 headlineContent = { Text(node.name ?: stringResource(R.string.unnamed_device)) },
                                 supportingContent = {
