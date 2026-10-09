@@ -118,11 +118,17 @@
     <string name="no_contacts">No contacts yet.</string>
 
     <!-- Contacts -->
-    <string name="contacts_empty">No contacts yet. Add one with their address.</string>
+    <string name="contacts_empty">No contacts yet. Add one by scanning the code on their Node tab, or from their link or address.</string>
     <string name="add_contact">Add contact</string>
     <string name="name">Name</string>
-    <string name="address">Address (64 hex digits)</string>
-    <string name="address_invalid">That is not an address.</string>
+    <string name="address">Link or address</string>
+    <string name="address_invalid">That is not a Tern link or address.</string>
+    <string name="scan">Scan code</string>
+    <string name="scan_prompt">Point the camera at the code on a Tern node or app</string>
+    <string name="scan_not_tern">That code does not hold a Tern address.</string>
+    <string name="check_code">Check with the owner that their node shows this short code: %1$s</string>
+    <string name="show_code">Show code</string>
+    <string name="contact_code_explained">Someone else can scan this to add the same node.</string>
     <string name="save">Save</string>
     <string name="remove">Remove</string>
     <string name="message">Message</string>
@@ -138,6 +144,9 @@
     <string name="copy">Copy</string>
     <string name="share">Share</string>
     <string name="copied">Copied</string>
+    <string name="qr_explained">Another Tern app scans this to add your node as a contact. A phone without Tern opens a page on ternmesh.org that shows the address.</string>
+    <string name="short_code">Short code</string>
+    <string name="short_code_explained">Read this out to someone adding you: the code their phone shows should be the same.</string>
     <string name="node_firmware">Firmware</string>
     <string name="node_protocol">Protocol version %1$d</string>
     <string name="node_clock">Clock</string>

@@ -20,23 +20,36 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import org.ternmesh.app.TernApplication
 import org.ternmesh.app.node.Notifier
+import org.ternmesh.companion.Address
+import org.ternmesh.companion.Sharing
 
 class MainActivity : ComponentActivity() {
     /** A conversation a notification asked to open, which the navigation takes and clears. */
     private val opening = mutableStateOf<String?>(null)
 
+    /** An address from a link opened in the app, which the contacts take and clear. */
+    private val incoming = mutableStateOf<Address?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         opening.value = intent.getStringExtra(Notifier.EXTRA_PEER)
+        incoming.value = linked(intent)
         val repository = (application as TernApplication).repository
         setContent {
             TernTheme {
-                TernApp(repository, opening.value) {
-                    // Consumed: an activity made again, on rotation, must not open it a second time.
-                    opening.value = null
-                    intent.removeExtra(Notifier.EXTRA_PEER)
-                }
+                TernApp(
+                    repository, opening.value, incoming.value,
+                    opened = {
+                        // Consumed: an activity made again, on rotation, must not open it a second time.
+                        opening.value = null
+                        intent.removeExtra(Notifier.EXTRA_PEER)
+                    },
+                    taken = {
+                        incoming.value = null
+                        intent.data = null
+                    },
+                )
             }
         }
     }
@@ -49,7 +62,15 @@ class MainActivity : ComponentActivity() {
             setIntent(intent)
             opening.value = it
         }
+        linked(intent)?.let {
+            setIntent(intent)
+            incoming.value = it
+        }
     }
+
+    /** The address in a ternmesh.org link the app was opened with (draft/sharing.md), if any. */
+    private fun linked(intent: Intent): Address? =
+        intent.takeIf { it.action == Intent.ACTION_VIEW }?.dataString?.let(Sharing::read)
 
     override fun onStart() {
         super.onStart()
