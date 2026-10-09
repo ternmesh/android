@@ -7,6 +7,8 @@
     <string name="invite_received">Invited you to %1$s</string>
     <string name="reply">Reply</string>
     <string name="reply_sent">You: %1$s</string>
+    <string name="reply_too_long">Not sent: a message is at most %1$d bytes. Open Tern to write it shorter.</string>
+    <string name="reply_unanswered">The node did not answer, so this may not have gone: %1$s. Open Tern to send it again.</string>
     <string name="reply_not_connected">Not sent: the node is not connected. Open Tern to write it again.</string>
 
     <!-- Tabs -->

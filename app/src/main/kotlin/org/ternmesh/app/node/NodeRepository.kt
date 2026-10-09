@@ -27,6 +27,8 @@ import org.ternmesh.app.link.LinkFailure
 import org.ternmesh.app.link.LinkState
 import org.ternmesh.app.ui.outcomeText
 import org.ternmesh.companion.Body
+// This class's own companion object would take the bare name.
+import org.ternmesh.companion.Companion as CompanionProtocol
 import org.ternmesh.companion.Connection
 import org.ternmesh.companion.ConnectionEvent
 import org.ternmesh.companion.Conversations
@@ -317,7 +319,7 @@ class NodeRepository(private val context: Context) {
     /**
      * Sends [text] to [peer]; with the [ref] of one unanswered, sends that again, which the node
      * sends once. One the node may not have, for want of an answer or a link, is kept for the user
-     * to send again; [then] hears of the rest that did not go.
+     * to send again, and [kept] hears of it; [then] hears of the rest.
      */
     fun send(
         peer: Peer,
@@ -325,6 +327,7 @@ class NodeRepository(private val context: Context) {
         ref: Long = Random.nextLong(1, 0x1_0000_0000L),
         after: Long = maxOf(connection.records.greatest, queuedFloor),
         then: (Outcome) -> Unit = {},
+        kept: () -> Unit = {},
     ) {
         sending[ref] = peer to text
         val done = { outcome: Outcome ->
@@ -335,7 +338,7 @@ class NodeRepository(private val context: Context) {
                 val rest = list.filter { it.ref != ref }
                 if (keep) rest + Unanswered(ref, peer, text, after) else rest
             }
-            if (!keep) then(outcome)
+            if (keep) kept() else then(outcome)
         }
         when (peer) {
             is Peer.Contact -> connection.sendMessage(text, peer.address, ref, done)
@@ -359,42 +362,57 @@ class NodeRepository(private val context: Context) {
      * say which of them went. Returns whether it was taken; one the same as a send still in flight
      * is not, and waits with the writer.
      */
-    fun write(peer: Peer, text: String, then: (Outcome) -> Unit): Boolean {
+    fun write(peer: Peer, text: String, then: (Outcome) -> Unit, kept: () -> Unit = {}): Boolean {
         if (!canWrite) return false
         // The same again while the first is unanswered is refused, not dropped: the writer keeps it.
         if (sending.values.any { it == peer to text }) return false
         _state.value.unanswered.firstOrNull { it.peer == peer && it.text == text }?.let {
-            resend(it, then)
+            resend(it, then, kept)
             return true
         }
-        send(peer, text, then = then)
+        send(peer, text, then = then, kept = kept)
         return true
     }
 
     /**
      * Sends [text], written as a reply in [peer]'s notification, and says there what came of it. To
      * reply is to have seen the conversation, so it is read. One that cannot go now is not kept: the
-     * notification says so, and the user writes it again in the app.
+     * notification says so, and the user writes it again in the app. One the node did not answer is
+     * kept as any is, and the notification says that too, not that it was sent.
      */
     fun reply(peer: Peer, text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return notifier.cancel(peer)
-        val taken = write(peer, trimmed) { outcome ->
-            if (outcome !is Outcome.Answered) notifier.replied(connection.records, peer, outcomeText(context, outcome))
+        if (trimmed.toByteArray(Charsets.UTF_8).size > CompanionProtocol.TEXT_MAX) {
+            return notifier.replied(connection.records, peer, context.getString(R.string.reply_too_long, CompanionProtocol.TEXT_MAX))
         }
+        // An outcome can come before write() returns; the notification it posts is the last word.
+        var settled = false
+        val taken = write(
+            peer,
+            trimmed,
+            then = { outcome ->
+                settled = true
+                if (outcome !is Outcome.Answered) notifier.replied(connection.records, peer, outcomeText(context, outcome))
+            },
+            kept = {
+                settled = true
+                notifier.replied(connection.records, peer, context.getString(R.string.reply_unanswered, trimmed))
+            },
+        )
         if (taken) {
             markRead(peer)
-            notifier.replied(connection.records, peer, context.getString(R.string.reply_sent, trimmed))
+            if (!settled) notifier.replied(connection.records, peer, context.getString(R.string.reply_sent, trimmed))
         } else {
             notifier.replied(connection.records, peer, context.getString(if (canWrite) R.string.still_sending else R.string.reply_not_connected))
         }
     }
 
     /** Sends [u] again, unless the node turns out to hold it already: then it went, and is dropped. */
-    fun resend(u: Unanswered, then: (Outcome) -> Unit) {
+    fun resend(u: Unanswered, then: (Outcome) -> Unit, kept: () -> Unit = {}) {
         if (!canWrite) return
         if (Conversations.holdsSent(connection.records, u.peer, u.text, u.after)) return dismissUnanswered(u)
-        send(u.peer, u.text, u.ref, u.after, then)
+        send(u.peer, u.text, u.ref, u.after, then, kept)
     }
 
     fun dismissUnanswered(u: Unanswered) = setUnanswered { it - u }
