@@ -25,14 +25,14 @@ class ConnectionTest {
         val link = Link(Connection(now = { 0 }, wallTime = { setTime.time }))
         val answers = link.replay(frames)
 
-        assertEquals(15, answers.size)
-        // SHARE_GROUP asks for a precision past 24.
-        assertEquals(listOf(Outcome.Refused(ErrorCode.REFUSED)), answers.filter { it !is Outcome.Answered })
+        assertEquals(20, answers.size)
+        // SHARE_GROUP asks for a precision past 24, and SET 5 for a value neither 0 nor 1.
+        assertEquals(List(2) { Outcome.Refused(ErrorCode.REFUSED) }, answers.filter { it !is Outcome.Answered })
         val r = link.connection.records
         assertEquals("EU868", r.self?.region)
         assertEquals(Companion.VERSION, r.syncedVersion)
-        assertEquals(listOf("Bob", "Carol"), r.contacts.values.map { it.name }.sorted())
-        assertEquals(listOf(0, 0), r.contacts.values.map { it.session }, "Bob's session ended; Carol never had one")
+        assertEquals(listOf("Bob", "Carol", "Dave (trail crew)"), r.contacts.values.map { it.name }.sorted())
+        assertEquals(listOf(0, 0, 0), r.contacts.values.map { it.session }, "Bob's session ended; Carol and Dave never had one")
         assertEquals(listOf("Ridge walkers"), r.groups.values.map { it.name }, "the group made was left, the one joined renamed")
         assertEquals((17L..22L).toList(), r.items.keys.sorted())
         assertEquals(emptyList(), r.ordered.filter { it.isUnread }, "READ marked the message, group message and invite read")
@@ -49,6 +49,13 @@ class ConnectionTest {
         assertEquals(listOf(20, 0), shared.map { it.precision }, "sharing with Bob on for an hour, then off")
         assertEquals(emptyMap(), r.sharing, "and off is not held")
         assertEquals(emptyMap(), r.groupSharing)
+        val cards = link.events.mapNotNull { (it as? ConnectionEvent.News)?.body as? Body.Card }
+        assertEquals(listOf(1260L, 0L), cards.map { it.heard }, "the card held from the start, then a newer one")
+        assertEquals(listOf("Trail crew · ask me"), cards.map { it.name }.distinct())
+        assertTrue(cards[0].address in r.contacts, "its sender was saved as a contact, under the user's name for him")
+        assertEquals(emptyMap(), r.cards, "and the card forgotten since")
+        assertEquals(0, r.self?.cards, "cards turned on, and off again")
+        assertEquals("Ada · hut warden", r.self?.cardName, "the name is kept while they are off")
     }
 
     /** A client of version 0 that holds messages through 17 asks only for those after them, and sets no clock when it has none to give. */
@@ -95,12 +102,13 @@ class ConnectionTest {
     }
 
     /**
-     * Clients of versions 3 and 4 are sent no position and no sharing, and do not send the request
-     * their version does not define: it fails here, with nothing on the link.
+     * Clients of versions 3 and 4 are sent no position and no sharing, and one of version 5 no card
+     * and a `SELF` without the cards' fields. None sends the request, or the setting, its version
+     * does not define: it fails here, with nothing on the link.
      */
     @Test
-    fun olderVersions3And4AndTheRequestEachMustNotSend() {
-        for (version in 3..4) {
+    fun olderVersions3To5AndTheRequestEachMustNotSend() {
+        for (version in 3..5) {
             val frames = vectors.list("older").first { it.int("version") == version }.list("frames")
             val link = Link(Connection(version = version, now = { 0 }, wallTime = null))
             link.replay(frames.dropLast(2))
@@ -110,6 +118,9 @@ class ConnectionTest {
             assertEquals(version, link.connection.records.syncedVersion)
             assertEquals(emptyMap(), link.connection.records.positions)
             assertEquals(emptyMap(), link.connection.records.sharing)
+            assertEquals(emptyMap(), link.connection.records.cards)
+            assertNull(link.connection.records.self?.cards)
+            assertNull(link.connection.records.self?.cardName)
 
             val refused = Codec.decode(frames[frames.size - 2].bytes("frame")).body
             assertEquals(version + 1, refused.since)
@@ -575,6 +586,49 @@ class ConnectionTest {
         assertEquals(emptyMap(), r.groupPositions)
         assertEquals(emptyMap(), r.sharing, "sharing the sync did not send is off")
         assertEquals(setOf(Node.HUT), r.groupSharing.keys)
+    }
+
+    /** A sync is the whole list of cards: one it did not send is forgotten. One of version 5 sends none, and says nothing of them. A card replaces the one before it from the same address, and saving or removing its sender leaves it. */
+    @Test
+    fun aSyncIsTheWholeListOfCards() {
+        val r = Records()
+        r.apply(Body.Card(Node.BOB, 60, "Bob?"))
+        r.apply(Body.Card(Node.CAROL, 1260, ""))
+        r.apply(Body.Card(Node.BOB, 0, "Bob!"))
+        assertEquals(listOf("Bob!", ""), r.cards.values.map { it.name })
+        r.apply(Body.Contact(Node.BOB, 0, "Robert"))
+        r.apply(Body.ContactGone(Node.BOB))
+        assertEquals(setOf(Node.BOB, Node.CAROL), r.cards.keys)
+
+        r.beginSync()
+        assertTrue(r.finishSync(5))
+        assertEquals(setOf(Node.BOB, Node.CAROL), r.cards.keys)
+
+        r.beginSync()
+        r.apply(Body.Card(Node.CAROL, 1300, ""))
+        assertTrue(r.finishSync(6))
+        assertEquals(setOf(Node.CAROL), r.cards.keys)
+        r.apply(Body.CardGone(Node.CAROL))
+        assertEquals(emptyMap(), r.cards)
+    }
+
+    /** A node of version 5 is not asked to turn cards on, or to name them: it fails here, with nothing on the link. */
+    @Test
+    fun aNodeOfVersion5IsNotSetWhatItDoesNotDefine() {
+        val node = Node(version = 5)
+        node.connection.open()
+        node.answerAll()
+        assertEquals(5, node.connection.agreed)
+        for (setting in listOf(Setting.Cards(1), Setting.CardName("Ada"))) {
+            var result: Outcome? = null
+            node.connection.submit(Body.Set(setting)) { result = it }
+            assertEquals(Outcome.Unsupported, result)
+        }
+        assertEquals(0, node.sent.size)
+        var result: Outcome? = null
+        node.connection.submit(Body.Set(Setting.Role(1))) { result = it }
+        node.answerAll()
+        assertEquals(Outcome.Answered(Body.Ok), result)
     }
 
     /** A sync that missed some of its news forgets no position and turns no sharing off. */

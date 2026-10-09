@@ -44,14 +44,14 @@ its tests run on any JVM.
 
 | Path | |
 |---|---|
-| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 5, as Kotlin types, and its numbers. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 6, as Kotlin types, and its numbers. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Codec.kt` | A frame built into bytes, and read back from them. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/ByteStream.kt` | Frames on a byte stream (USB serial, TCP), with the node's console text between them. Bluetooth does not need it. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Connection.kt` | One connection, the client's half: `HELLO` and the version both speak, one request at a time, counted news, syncing again, and the `PING` that keeps a node from taking the app for gone. No I/O and no clock of its own: a link hands it frames and calls `tick()`. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Updater.kt` | One firmware image given to a node over a connection: `UPDATE_BEGIN`, the image in chunks from wherever the node says, `UPDATE_END`, and going on after the link drops. No I/O, as with the connection. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Release.kt` | The firmware manifest at `ternmesh.org/firmware/latest.json`: the image for a board and region, and whether its release is newer than a node's, by Semantic Versioning. |
-| `protocol/src/main/kotlin/org/ternmesh/companion/Records.kt` | What the node has said it holds, as news leaves it, positions received and sharing included, and the `after` the next sync asks from. |
-| `protocol/src/main/kotlin/org/ternmesh/companion/RecordsFile.kt` | The records on disk, each as the frame that carried it, so the next run syncs only what is new; not positions or sharing, which every sync sends whole. The Apple app keeps the same format. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Records.kt` | What the node has said it holds, as news leaves it, positions received, sharing and the cards of who is about included, and the `after` the next sync asks from. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/RecordsFile.kt` | The records on disk, each as the frame that carried it, so the next run syncs only what is new; not positions, sharing or cards, which every sync sends whole. The Apple app keeps the same format. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Conversations.kt` | The records as conversations, and how far a `READ` may reach without marking another conversation's messages read. |
 | `protocol/src/test/` | The conformance section of the specification, as a client: the codec against every vector, the connection as the client in `exchange`, `older` and `unknown_to_older`, and the updater as the client in `update`. |
 | `app/src/main/kotlin/org/ternmesh/app/link/` | Bluetooth LE: scanning for the node's service, and the GATT link (an MTU of at least 183, passkey pairing, one frame per write and per notification). |

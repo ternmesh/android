@@ -1,7 +1,7 @@
 // What a client holds of a node: the records its news gave, kept as the specification's "What the
 // node holds" says. A record replaces the one before it; STATE changes a message in place; a
 // position or sharing of precision 0 is none; a sync is the whole list of contacts, groups,
-// neighbours, positions and sharing, but not of messages.
+// neighbours, positions, sharing and cards, but not of messages.
 package org.ternmesh.companion
 
 /**
@@ -25,6 +25,9 @@ class Records {
     /** Whom the node shares its position with, and how. Sharing that is off is not held. */
     val sharing = mutableMapOf<Address, Body.Sharing>()
     val groupSharing = mutableMapOf<GroupId, Body.GroupSharing>()
+
+    /** Who is about: the cards the node holds from others, one for each address. A contact removed leaves its card: the node keeps it as long as it would have. */
+    val cards = mutableMapOf<Address, Body.Card>()
 
     var airtime: Body.Airtime? = null
         private set
@@ -55,6 +58,7 @@ class Records {
         val groupPositions = mutableSetOf<Pair<GroupId, Long>>()
         val sharing = mutableSetOf<Address>()
         val groupSharing = mutableSetOf<GroupId>()
+        val cards = mutableSetOf<Address>()
     }
 
     /** The items in the order the node gave them `id`s. */
@@ -108,6 +112,11 @@ class Records {
                 if (news.precision == 0) groupSharing.remove(news.group) else groupSharing[news.group] = news
                 syncing?.groupSharing?.add(news.group)
             }
+            is Body.Card -> {
+                cards[news.address] = news
+                syncing?.cards?.add(news.address)
+            }
+            is Body.CardGone -> cards.remove(news.address)
             is Body.Airtime -> airtime = news
             is Body.Power -> power = news
             else -> {}
@@ -153,6 +162,8 @@ class Records {
             sharing.keys.retainAll(seen.sharing)
             groupSharing.keys.retainAll(seen.groupSharing)
         }
+        // Nor one of version 5 or earlier of cards.
+        if (version >= 6) cards.keys.retainAll(seen.cards)
         syncedVersion = version
         missedSince = null
         syncing = null
@@ -175,6 +186,7 @@ class Records {
         it.groupPositions += groupPositions
         it.sharing += sharing
         it.groupSharing += groupSharing
+        it.cards += cards
         it.airtime = airtime
         it.power = power
         it.syncedVersion = syncedVersion
@@ -184,11 +196,11 @@ class Records {
     override fun equals(other: Any?) = other is Records && self == other.self && contacts == other.contacts &&
         groups == other.groups && items == other.items && neighbours == other.neighbours &&
         positions == other.positions && groupPositions == other.groupPositions && sharing == other.sharing &&
-        groupSharing == other.groupSharing && airtime == other.airtime && power == other.power &&
+        groupSharing == other.groupSharing && cards == other.cards && airtime == other.airtime && power == other.power &&
         syncedVersion == other.syncedVersion && missedSince == other.missedSince
 
     override fun hashCode() = listOf(
-        self, contacts, groups, items, neighbours, positions, groupPositions, sharing, groupSharing,
+        self, contacts, groups, items, neighbours, positions, groupPositions, sharing, groupSharing, cards,
         airtime, power, syncedVersion, missedSince,
     ).hashCode()
 }

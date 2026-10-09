@@ -26,8 +26,9 @@ class RecordsFileTest {
         }
     }
 
-    /** The records a file keeps: all but positions and sharing, which the next sync sends whole. */
+    /** The records a file keeps: all but positions, sharing and cards, which the next sync sends whole. */
     private fun kept(r: Records) = r.copy().apply {
+        cards.clear()
         positions.clear()
         groupPositions.clear()
         sharing.clear()
@@ -54,10 +55,11 @@ class RecordsFileTest {
         assertEquals(kept(r), back)
     }
 
-    /** Positions and sharing are not kept: their counts would go stale on disk. A file that has them is read all the same. */
+    /** Positions, sharing and cards are not kept: their counts would go stale on disk. A file that has them is read all the same. */
     @Test
-    fun positionsAndSharingAreNotKept() {
+    fun positionsSharingAndCardsAreNotKept() {
         val r = Records().apply {
+            apply(Body.Card(bob, 1260, "Bob · ask me"))
             apply(Body.Position(bob, 16, 603_945_922, 52_871_704, Companion.NO_ALTITUDE, 0, 40))
             apply(Body.GroupPosition(hikers, 0x1234, 24, 1, 2, 3, 4, 5))
             apply(Body.Sharing(bob, 20, 3, 900, 60))
@@ -68,6 +70,24 @@ class RecordsFileTest {
         assertEquals(Records().apply { syncedVersion = Companion.VERSION }, RecordsFile.decode(file))
         val sharing = Codec.encode(Frame(0, r.sharing.values.single()))
         assertEquals(r.sharing, RecordsFile.decode(file + byteArrayOf(sharing.size.toByte()) + sharing).sharing)
+        val card = Codec.encode(Frame(0, r.cards.values.single()))
+        assertEquals(r.cards, RecordsFile.decode(file + byteArrayOf(card.size.toByte()) + card).cards)
+    }
+
+    /** A `SELF` from a node of version 5 or earlier has no cards' fields, and is kept and read back as it came: a file is not spoiled by the node's version. */
+    @Test
+    fun aSelfOfAnEarlierVersionIsKept() {
+        val five = Records().apply {
+            apply(Body.Self(alice, 1, "EU868", 14, 1_790_000_000))
+            apply(received(3, bob))
+            syncedVersion = 5
+        }
+        assertEquals(five, RecordsFile.decode(RecordsFile.encode(five)))
+        val six = Records().apply {
+            apply(Body.Self(alice, 1, "EU868", 14, 1_790_000_000, 1, "Alice · hut warden"))
+            syncedVersion = 6
+        }
+        assertEquals(six, RecordsFile.decode(RecordsFile.encode(six)))
     }
 
     /** What cannot be read whole starts again from nothing, and a sync from 0 refills it. */

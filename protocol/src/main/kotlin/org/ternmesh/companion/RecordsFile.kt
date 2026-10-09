@@ -2,9 +2,13 @@
 // the frame that carried it, which the codec already builds and reads; the Apple app keeps the same
 // format.
 //
-// Positions and sharing are not kept. Each carries a count (`age`, `minutes`) as of when it was
-// sent, which a file would leave standing as the time passed, and every sync sends both whole, so
-// the next connection has them again at once. A file with them in is read all the same.
+// Positions, sharing and cards are not kept. Each carries a count (`age`, `minutes`, `heard`) as of
+// when it was sent, which a file would leave standing as the time passed, and every sync sends all
+// three whole, so the next connection has them again at once. A file with them in is read all the
+// same.
+//
+// A `SELF` is kept as it came: without `cards` and `card_name` from a connection that spoke version
+// 5 or earlier, and read back so.
 //
 //   "TRNR", the format (1), syncedVersion (0xFF for none), 1 if missedSince is set, missedSince as a
 //   big-endian u32; then, to the end, one byte n and n bytes of a frame of seq 0, for each record.
@@ -55,7 +59,7 @@ object RecordsFile {
             val n = bytes[at].toInt() and 0xFF
             if (at + 1 + n > bytes.size) return Records()
             val body = try {
-                Codec.decode(bytes.copyOfRange(at + 1, at + 1 + n)).body
+                record(bytes.copyOfRange(at + 1, at + 1 + n))
             } catch (e: DecodeException) {
                 return Records()
             }
@@ -69,5 +73,13 @@ object RecordsFile {
         records.missedSince = if (bytes[6].toInt() == 0) null else
             (7 until 11).fold(0L) { v, i -> v shl 8 or (bytes[i].toLong() and 0xFF) }
         return records
+    }
+
+    /** One record's frame, read as this client's version reads it; a `SELF` that is not one of version 6 as version 5's, which is all that differs between the versions' records. */
+    private fun record(frame: ByteArray): Body = try {
+        Codec.decode(frame).body
+    } catch (e: DecodeException) {
+        if (frame.firstOrNull() != 0x80.toByte()) throw e
+        Codec.decode(frame, 5).body
     }
 }
