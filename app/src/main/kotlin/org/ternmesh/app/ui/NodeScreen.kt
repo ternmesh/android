@@ -1,6 +1,6 @@
 // The node itself: its address to give others, as a QR code, a link and the short code; its battery
-// and airtime, the nodes it hears, the four settings a client may change, and its firmware and
-// updating it; and disconnecting from it, changing it, or forgetting it.
+// and airtime, the nodes it hears, the four settings a client may change, its presence card, and its
+// firmware and updating it; and disconnecting from it, changing it, or forgetting it.
 package org.ternmesh.app.ui
 
 import android.content.ClipData
@@ -26,6 +26,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
@@ -49,6 +51,7 @@ import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
 import org.ternmesh.app.node.percent
 import org.ternmesh.companion.Body
+import org.ternmesh.companion.Companion
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.ErrorCode
 import org.ternmesh.companion.Offer
@@ -157,6 +160,11 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
             }
         }
 
+        // SELF says cards from a node of version 6; below it there are none to turn on.
+        self?.takeIf { hasCards(state) && it.cards != null }?.let { s ->
+            Section(stringResource(R.string.card_section)) { PresenceCard(repository, s) }
+        }
+
         if (state.board != null || state.version != null) {
             Section(stringResource(R.string.firmware)) { FirmwareUpdates(repository, state) }
         }
@@ -176,6 +184,52 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
         }
     }
     forgetting?.let { node -> ForgetDialog(node, onDismiss = { forgetting = null }) { repository.forget(node.address) } }
+}
+
+/**
+ * Whether the node sends cards, and the name they carry. Each is sent only when the user changes it
+ * here: being seen is theirs to choose, so the switch says plainly what turning it on puts on the air.
+ */
+@Composable
+private fun PresenceCard(repository: NodeRepository, self: Body.Self) {
+    val report = rememberReport()
+    val on = self.cards == 1
+    val current = self.cardName.orEmpty()
+    var name by remember(current) { mutableStateOf(current) }
+    val bytes = utf8Length(name.trim())
+    val tooLong = bytes > Companion.CARD_NAME_MAX
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.card_on), style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(if (on) R.string.card_on_yes else R.string.card_on_no))
+        }
+        Switch(checked = on, onCheckedChange = { repository.submit(Body.Set(Setting.Cards(if (it) 1 else 0)), report) })
+    }
+    Text(stringResource(R.string.card_on_explained), style = MaterialTheme.typography.bodySmall)
+    HorizontalDivider()
+    Text(stringResource(R.string.card_name), style = MaterialTheme.typography.labelLarge)
+    Text(stringResource(R.string.card_name_explained), style = MaterialTheme.typography.bodySmall)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            placeholder = { Text(stringResource(R.string.card_no_name)) },
+            singleLine = true,
+            isError = tooLong,
+            supportingText = {
+                if (tooLong) {
+                    Text(stringResource(R.string.card_name_too_long, Companion.CARD_NAME_MAX))
+                } else {
+                    Text(pluralStringResource(R.plurals.bytes_left, Companion.CARD_NAME_MAX - bytes, Companion.CARD_NAME_MAX - bytes))
+                }
+            },
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(
+            onClick = { repository.submit(Body.Set(Setting.CardName(name.trim())), report) },
+            enabled = !tooLong && name.trim() != current,
+        ) { Text(stringResource(R.string.set)) }
+    }
 }
 
 /**

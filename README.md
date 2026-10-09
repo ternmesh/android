@@ -12,6 +12,11 @@ with contacts and groups, where each message is and what it waits for, the node'
 and the nodes it hears, and changes its region, role, power and passkey. It updates the node's
 firmware over the same link, with the release ternmesh.org publishes for its board and region.
 
+It shows who is about: the presence cards the node has heard from the nodes near it, each with
+the name its sender claims beside its short code, and a contact made from one only when the user
+asks. The node's own card is off until the user turns it on, and the switch says what that puts
+on the air: the node's address and the name the user gives it, in clear, every couple of hours.
+
 It shares the user's position with the contacts and groups they choose, each at the precision
 they choose, and shows on a map where those sharing with them are. The phone gives the node its
 exact location only while the node shares with someone; the node rounds it for each destination
@@ -100,3 +105,16 @@ keytool -list -v -keystore tern-release.jks -alias tern | grep SHA256   # what a
 A build signs with it locally when `TERN_RELEASE_KEYSTORE` (the file's path) and the three
 passwords and alias above, without `_BASE64`, are in the environment; without them
 `assembleRelease` leaves the APK unsigned.
+
+## Versions
+
+A release is a tag `v` MAJOR.MINOR.PATCH, and its APK's version is the tag's: the Release
+workflow passes the tag as `TERN_VERSION`, and `app/build.gradle.kts` makes `v1.2.3` versionName
+`1.2.3` and versionCode `10203` (major × 10000 + minor × 100 + patch), so each release's code is
+greater than the last. A tag that is not that shape, or has a minor or patch over 99, fails the
+build. Any other build, on a laptop or on `main`, is `0.1.0`, code 1, unless given
+`-PternVersion=1.2.3`.
+
+The store listing is in `fastlane/metadata/android/en-US`. A release's notes for F-Droid go
+beside it in `changelogs/` under its versionCode, `changelogs/10203.txt` for `v1.2.3`; F-Droid,
+building from the tag, gives the same version with `gradleprops: [ternVersion=1.2.3]`.

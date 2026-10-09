@@ -4,6 +4,19 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// A release's version is its tag's. The Release workflow passes a tag v1.2.3 as TERN_VERSION (a
+// build may give -PternVersion instead): versionName 1.2.3, and versionCode 10203, major * 10000 +
+// minor * 100 + patch, so that each release's code is greater than the one before. A build given
+// neither, on a laptop or on main, is 0.1.0, code 1.
+val ternVersion: Pair<String, Int>? =
+    ((findProperty("ternVersion") as String?) ?: System.getenv("TERN_VERSION"))?.trim()?.takeIf { it.isNotEmpty() }?.let { given ->
+        val m = Regex("v?(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)").matchEntire(given)
+            ?: throw GradleException("The version \"$given\" is not MAJOR.MINOR.PATCH, as a tag v1.2.3 gives")
+        val (major, minor, patch) = m.destructured.toList().map(String::toInt)
+        if (minor > 99 || patch > 99) throw GradleException("The version \"$given\" has a minor or patch over 99, which its versionCode cannot hold")
+        "$major.$minor.$patch" to major * 10000 + minor * 100 + patch
+    }
+
 android {
     namespace = "org.ternmesh.app"
     compileSdk = 35
@@ -13,8 +26,8 @@ android {
         // Android 8: notification channels, and a Bluetooth stack that asks for an MTU reliably.
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = ternVersion?.second ?: 1
+        versionName = ternVersion?.first ?: "0.1.0"
     }
 
     // Two keys. The debug key is kept in the repository, so that every debug build, from CI or a

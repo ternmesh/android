@@ -3,6 +3,9 @@ name: Release APK
 # The app as people install it, signed with the release key. CI calls this on main, and Release on a
 # tag, so the key is read in this one place. The fingerprint in the summary is the one
 # ternmesh.org's assetlinks.json names. The APK is kept as the tern-apk artifact.
+#
+# Built for a tag v1.2.3, the APK's version is the tag's: TERN_VERSION gives app/build.gradle.kts
+# versionName 1.2.3 and versionCode 10203. On main it is empty, and the build is 0.1.0, code 1.
 on:
   workflow_call:
     inputs:
@@ -46,10 +49,14 @@ jobs:
           TERN_RELEASE_STORE_PASSWORD: ${{ secrets.TERN_RELEASE_STORE_PASSWORD }}
           TERN_RELEASE_KEY_ALIAS: ${{ secrets.TERN_RELEASE_KEY_ALIAS }}
           TERN_RELEASE_KEY_PASSWORD: ${{ secrets.TERN_RELEASE_KEY_PASSWORD }}
+          # The caller's ref: Release's tag, or main.
+          TERN_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
         run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > "$TERN_RELEASE_KEYSTORE"
           ./gradlew :app:assembleRelease
           {
+            echo "Version: ${TERN_VERSION:-none, so 0.1.0 (1)}"
+            echo
             echo "Release key SHA-256 fingerprint:"
             echo
             keytool -list -v -keystore "$TERN_RELEASE_KEYSTORE" -storepass "$TERN_RELEASE_STORE_PASSWORD" -alias "$TERN_RELEASE_KEY_ALIAS" | grep 'SHA256:'

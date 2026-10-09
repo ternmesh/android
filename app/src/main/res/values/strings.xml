@@ -157,6 +157,36 @@
     <string name="asked_title">Someone tried to reach you</string>
     <string name="asked_not_contact">Your node turned away a message from %1$s because it is not a contact.</string>
     <string name="asked_no_room">Your node turned away a message from %1$s because it has no room for another session.</string>
+    <!-- An ASKED from an address the node holds a card from: the card's name, as its sender's claim. -->
+    <string name="asked_card">Their presence card says they are “%1$s”.</string>
+
+    <!-- Who is about: other nodes' presence cards -->
+    <string name="cards_title">Who\'s about</string>
+    <string name="cards_entry_none">No presence cards heard yet</string>
+    <plurals name="cards_count">
+        <item quantity="one">%1$d node nearby shows a card</item>
+        <item quantity="other">%1$d nodes nearby show a card</item>
+    </plurals>
+    <string name="cards_empty">No one about yet. Other people\'s nodes show up here when they turn their presence cards on and your node hears one. A card stays here for a day after it was last heard.</string>
+    <string name="cards_explained">Each name is what that node says it is: anyone can put any name on a card. Before you trust one, check its short code with its owner.</string>
+    <string name="card_no_name">No name</string>
+    <!-- A card's name: its sender's claim, never a name the user gave. -->
+    <string name="card_claim">“%1$s”</string>
+    <string name="card_contact">Your contact %1$s</string>
+    <string name="card_not_contact">Not a contact</string>
+    <string name="card_add">Add as contact</string>
+    <string name="card_named_explained">This node\'s card says it is “%1$s”, which is only what its owner chose to call it. Check with them that their node shows this short code. Your node lets a contact reach you; adding one sends nothing.</string>
+    <string name="card_unnamed_explained">This node\'s card carries no name. Check with its owner that their node shows this short code. Your node lets a contact reach you; adding one sends nothing.</string>
+
+    <!-- The node's own presence card -->
+    <string name="card_section">Presence card</string>
+    <string name="card_on">Show this node to others nearby</string>
+    <string name="card_on_yes">On: your node sends its card</string>
+    <string name="card_on_no">Off: your node sends no card</string>
+    <string name="card_on_explained">Anyone near can see this node\'s address and the name below, every couple of hours, and can tell it is the same node each time. Off, your node puts neither on the air. Either way it shows you the cards of others.</string>
+    <string name="card_name">Name on the card</string>
+    <string name="card_name_explained">The one name your node puts on the air, in clear, while its card is on. Empty for none.</string>
+    <string name="card_name_too_long">At most %1$d bytes</string>
 
     <!-- Node -->
     <string name="node_identity">This node</string>

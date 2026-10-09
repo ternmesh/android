@@ -9,6 +9,7 @@ The app:
 * adds contacts by QR code, link or address, each with a short code to check with its owner
 * shows the node's battery, its airtime, and the nodes it hears
 * changes the node's region, role, power and passkey
+* shows who is about, from the presence cards of nodes near it, and turns the node's own card on, when the user chooses to be seen
 * updates the node's firmware over the same link, with the release ternmesh.org publishes for its board and region
 * shares the user's position with the contacts and groups they choose, each at the precision they choose, and shows on a map where those sharing with them are
 

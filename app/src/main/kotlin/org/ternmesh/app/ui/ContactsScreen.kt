@@ -1,6 +1,7 @@
 // The addresses the user has saved, with their names: the only ones the node lets make first
 // contact. A contact is added from the QR code on its owner's Node tab, from their link, or by its
-// address typed in; each shows the short code its owner can check against their own.
+// address typed in; each shows the short code its owner can check against their own. At their head,
+// on a node that speaks cards, is the way to who is about.
 package org.ternmesh.app.ui
 
 import androidx.compose.foundation.clickable
@@ -51,7 +52,14 @@ import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.Peer
 
 @Composable
-fun ContactsScreen(repository: NodeRepository, state: NodeState, incoming: Address?, taken: () -> Unit, open: (Peer) -> Unit) {
+fun ContactsScreen(
+    repository: NodeRepository,
+    state: NodeState,
+    incoming: Address?,
+    taken: () -> Unit,
+    about: () -> Unit,
+    open: (Peer) -> Unit,
+) {
     val contacts = remember(state.records) { state.records.contacts.values.sortedBy { it.name.lowercase() } }
     var adding by remember { mutableStateOf(false) }
     // What the dialog starts with: a link opened from elsewhere, or a code just scanned.
@@ -71,6 +79,7 @@ fun ContactsScreen(repository: NodeRepository, state: NodeState, incoming: Addre
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize()) {
+            if (hasCards(state)) item(key = "cards") { CardsEntry(state, about) }
             if (contacts.isEmpty()) item { Text(stringResource(R.string.contacts_empty), Modifier.padding(24.dp)) }
             items(contacts, key = { it.address.toString() }) { c ->
                 var menu by remember { mutableStateOf(false) }
@@ -134,9 +143,9 @@ fun ContactsScreen(repository: NodeRepository, state: NodeState, incoming: Addre
 }
 
 @Composable
-internal fun AddContactDialog(given: String, onDismiss: () -> Unit, done: (Address, String) -> Unit) {
+internal fun AddContactDialog(given: String, suggested: String = "", onDismiss: () -> Unit, done: (Address, String) -> Unit) {
     var text by remember(given) { mutableStateOf(given) }
-    var name by remember { mutableStateOf("") }
+    var name by remember(suggested) { mutableStateOf(suggested) }
     val say = LocalSay.current
     val context = LocalContext.current
     // Pasted text comes with a line break or a space at either end, which is no part of it.
