@@ -14,6 +14,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -137,6 +140,10 @@ class NodeRepository(private val context: Context) {
     private var updater: Updater? = null
     private var updatingTo: String? = null
     private var downloading: Job? = null
+
+    /** The image the update under way sends, and whether it waits for the node to sync before it goes on. */
+    private var updateImage: Manifest.Image? = null
+    private var resumeWhenSynced = false
 
     /** The last check's answer, which a cancelled update goes back to. */
     private var checked: FirmwareUpdate.Checked? = null
@@ -489,22 +496,27 @@ class NodeRepository(private val context: Context) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: FirmwareDownload.Corrupt) {
-                setUpdate(FirmwareUpdate.Failed(FirmwareFailure.CORRUPT))
+                if (isActive) setUpdate(FirmwareUpdate.Failed(FirmwareFailure.CORRUPT))
                 return@launch
             } catch (e: IOException) {
-                setUpdate(FirmwareUpdate.Failed(FirmwareFailure.DOWNLOAD))
+                // A read cut off by cancelling can end this way too: then a newer download may be the one shown.
+                if (isActive) setUpdate(FirmwareUpdate.Failed(FirmwareFailure.DOWNLOAD))
                 return@launch
             } finally {
-                downloading = null
+                // A download cancelled and replaced lets go of nothing but itself.
+                if (downloading === coroutineContext.job) downloading = null
             }
+            // Cancelled while its last read was under way: it sends nothing.
+            coroutineContext.ensureActive()
             if (!stillFor(image)) return@launch
             val u = Updater(bytes)
             updater = u
             updatingTo = release
+            updateImage = image
             u.onChange = ::updaterChanged
-            // On a connection not yet open it waits, and goes on once the node answers HELLO.
-            u.resume(connection)
-            scheduleTick()
+            // It goes on once the node has synced, which may be now.
+            resumeWhenSynced = true
+            if (_state.value.phase == Phase.READY) resumeIfStillFor()
         }
     }
 
@@ -540,6 +552,7 @@ class NodeRepository(private val context: Context) {
         }
         updater = null
         updatingTo = null
+        updateImage = null
         checked = null
         setUpdate(FirmwareUpdate.Idle)
     }
@@ -560,6 +573,7 @@ class NodeRepository(private val context: Context) {
         if (u.isFinished && u.state != UpdateState.Restarting && u.state != UpdateState.Unknown) {
             updater = null
             updatingTo = null
+            updateImage = null
         }
         setUpdate(next)
     }
@@ -580,8 +594,32 @@ class NodeRepository(private val context: Context) {
                 },
             )
             checked = null
-        } else {
+        } else if (u.state == UpdateState.Ending) {
+            u.resume(connection) // the node restarted with UPDATE_END unanswered: not known to have taken
+        } else if (!u.isFinished) {
+            resumeWhenSynced = true // after the sync, which says whether the node is still what it was chosen for
+        }
+    }
+
+    /**
+     * An update waiting for the node goes on, once the node has synced, if the node is still what
+     * its image was chosen for: while the link was down another client may have changed its region
+     * or its firmware. If not, it stops.
+     */
+    private fun resumeIfStillFor() {
+        val u = updater ?: return
+        val image = updateImage ?: return
+        if (!resumeWhenSynced || u.isFinished) return
+        resumeWhenSynced = false
+        if (stillFor(image)) {
             u.resume(connection)
+            scheduleTick()
+        } else {
+            u.onChange = {}
+            u.cancel()
+            updater = null
+            updatingTo = null
+            updateImage = null
         }
     }
 
@@ -666,6 +704,7 @@ class NodeRepository(private val context: Context) {
             is ConnectionEvent.News -> news(e.body)
             ConnectionEvent.Synced -> {
                 update { it.copy(phase = Phase.READY) }
+                resumeIfStillFor()
                 save()
                 viewing?.let(::markRead)
             }
