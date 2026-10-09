@@ -432,6 +432,12 @@ class NodeRepository(private val context: Context) {
      */
     fun startUpdate(release: String, image: Manifest.Image) {
         if (busyUpdating(_state.value.update)) return
+        // The region may have been changed since the check: an image is for one region.
+        val self = connection.records.self?.region
+        if (!image.board.equals(_state.value.board, ignoreCase = true) || !image.region.equals(self, ignoreCase = true)) {
+            setUpdate(FirmwareUpdate.Failed(FirmwareFailure.CHANGED))
+            return
+        }
         // The service keeps the process, and so the link, while the app is not on screen.
         NodeService.start(context)
         setUpdate(FirmwareUpdate.Downloading(release, 0, image.size))

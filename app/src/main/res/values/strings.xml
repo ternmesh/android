@@ -200,6 +200,7 @@
     <string name="update_not_an_image">That is not firmware this node runs, so the node discarded it.</string>
     <string name="update_refused">The node refused the update: %1$s</string>
     <string name="update_download_failed">Could not download the firmware. Check the phone\'s internet connection and try again.</string>
+    <string name="update_changed">The node has changed since the check. Check for an update again.</string>
     <string name="update_corrupt">The firmware downloaded is not the one published: it was not sent to the node. Try again.</string>
     <string name="update_unsupported">Your node\'s firmware cannot take updates over Bluetooth.</string>
     <string name="update_notification_downloading">Downloading firmware: %1$d%%</string>

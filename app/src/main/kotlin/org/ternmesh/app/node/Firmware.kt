@@ -69,6 +69,9 @@ enum class FirmwareFailure {
 
     /** The node's firmware does not speak a version of the protocol that has updates. */
     UNSUPPORTED,
+
+    /** The node's board or region is no longer the one the image was chosen for. */
+    CHANGED,
 }
 
 internal object FirmwareDownload {

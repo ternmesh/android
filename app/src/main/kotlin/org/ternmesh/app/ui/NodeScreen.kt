@@ -261,6 +261,7 @@ private fun FirmwareUpdates(repository: NodeRepository, state: NodeState) {
                     FirmwareFailure.DOWNLOAD -> R.string.update_download_failed
                     FirmwareFailure.CORRUPT -> R.string.update_corrupt
                     FirmwareFailure.UNSUPPORTED -> R.string.update_unsupported
+                    FirmwareFailure.CHANGED -> R.string.update_changed
                 },
             ),
             repository::dismissUpdate,
