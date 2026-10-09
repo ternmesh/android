@@ -11,9 +11,14 @@ It finds a node, pairs with it, and keeps a link to it in the background; it sho
 with contacts and groups, where each message is and what it waits for, the node's battery, airtime
 and the nodes it hears, and changes its region, role, power and passkey.
 
-**To try it**, install the APK from the latest CI run on `main` (the `tern-debug-apk` artifact)
-on Android 8 or later. Each build is signed with the same debug key, so a newer one installs over
-an older one. The first connection asks for the passkey your node shows, or the one set over USB.
+**To try it**, install the APK from the latest CI run on `main` (the `tern-apk` artifact) on
+Android 8 or later. It is signed with the maintainers' release key, so a newer one installs over an
+older one, and it is the app that `ternmesh.org` links open in. The first connection asks for the
+passkey your node shows, or the one set over USB.
+
+Every run, pull requests too, also keeps a debug build (`tern-debug-apk`). It is a separate app,
+**Tern debug** (`org.ternmesh.app.debug`), signed with the debug key kept here, so it installs
+beside the real one and never stands in for it.
 
 ```bash
 ./gradlew :protocol:test        # the companion protocol and the connection, against the specification's vectors
@@ -61,3 +66,28 @@ set `TERN_COMPANION_VECTORS` to its path.
 
 * [CONTRIBUTING.md](CONTRIBUTING.md) — DCO sign-off, and the specification first
 * [Governance](https://github.com/ternmesh/spec/blob/main/GOVERNANCE.md)
+
+## The release key
+
+The release key signs the app people install, and `ternmesh.org/.well-known/assetlinks.json` names
+it, so that Android opens node links only in an app signed with it. It is never in this repository.
+CI on `main` reads it from four repository secrets:
+
+| Secret | |
+|---|---|
+| `TERN_RELEASE_KEYSTORE_BASE64` | the keystore file, base64-encoded |
+| `TERN_RELEASE_STORE_PASSWORD` | the keystore's password |
+| `TERN_RELEASE_KEY_ALIAS` | the key's alias in it |
+| `TERN_RELEASE_KEY_PASSWORD` | the key's password |
+
+To make one (once, kept somewhere safe: an app signed with a lost key can never be updated):
+
+```bash
+keytool -genkeypair -v -keystore tern-release.jks -alias tern -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 tern-release.jks      # macOS: base64 -i tern-release.jks
+keytool -list -v -keystore tern-release.jks -alias tern | grep SHA256   # what assetlinks.json names
+```
+
+A build signs with it locally when `TERN_RELEASE_KEYSTORE` (the file's path) and the three
+passwords and alias above, without `_BASE64`, are in the environment; without them
+`assembleRelease` leaves the APK unsigned.
