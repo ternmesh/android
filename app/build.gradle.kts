@@ -10,7 +10,7 @@ plugins {
 // neither, on a laptop or on main, is 0.1.0, code 1.
 val ternVersion: Pair<String, Int>? =
     ((findProperty("ternVersion") as String?) ?: System.getenv("TERN_VERSION"))?.trim()?.takeIf { it.isNotEmpty() }?.let { given ->
-        val m = Regex("v?(\\d+)\\.(\\d+)\\.(\\d+)").matchEntire(given)
+        val m = Regex("v?(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)").matchEntire(given)
             ?: throw GradleException("The version \"$given\" is not MAJOR.MINOR.PATCH, as a tag v1.2.3 gives")
         val (major, minor, patch) = m.destructured.toList().map(String::toInt)
         if (minor > 99 || patch > 99) throw GradleException("The version \"$given\" has a minor or patch over 99, which its versionCode cannot hold")
