@@ -19,6 +19,7 @@
     <string name="phase_syncing">Catching up…</string>
     <string name="phase_ready">Connected</string>
     <string name="phase_stopped">Not connected</string>
+    <string name="phase_disconnected">Disconnected</string>
 
     <string name="problem_bluetooth_off">Bluetooth is off.</string>
     <string name="problem_no_service">That device is not a Tern node, or its firmware is too old.</string>
@@ -76,6 +77,16 @@
     <string name="signal_dbm">%1$d dBm</string>
     <string name="retry">Try again</string>
     <string name="change_node">Change node</string>
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="disconnected_explained">Tern stays off the node until you connect. Messages wait for you on the node.</string>
+    <string name="known_nodes">Your nodes</string>
+    <string name="known_nearby">Nearby</string>
+    <string name="nearby_nodes">Other nodes nearby</string>
+    <string name="forget">Forget</string>
+    <string name="forget_node">Forget node</string>
+    <string name="forget_node_title">Forget %1$s?</string>
+    <string name="forget_node_explained">Tern disconnects and deletes the messages and contacts it saved from this node. They stay on the node, and come back if you connect to it again.</string>
 
     <!-- Chats -->
     <string name="chats_empty">No conversations yet. Start one from a contact, or make a group.</string>

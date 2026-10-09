@@ -39,11 +39,13 @@ class NodeService : Service() {
 
         fun stop(context: Context) {
             context.stopService(Intent(context, NodeService::class.java))
+            // A refresh may have posted the notification again on its own.
+            NotificationManagerCompat.from(context).cancel(ID)
         }
 
         /** Says where the link is now, if the service is showing. */
         fun refresh(context: Context, state: NodeState) {
-            if (state.node == null) return
+            if (state.node == null || state.phase == Phase.DISCONNECTED) return
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
                 PackageManager.PERMISSION_GRANTED
             ) {
