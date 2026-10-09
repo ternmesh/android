@@ -8,7 +8,6 @@ package org.ternmesh.app.ui
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PointF
-import android.os.SystemClock
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -40,7 +38,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import kotlinx.coroutines.delay
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
@@ -115,14 +112,7 @@ fun MapScreen(repository: NodeRepository, state: NodeState) {
         Text(stringResource(R.string.map_old_node), Modifier.padding(24.dp))
         return
     }
-    // Ages and time left count on while the screen is open.
-    var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(30_000)
-            now = SystemClock.elapsedRealtime()
-        }
-    }
+    val now = rememberNow()
     val marks = remember(state.records, state.arrived, now) { marks(state, now) }
     var selected by remember { mutableStateOf<String?>(null) }
     var sharing by remember { mutableStateOf<Peer?>(null) }

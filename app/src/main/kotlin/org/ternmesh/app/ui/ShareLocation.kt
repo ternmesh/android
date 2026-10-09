@@ -27,7 +27,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import org.ternmesh.app.R
 import org.ternmesh.app.node.LocationFeed
 import org.ternmesh.app.node.NodeRepository
@@ -93,15 +96,29 @@ fun leftText(context: Context, state: NodeState, s: Shared, now: Long = SystemCl
     return context.getString(R.string.time_left, spanText(left))
 }
 
+/** The elapsed clock, read again every half minute, so ages and time left count on while on screen. */
+@Composable
+fun rememberNow(): Long {
+    var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000)
+            now = SystemClock.elapsedRealtime()
+        }
+    }
+    return now
+}
+
 /** The line under a conversation's title while the node shares its position there. */
 @Composable
 fun SharingLine(state: NodeState, peer: Peer, open: () -> Unit) {
     if (!hasPositions(state)) return
     val s = sharedWith(state, peer) ?: return
     val context = LocalContext.current
+    val now = rememberNow()
     Surface(color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth().clickable(onClick = open)) {
         Text(
-            stringResource(R.string.sharing_line, precisionText(context, s.precision), leftText(context, state, s)),
+            stringResource(R.string.sharing_line, precisionText(context, s.precision), leftText(context, state, s, now)),
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         )

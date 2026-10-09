@@ -56,14 +56,14 @@ class LocationFeed(private val context: Context, private val give: (Body.SetPosi
 
     private fun providers(): List<String> {
         val m = manager ?: return emptyList()
+        val all = runCatching { m.allProviders }.getOrDefault(emptyList())
         // The fused provider weighs satellites against networks itself; without it, both, and the
-        // better fix wins as each arrives.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && m.isProviderEnabled(LocationManager.FUSED_PROVIDER)) {
+        // better fix wins as each arrives. Each is asked whether or not it is on now: one the user
+        // turns on later starts giving fixes without the app asking again.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && LocationManager.FUSED_PROVIDER in all) {
             return listOf(LocationManager.FUSED_PROVIDER)
         }
-        return listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter {
-            runCatching { m.isProviderEnabled(it) }.getOrDefault(false)
-        }
+        return listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter { it in all }
     }
 
     private fun take(location: Location) {
