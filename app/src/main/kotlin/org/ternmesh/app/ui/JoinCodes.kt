@@ -102,7 +102,8 @@ fun JoinDialog(repository: NodeRepository, state: NodeState, initial: String, on
     val context = LocalContext.current
     val say = LocalSay.current
     val report = rememberReport()
-    var text by remember { mutableStateOf(initial) }
+    // Keyed to the link it was opened with: a second link opened while it is up replaces the first.
+    var text by remember(initial) { mutableStateOf(initial) }
     // Pasted text comes with a line break or a space at either end, which is no part of it.
     val link = text.trim()
     val code = remember(link) { JoinCode.read(link) }
