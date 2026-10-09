@@ -1,10 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher's tern, from the site's favicon.svg, at the status bar's size. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M2,10 Q7,6 12,11 Q17,6 22,10 Q17,8 12,15 Q7,8 2,10 Z" />
+    <group
+        android:scaleX="0.4"
+        android:scaleY="0.4"
+        android:translateX="-0.8"
+        android:translateY="-3.2">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M6,30 C18,22 26,22 32,30 C38,22 46,22 58,30 C47,27 39,29 34,35 L32,42 L30,35 C25,29 17,27 6,30 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M30,41 L26,54 L32,46 L38,54 L34,41 Z" />
+    </group>
 </vector>
