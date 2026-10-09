@@ -483,6 +483,7 @@ class NodeRepository(private val context: Context) {
         ) {
             return true
         }
+        checked = null // what it offered is no longer for this node: dismissing goes back to checking afresh
         setUpdate(FirmwareUpdate.Failed(FirmwareFailure.CHANGED))
         return false
     }
