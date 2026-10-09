@@ -66,6 +66,7 @@ fun ContactsScreen(repository: NodeRepository, state: NodeState, incoming: Addre
         }
     }
     var renaming by remember { mutableStateOf<Body.Contact?>(null) }
+    var removing by remember { mutableStateOf<Body.Contact?>(null) }
     val report = rememberReport()
 
     Box(Modifier.fillMaxSize()) {
@@ -89,10 +90,7 @@ fun ContactsScreen(repository: NodeRepository, state: NodeState, incoming: Addre
                                 DropdownMenuItem(text = { Text(stringResource(R.string.show_code)) }, onClick = { menu = false; showing = c })
                                 DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = { menu = false; shareLink(context, c.address) })
                                 DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { menu = false; renaming = c })
-                                DropdownMenuItem(text = { Text(stringResource(R.string.remove)) }, onClick = {
-                                    menu = false
-                                    repository.submit(Body.RemoveContact(c.address), report)
-                                })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.remove)) }, onClick = { menu = false; removing = c })
                             }
                         }
                     },
@@ -113,6 +111,20 @@ fun ContactsScreen(repository: NodeRepository, state: NodeState, incoming: Addre
         }
     }
     showing?.let { c -> CodeDialog(c) { showing = null } }
+    removing?.let { c ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text(stringResource(R.string.remove_title, c.name.ifEmpty { Conversations.short(c.address.toString()) })) },
+            text = { Text(stringResource(R.string.remove_explained)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    removing = null
+                    repository.submit(Body.RemoveContact(c.address), report)
+                }) { Text(stringResource(R.string.remove)) }
+            },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
     renaming?.let { c ->
         NameDialog(stringResource(R.string.rename), c.name, Companion.NAME_MAX, stringResource(R.string.save), onDismiss = { renaming = null }) { name ->
             renaming = null

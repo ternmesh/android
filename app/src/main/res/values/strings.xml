@@ -117,6 +117,8 @@
     <string name="rename">Rename</string>
     <string name="invite">Invite a contact</string>
     <string name="leave">Leave group</string>
+    <string name="leave_title">Leave %1$s?</string>
+    <string name="leave_explained">Your node forgets the group\'s secret, and stops sharing your location with it. Its messages stay here. To be in it again, you need an invite from a member.</string>
     <string name="save_contact">Save as contact</string>
     <string name="end_session">End secure session</string>
     <string name="end_session_explained">The next message will set up a new session, with fresh keys.</string>
@@ -139,6 +141,8 @@
     <string name="contact_code_explained">Someone else can scan this to add the same node.</string>
     <string name="save">Save</string>
     <string name="remove">Remove</string>
+    <string name="remove_title">Remove %1$s?</string>
+    <string name="remove_explained">Your node forgets the name, stops sharing your location with this contact and forgets theirs. Your messages and any secure session with them are kept, but once that ends your node may turn away a new one they start.</string>
     <string name="message">Message</string>
     <string name="session_yes">Secure session</string>
     <string name="session_no">No session yet</string>
