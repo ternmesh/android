@@ -1,0 +1,40 @@
+name: Release
+
+# A tag v* is a release: its APK, signed with the release key as on main, is attached to a GitHub
+# Release for the tag as tern.apk, so that .../releases/latest/download/tern.apk is always the
+# latest.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    uses: ./.github/workflows/apk.yml
+    with:
+      required: true
+    secrets: inherit
+
+  release:
+    needs: apk
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tern-apk
+      - name: Attach the APK to the tag's release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          mv app-release.apk tern.apk
+          # Run again, the release is already there: its APK is replaced.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" tern.apk --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" tern.apk --verify-tag --title "$TAG" --generate-notes --repo "$GITHUB_REPOSITORY"
+          fi
