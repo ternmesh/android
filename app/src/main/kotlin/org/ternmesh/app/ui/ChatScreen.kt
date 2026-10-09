@@ -205,8 +205,13 @@ private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {
         ) {
             Column(Modifier.padding(10.dp)) {
                 if (item is Body.GroupMessage && !mine) {
-                    // The writer's routing id is what it claimed, not a proof.
-                    Text("%08x".format(item.from), style = MaterialTheme.typography.labelSmall)
+                    // The writer's routing id is what it claimed, not a proof: a contact's name it
+                    // matches is said to be claimed.
+                    val name = Conversations.nameOf(state.records, item.from)
+                    Text(
+                        name?.let { stringResource(R.string.writer_claimed, it) } ?: "%08x".format(item.from),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                 }
                 when (item) {
                     is Body.Message -> Text(item.text)

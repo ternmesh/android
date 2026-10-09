@@ -164,4 +164,26 @@ class RecordsFileTest {
         assertTrue(r.groupPositions.isEmpty())
         assertTrue(r.groupSharing.isEmpty())
     }
+
+    /** The ids of vectors/routing.json in ternmesh/spec, which the companion vectors do not carry. */
+    @Test
+    fun routingIdsAsRoutingWorksThemOut() {
+        val ids = mapOf(
+            "00".repeat(32) to 289929253L,
+            "11".repeat(32) to 3167332448L,
+            "a5".repeat(32) to 1399809041L,
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" to 1752530551L,
+        )
+        for ((hex, id) in ids) assertEquals(id, Address.fromHex(hex)!!.routingId, hex)
+    }
+
+    @Test
+    fun aRoutingIdIsNamedForTheContactWithIt() {
+        val r = Records()
+        r.apply(Body.Contact(alice, 1, "Alice"))
+        r.apply(Body.Contact(bob, 0, ""))
+        assertEquals("Alice", Conversations.nameOf(r, alice.routingId))
+        assertNull(Conversations.nameOf(r, bob.routingId), "a contact with no name")
+        assertNull(Conversations.nameOf(r, 0x1234), "no contact")
+    }
 }

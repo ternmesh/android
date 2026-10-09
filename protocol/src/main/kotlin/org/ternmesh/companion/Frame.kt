@@ -81,6 +81,18 @@ class Address(bytes: ByteArray) {
 
     fun toByteArray(): ByteArray = bytes.copyOf()
 
+    /**
+     * The routing id routing knows the node by, as draft/routing.md works it out from the address: a
+     * neighbour, and the writer of a group message, are known to a client only by theirs.
+     */
+    val routingId: Long by lazy {
+        val sha = java.security.MessageDigest.getInstance("SHA-256")
+        sha.update("tern routing id".toByteArray(Charsets.US_ASCII))
+        val h = sha.digest(bytes)
+        (0 until 8).map { i -> (0 until 4).fold(0L) { n, j -> (n shl 8) or (h[4 * i + j].toLong() and 0xFF) } }
+            .first { it != 0L && it != 0xFFFF_FFFFL }
+    }
+
     override fun equals(other: Any?) = other is Address && bytes.contentEquals(other.bytes)
     override fun hashCode() = bytes.contentHashCode()
     override fun toString() = Hex.encode(bytes)

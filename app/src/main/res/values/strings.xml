@@ -112,6 +112,8 @@
     <string name="invite_to">Invite to %1$s</string>
     <string name="invite_from">Invite to %1$s</string>
     <string name="join">Join</string>
+    <!-- A group message's writer, by the name of the contact whose routing id it gave: a claim. -->
+    <string name="writer_claimed">%1$s (claimed)</string>
     <string name="rename">Rename</string>
     <string name="invite">Invite a contact</string>
     <string name="leave">Leave group</string>
