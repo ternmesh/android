@@ -140,6 +140,7 @@ class NodeRepository(private val context: Context) {
     private var updater: Updater? = null
     private var updatingTo: String? = null
     private var downloading: Job? = null
+    private var checking: Job? = null
 
     /** The image the update under way sends, and whether it waits for the node to sync before it goes on. */
     private var updateImage: Manifest.Image? = null
@@ -445,16 +446,23 @@ class NodeRepository(private val context: Context) {
         if (busyUpdating(s.update)) return
         setUpdate(FirmwareUpdate.Checking)
         checkedAgainst = s.release
-        scope.launch {
+        // What the check is for, taken now: the node may change before the manifest arrives.
+        val region = connection.records.self?.region.orEmpty()
+        val release = s.release
+        checking?.cancel()
+        checking = scope.launch {
             val next = try {
                 val manifest = FirmwareDownload.manifest()
-                val region = connection.records.self?.region.orEmpty()
-                FirmwareUpdate.Checked(manifest.release, manifest.imageFor(board, region), manifest.offerTo(_state.value.release))
-                    .also { checked = it }
+                FirmwareUpdate.Checked(manifest.release, manifest.imageFor(board, region), manifest.offerTo(release))
             } catch (e: IOException) {
                 FirmwareUpdate.CheckFailed
             }
-            if (_state.value.update == FirmwareUpdate.Checking) setUpdate(next)
+            // Only the latest check answers, and not after its node was let go of.
+            if (checking === coroutineContext.job && _state.value.update == FirmwareUpdate.Checking) {
+                checking = null
+                if (next is FirmwareUpdate.Checked) checked = next
+                setUpdate(next)
+            }
         }
     }
 
@@ -544,6 +552,8 @@ class NodeRepository(private val context: Context) {
 
     /** Drops any update: another node is chosen. */
     private fun stopUpdate() {
+        checking?.cancel()
+        checking = null
         downloading?.cancel()
         downloading = null
         updater?.let {
