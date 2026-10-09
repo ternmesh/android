@@ -49,6 +49,7 @@ import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
 import org.ternmesh.app.node.percent
 import org.ternmesh.companion.Body
+import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.ErrorCode
 import org.ternmesh.companion.Offer
 import org.ternmesh.companion.Setting
@@ -123,7 +124,7 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
                 val role = stringResource(if (n.role == 1) R.string.role_relay_short else R.string.role_leaf_short)
                 Text(
                     stringResource(
-                        R.string.neighbour_line, "%08x".format(n.routingId), n.snrQuarterDb / 4.0,
+                        R.string.neighbour_line, Conversations.nameOf(r, n.routingId) ?: "%08x".format(n.routingId), n.snrQuarterDb / 4.0,
                         stringResource(R.string.heard_ago, spanText(n.heard.toLong())),
                     ) + " · " + role,
                 )

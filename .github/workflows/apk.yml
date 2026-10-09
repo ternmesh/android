@@ -1,0 +1,62 @@
+name: Release APK
+
+# The app as people install it, signed with the release key. CI calls this on main, and Release on a
+# tag, so the key is read in this one place. The fingerprint in the summary is the one
+# ternmesh.org's assetlinks.json names. The APK is kept as the tern-apk artifact.
+on:
+  workflow_call:
+    inputs:
+      required:
+        description: Fail, rather than warn, when there is no release key.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    env:
+      KEYSTORE_BASE64: ${{ secrets.TERN_RELEASE_KEYSTORE_BASE64 }}
+    steps:
+      - name: Is there a release key?
+        if: env.KEYSTORE_BASE64 == ''
+        env:
+          REQUIRED: ${{ inputs.required }}
+        run: |
+          if [ "$REQUIRED" = true ]; then
+            echo "::error::No TERN_RELEASE_KEYSTORE_BASE64 secret, so no release APK. See the README."
+            exit 1
+          fi
+          echo "::warning::No TERN_RELEASE_KEYSTORE_BASE64 secret, so no release APK. See the README."
+      - uses: actions/checkout@v4
+        if: env.KEYSTORE_BASE64 != ''
+      - uses: actions/setup-java@v4
+        if: env.KEYSTORE_BASE64 != ''
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        if: env.KEYSTORE_BASE64 != ''
+      - name: Build and sign
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          TERN_RELEASE_KEYSTORE: ${{ runner.temp }}/release.jks
+          TERN_RELEASE_STORE_PASSWORD: ${{ secrets.TERN_RELEASE_STORE_PASSWORD }}
+          TERN_RELEASE_KEY_ALIAS: ${{ secrets.TERN_RELEASE_KEY_ALIAS }}
+          TERN_RELEASE_KEY_PASSWORD: ${{ secrets.TERN_RELEASE_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$TERN_RELEASE_KEYSTORE"
+          ./gradlew :app:assembleRelease
+          {
+            echo "Release key SHA-256 fingerprint:"
+            echo
+            keytool -list -v -keystore "$TERN_RELEASE_KEYSTORE" -storepass "$TERN_RELEASE_STORE_PASSWORD" -alias "$TERN_RELEASE_KEY_ALIAS" | grep 'SHA256:'
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f "$TERN_RELEASE_KEYSTORE"
+      - uses: actions/upload-artifact@v4
+        if: env.KEYSTORE_BASE64 != ''
+        with:
+          name: tern-apk
+          path: app/build/outputs/apk/release/app-release.apk

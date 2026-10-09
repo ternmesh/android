@@ -19,10 +19,12 @@ before anything goes on the air. The map's tiles come from [OpenFreeMap](https:/
 drawn by [MapLibre](https://maplibre.org): the tile server sees which areas the map shows, and
 nothing else of the user's.
 
-**To try it**, install the APK from the latest CI run on `main` (the `tern-apk` artifact) on
-Android 8 or later. It is signed with the maintainers' release key, so a newer one installs over an
-older one, and it is the app that `ternmesh.org` links open in. The first connection asks for the
-passkey your node shows, or the one set over USB.
+**To try it**, install `tern.apk` from the
+[latest release](https://github.com/ternmesh/android/releases/latest/download/tern.apk) on
+Android 8 or later, or the one from the latest CI run on `main` (the `tern-apk` artifact). Both
+are signed with the maintainers' release key, so a newer one installs over an older one, and it is
+the app that `ternmesh.org` links open in. The first connection asks for the passkey your node
+shows, or the one set over USB.
 
 Every run, pull requests too, also keeps a debug build (`tern-debug-apk`). It is a separate app,
 **Tern debug** (`org.ternmesh.app.debug`), signed with the debug key kept here, so it installs
@@ -77,7 +79,8 @@ set `TERN_COMPANION_VECTORS` to its path.
 
 The release key signs the app people install, and `ternmesh.org/.well-known/assetlinks.json` names
 it, so that Android opens node links only in an app signed with it. It is never in this repository.
-CI on `main` reads it from four repository secrets:
+CI on `main`, and the release a tag `v*` makes (`.github/workflows/release.yml`), read it from four
+repository secrets, in `.github/workflows/apk.yml`:
 
 | Secret | |
 |---|---|

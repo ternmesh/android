@@ -1,0 +1,1 @@
+Messages over Tern, a LoRa mesh, through a Tern node over Bluetooth. Alpha.

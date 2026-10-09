@@ -102,10 +102,7 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
                         is Peer.Group -> {
                             DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { menu = false; dialog = ChatDialog.RENAME })
                             DropdownMenuItem(text = { Text(stringResource(R.string.invite)) }, onClick = { menu = false; dialog = ChatDialog.INVITE })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.leave)) }, onClick = {
-                                menu = false
-                                repository.submit(Body.LeaveGroup(peer.group)) { o -> report(o); if (o is Outcome.Answered) back() }
-                            })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.leave)) }, onClick = { menu = false; dialog = ChatDialog.LEAVE })
                         }
                         is Peer.Contact -> {
                             val saved = state.records.contacts[peer.address]
@@ -182,12 +179,26 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
             },
             dismissButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.cancel)) } },
         )
+        ChatDialog.LEAVE -> AlertDialog(
+            onDismissRequest = { dialog = null },
+            title = { Text(stringResource(R.string.leave_title, conversation.name)) },
+            text = { Text(stringResource(R.string.leave_explained)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    dialog = null
+                    if (peer is Peer.Group) {
+                        repository.submit(Body.LeaveGroup(peer.group)) { o -> report(o); if (o is Outcome.Answered) back() }
+                    }
+                }) { Text(stringResource(R.string.leave)) }
+            },
+            dismissButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.cancel)) } },
+        )
         ChatDialog.SHARE -> ShareDialog(repository, state, peer) { dialog = null }
         null -> {}
     }
 }
 
-private enum class ChatDialog { RENAME, INVITE, END_SESSION, SHARE }
+private enum class ChatDialog { RENAME, INVITE, END_SESSION, LEAVE, SHARE }
 
 @Composable
 private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {
@@ -205,8 +216,13 @@ private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {
         ) {
             Column(Modifier.padding(10.dp)) {
                 if (item is Body.GroupMessage && !mine) {
-                    // The writer's routing id is what it claimed, not a proof.
-                    Text("%08x".format(item.from), style = MaterialTheme.typography.labelSmall)
+                    // The writer's routing id is what it claimed, not a proof: a contact's name it
+                    // matches is said to be claimed.
+                    val name = Conversations.nameOf(state.records, item.from)
+                    Text(
+                        name?.let { stringResource(R.string.writer_claimed, it) } ?: "%08x".format(item.from),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                 }
                 when (item) {
                     is Body.Message -> Text(item.text)

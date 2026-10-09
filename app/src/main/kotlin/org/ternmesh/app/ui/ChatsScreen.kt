@@ -4,6 +4,7 @@
 package org.ternmesh.app.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -52,6 +54,7 @@ import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.Item
 import org.ternmesh.companion.Outcome
 import org.ternmesh.companion.Peer
+import org.ternmesh.companion.Sharing
 
 @Composable
 fun ChatsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Unit) {
@@ -114,7 +117,7 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Un
     }
 
     if (picking) {
-        ContactPicker(state, onDismiss = { picking = false }) { address ->
+        NewChatDialog(state, onDismiss = { picking = false }) { address ->
             picking = false
             open(Peer.Contact(address))
         }
@@ -180,6 +183,63 @@ fun ContactPicker(state: NodeState, onDismiss: () -> Unit, picked: (org.ternmesh
             }
         },
         confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+/**
+ * A conversation to start: with an address or link pasted, typed or scanned, or with a saved
+ * contact. The node sends to any address, making first contact with one that is not a contact; the
+ * other node may turn it away unless this one is its contact.
+ */
+@Composable
+private fun NewChatDialog(state: NodeState, onDismiss: () -> Unit, picked: (org.ternmesh.companion.Address) -> Unit) {
+    val contacts = state.records.contacts.values.sortedBy { it.name.lowercase() }
+    var text by remember { mutableStateOf("") }
+    val say = LocalSay.current
+    val context = LocalContext.current
+    // Pasted text comes with a line break or a space at either end, which is no part of it.
+    val read = Sharing.read(text.trim())
+    val own = read != null && read == state.records.self?.address
+    val address = read?.takeUnless { own }
+    val scan = rememberScanner { found ->
+        if (Sharing.read(found.trim()) != null) text = found.trim() else say(context.getString(R.string.scan_not_tern))
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.new_chat)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = scan, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.scan)) }
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text(stringResource(R.string.address)) },
+                    isError = text.isNotBlank() && address == null,
+                    supportingText = when {
+                        address != null -> ({ Text(stringResource(R.string.check_code, Sharing.shortCode(address))) })
+                        own -> ({ Text(stringResource(R.string.address_own)) })
+                        text.isNotBlank() -> ({ Text(stringResource(R.string.address_invalid)) })
+                        else -> null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (contacts.isNotEmpty()) {
+                    Text(stringResource(R.string.or_contact), style = MaterialTheme.typography.titleSmall)
+                    LazyColumn {
+                        items(contacts, key = { it.address.toString() }) { c ->
+                            ListItem(
+                                headlineContent = { Text(c.name.ifEmpty { Conversations.short(c.address.toString()) }) },
+                                modifier = Modifier.clickable { picked(c.address) },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { address?.let(picked) }, enabled = address != null) { Text(stringResource(R.string.open_chat)) }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

@@ -44,6 +44,13 @@ object Conversations {
         is Peer.Group -> records.groups[peer.group]?.name?.takeIf { it.isNotEmpty() } ?: short(peer.group.toString())
     }
 
+    /**
+     * The name of the contact whose address has [routingId], or null for none or one with no name.
+     * A group message's routing id is what its writer claimed: the name is who it claims to be.
+     */
+    fun nameOf(records: Records, routingId: Long): String? =
+        records.contacts.values.firstOrNull { it.address.routingId == routingId }?.name?.takeIf { it.isNotEmpty() }
+
     /** The first 8 hex digits, to tell addresses apart at a glance. Not a check that one is who it claims. */
     fun short(hex: String) = hex.take(8) + "…"
 

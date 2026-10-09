@@ -77,6 +77,12 @@
             android:screenOrientation="fullSensor"
             tools:replace="screenOrientation" />
 
+        <!-- A reply written in a message notification. Only the notification's intent, which
+             names it, reaches it. -->
+        <receiver
+            android:name=".node.ReplyReceiver"
+            android:exported="false" />
+
         <!-- Keeps the link to the node up while the app is not on screen. -->
         <service
             android:name=".node.NodeService"
