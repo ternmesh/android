@@ -1,8 +1,8 @@
 // The one node the app drives: the Bluetooth link to it, the protocol's connection over that, the
-// records on disk, and what the screens are shown of all three.
+// records on disk, an update of its firmware, and what the screens are shown of all of them.
 //
 // Everything here runs on the main thread. The link posts its callbacks there, the connection's
-// timer runs there, and the screens call in from there.
+// timer runs there, the screens call in from there, and downloads come back there.
 package org.ternmesh.app.node
 
 import android.content.Context
@@ -12,8 +12,12 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import org.ternmesh.app.link.BleLink
 import org.ternmesh.app.link.LinkFailure
 import org.ternmesh.app.link.LinkState
@@ -22,12 +26,16 @@ import org.ternmesh.companion.Connection
 import org.ternmesh.companion.ConnectionEvent
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.Item
+import org.ternmesh.companion.Manifest
 import org.ternmesh.companion.MessageState
 import org.ternmesh.companion.Outcome
 import org.ternmesh.companion.Peer
 import org.ternmesh.companion.Records
 import org.ternmesh.companion.RecordsFile
+import org.ternmesh.companion.UpdateState
+import org.ternmesh.companion.Updater
 import java.io.File
+import java.io.IOException
 import kotlin.random.Random
 
 /** The node the user chose, by its Bluetooth address and the name Android showed for it. */
@@ -83,6 +91,11 @@ data class NodeState(
     val records: Records = Records(),
     val version: Int? = null,
     val firmware: String? = null,
+    /** The hardware the node's firmware is built for, empty if it cannot be updated over the link; null from a node of version 3 or earlier. */
+    val board: String? = null,
+    /** The node's firmware release, empty if it has none; null from a node of version 3 or earlier. */
+    val release: String? = null,
+    val update: FirmwareUpdate = FirmwareUpdate.Idle,
     /** First contacts the node refused, newest last, until the user deals with them. */
     val asked: List<Body.Asked> = emptyList(),
     val unanswered: List<Unanswered> = emptyList(),
@@ -114,6 +127,16 @@ class NodeRepository(private val context: Context) {
      * made now matches only records past it: one the node queues for it is given a greater id.
      */
     private var queuedFloor = 0L
+
+    private val scope = MainScope()
+
+    /** The update under way, and the release it gives the node, until the node is back from it. */
+    private var updater: Updater? = null
+    private var updatingTo: String? = null
+    private var downloading: Job? = null
+
+    /** The last check's answer, which a cancelled update goes back to. */
+    private var checked: FirmwareUpdate.Checked? = null
 
     private val _state = MutableStateFlow(NodeState())
     val state: StateFlow<NodeState> = _state
@@ -197,6 +220,7 @@ class NodeRepository(private val context: Context) {
 
     /** Drops the link and the node, keeping its records on disk in case it is chosen again. */
     fun leave() {
+        stopUpdate()
         handler.removeCallbacksAndMessages(null)
         link.disconnect()
         connection.close()
@@ -382,6 +406,148 @@ class NodeRepository(private val context: Context) {
         }
     }
 
+    /** Asks ternmesh.org for the latest release, and finds the image for the node's board and region. */
+    fun checkForUpdate() {
+        val s = _state.value
+        val board = s.board?.takeIf { it.isNotEmpty() } ?: return
+        if (busyUpdating(s.update)) return
+        setUpdate(FirmwareUpdate.Checking)
+        scope.launch {
+            val next = try {
+                val manifest = FirmwareDownload.manifest()
+                val region = connection.records.self?.region.orEmpty()
+                FirmwareUpdate.Checked(manifest.release, manifest.imageFor(board, region), manifest.offerTo(_state.value.release))
+                    .also { checked = it }
+            } catch (e: IOException) {
+                FirmwareUpdate.CheckFailed
+            }
+            if (_state.value.update == FirmwareUpdate.Checking) setUpdate(next)
+        }
+    }
+
+    /**
+     * Downloads [image], checks it is the one the manifest names, and gives it to the node. The
+     * update goes on across a dropped link, and after the node restarts into the image, the release
+     * its `INFO` gives says whether it runs it.
+     */
+    fun startUpdate(release: String, image: Manifest.Image) {
+        if (busyUpdating(_state.value.update)) return
+        // The service keeps the process, and so the link, while the app is not on screen.
+        NodeService.start(context)
+        setUpdate(FirmwareUpdate.Downloading(release, 0, image.size))
+        downloading = scope.launch {
+            val bytes = try {
+                FirmwareDownload.image(image) { received ->
+                    handler.post {
+                        val u = _state.value.update
+                        if (u is FirmwareUpdate.Downloading && received > u.received) setUpdate(u.copy(received = received))
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: FirmwareDownload.Corrupt) {
+                setUpdate(FirmwareUpdate.Failed(FirmwareFailure.CORRUPT))
+                return@launch
+            } catch (e: IOException) {
+                setUpdate(FirmwareUpdate.Failed(FirmwareFailure.DOWNLOAD))
+                return@launch
+            } finally {
+                downloading = null
+            }
+            val u = Updater(bytes)
+            updater = u
+            updatingTo = release
+            u.onChange = ::updaterChanged
+            // On a connection not yet open it waits, and goes on once the node answers HELLO.
+            u.resume(connection)
+            scheduleTick()
+        }
+    }
+
+    /** Stops downloading or sending. The node keeps what it was sent until it restarts or another update begins. */
+    fun cancelUpdate() {
+        downloading?.cancel()
+        downloading = null
+        val u = updater
+        if (u != null) {
+            u.cancel()
+        } else if (_state.value.update is FirmwareUpdate.Downloading) {
+            setUpdate(checked ?: FirmwareUpdate.Idle)
+        }
+    }
+
+    /** Puts away what an update ended with, back to the last check. */
+    fun dismissUpdate() {
+        if (busyUpdating(_state.value.update)) return
+        val u = _state.value.update
+        setUpdate(if (u is FirmwareUpdate.Done || u is FirmwareUpdate.NotRunning) FirmwareUpdate.Idle else checked ?: FirmwareUpdate.Idle)
+    }
+
+    private fun busyUpdating(u: FirmwareUpdate) = u is FirmwareUpdate.Downloading || u is FirmwareUpdate.Sending ||
+        u is FirmwareUpdate.Restarting || u == FirmwareUpdate.Checking
+
+    /** Drops any update: another node is chosen. */
+    private fun stopUpdate() {
+        downloading?.cancel()
+        downloading = null
+        updater?.let {
+            it.onChange = {}
+            it.cancel()
+        }
+        updater = null
+        updatingTo = null
+        checked = null
+        setUpdate(FirmwareUpdate.Idle)
+    }
+
+    private fun updaterChanged(u: Updater) {
+        val release = updatingTo ?: return
+        val next = when (val s = u.state) {
+            UpdateState.Beginning, UpdateState.Sending, UpdateState.Waiting ->
+                FirmwareUpdate.Sending(release, u.acknowledged, u.size, waiting = s == UpdateState.Waiting)
+            // Every byte is the node's: what is left is its answer to UPDATE_END.
+            UpdateState.Ending -> FirmwareUpdate.Sending(release, u.size, u.size, waiting = false)
+            UpdateState.Restarting -> FirmwareUpdate.Restarting(release, confirmed = true)
+            UpdateState.Unknown -> FirmwareUpdate.Restarting(release, confirmed = false)
+            is UpdateState.Refused -> FirmwareUpdate.Refused(s.code)
+            is UpdateState.Failed -> FirmwareUpdate.Failed(FirmwareFailure.UNSUPPORTED)
+            UpdateState.Cancelled -> checked ?: FirmwareUpdate.Idle
+        }
+        if (u.isFinished && u.state != UpdateState.Restarting && u.state != UpdateState.Unknown) {
+            updater = null
+            updatingTo = null
+        }
+        setUpdate(next)
+    }
+
+    /** The node answered HELLO: an update goes on, or one that ended is judged by the release the node now runs. */
+    private fun updateOnReady(e: ConnectionEvent.Ready) {
+        val u = updater ?: return
+        if (u.state == UpdateState.Restarting || u.state == UpdateState.Unknown) {
+            val wanted = updatingTo.orEmpty()
+            val confirmed = u.state == UpdateState.Restarting
+            updater = null
+            updatingTo = null
+            setUpdate(
+                if (e.release == wanted) {
+                    FirmwareUpdate.Done(wanted)
+                } else {
+                    FirmwareUpdate.NotRunning(e.release.orEmpty(), wanted, confirmed)
+                },
+            )
+            checked = null
+        } else {
+            u.resume(connection)
+        }
+    }
+
+    /** Says where the update is, and in the service's notification, each time its percentage changes. */
+    private fun setUpdate(u: FirmwareUpdate) {
+        val before = _state.value.update
+        update { it.copy(update = u) }
+        if (before::class != u::class || percent(before) != percent(u)) NodeService.refresh(context, _state.value)
+    }
+
     // MARK: -
 
     private fun newConnection(records: Records) = Connection(
@@ -444,8 +610,14 @@ class NodeRepository(private val context: Context) {
 
     private fun event(e: ConnectionEvent) {
         when (e) {
-            is ConnectionEvent.Ready -> update {
-                it.copy(phase = Phase.SYNCING, version = e.version, firmware = e.firmware, problem = null)
+            is ConnectionEvent.Ready -> {
+                update {
+                    it.copy(
+                        phase = Phase.SYNCING, version = e.version, firmware = e.firmware, board = e.board,
+                        release = e.release, problem = null,
+                    )
+                }
+                updateOnReady(e)
             }
             is ConnectionEvent.News -> news(e.body)
             ConnectionEvent.Synced -> {

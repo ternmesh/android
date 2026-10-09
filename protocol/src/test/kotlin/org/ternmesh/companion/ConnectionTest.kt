@@ -29,7 +29,7 @@ class ConnectionTest {
         assertTrue(answers.all { it is Outcome.Answered }, "every request answered: $answers")
         val r = link.connection.records
         assertEquals("EU868", r.self?.region)
-        assertEquals(3, r.syncedVersion)
+        assertEquals(4, r.syncedVersion)
         assertEquals(listOf("Bob", "Carol"), r.contacts.values.map { it.name }.sorted())
         assertEquals(listOf(0, 0), r.contacts.values.map { it.session }, "Bob's session ended; Carol never had one")
         assertEquals(listOf("Ridge walkers"), r.groups.values.map { it.name }, "the group made was left, the one joined renamed")
@@ -84,7 +84,7 @@ class ConnectionTest {
         assertEquals(2, link.connection.records.syncedVersion)
     }
 
-    /** A client of version 3 talking to a node of version 1 does the same. */
+    /** A client of version 4 talking to a node of version 1 does the same. */
     @Test
     fun aNodeOfAnEarlierVersionIsNotAskedWhatItCannotDo() {
         val node = Node(version = 1)
@@ -168,7 +168,7 @@ class ConnectionTest {
         node.time += Companion.ANSWER_WAIT_MS
         node.connection.tick()
         assertEquals(listOf("HELLO", "SET_TIME", "SYNC"), node.answerAll().map { it.typeName })
-        assertEquals(3, node.connection.agreed)
+        assertEquals(4, node.connection.agreed)
     }
 
     /** Opening again fails what was held only once the new HELLO is out, so a callback that opens again too sends no second one: one request at a time holds. */
@@ -236,7 +236,7 @@ class ConnectionTest {
         node.news(Node.groupMessage(6, MessageState.SENT))
         node.news(Node.message(9, MessageState.RECEIVED))
         node.answerSync()
-        assertEquals(3, node.connection.records.syncedVersion)
+        assertEquals(4, node.connection.records.syncedVersion)
 
         node.newsCount++ // one lost
         node.news(Body.State(9, MessageState.RECEIVED, 0, 0))
@@ -434,7 +434,7 @@ class ConnectionTest {
         assertEquals(ConnectionEvent.Synced, node.events.last())
     }
 
-    /** A client of version 3 reads a node of version 2's `SYNCED` as the two bytes it is. */
+    /** A client of version 4 reads a node of version 2's `SYNCED` as the two bytes it is. */
     @Test
     fun aNodeOfVersion2SyncsWithoutTheCount() {
         val node = Node(version = 2)
@@ -650,7 +650,7 @@ private class Node(val version: Int = LATEST, records: Records = Records()) {
         val answer = when (request.body) {
             is Body.Hello -> {
                 newsCount = 0
-                Body.Info(version, "test")
+                if (minOf(version, connection.version) >= 4) Body.Info(version, "test", "test-board", "0.1.0") else Body.Info(version, "test")
             }
             is Body.Sync -> syncedAnswer()
             is Body.Send, is Body.SendGroup, is Body.SendInvite -> Body.Queued(1)

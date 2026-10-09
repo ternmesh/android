@@ -9,7 +9,8 @@ What the app is, and why it is native, is in
 [decisions/phone-apps.md](https://github.com/ternmesh/spec/blob/main/decisions/phone-apps.md).
 It finds a node, pairs with it, and keeps a link to it in the background; it shows conversations
 with contacts and groups, where each message is and what it waits for, the node's battery, airtime
-and the nodes it hears, and changes its region, role, power and passkey.
+and the nodes it hears, and changes its region, role, power and passkey. It updates the node's
+firmware over the same link, with the release ternmesh.org publishes for its board and region.
 
 **To try it**, install the APK from the latest CI run on `main` (the `tern-debug-apk` artifact)
 on Android 8 or later. Each build is signed with the same debug key, so a newer one installs over
@@ -29,16 +30,18 @@ its tests run on any JVM.
 
 | Path | |
 |---|---|
-| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 3, as Kotlin types, and its numbers. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 4, as Kotlin types, and its numbers. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Codec.kt` | A frame built into bytes, and read back from them. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/ByteStream.kt` | Frames on a byte stream (USB serial, TCP), with the node's console text between them. Bluetooth does not need it. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Connection.kt` | One connection, the client's half: `HELLO` and the version both speak, one request at a time, counted news, syncing again, and the `PING` that keeps a node from taking the app for gone. No I/O and no clock of its own: a link hands it frames and calls `tick()`. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Updater.kt` | One firmware image given to a node over a connection: `UPDATE_BEGIN`, the image in chunks from wherever the node says, `UPDATE_END`, and going on after the link drops. No I/O, as with the connection. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Release.kt` | The firmware manifest at `ternmesh.org/firmware/latest.json`: the image for a board and region, and whether its release is newer than a node's, by Semantic Versioning. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Records.kt` | What the node has said it holds, as news leaves it, and the `after` the next sync asks from. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/RecordsFile.kt` | The records on disk, each as the frame that carried it, so the next run syncs only what is new. The Apple app keeps the same format. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Conversations.kt` | The records as conversations, and how far a `READ` may reach without marking another conversation's messages read. |
-| `protocol/src/test/` | The conformance section of the specification, as a client: the codec against every vector, and the connection as the client in `exchange` and `older`. |
+| `protocol/src/test/` | The conformance section of the specification, as a client: the codec against every vector, the connection as the client in `exchange` and `older`, and the updater as the client in `update`. |
 | `app/src/main/kotlin/org/ternmesh/app/link/` | Bluetooth LE: scanning for the node's service, and the GATT link (an MTU of at least 183, passkey pairing, one frame per write and per notification). |
-| `app/src/main/kotlin/org/ternmesh/app/node/` | The node the app drives: the link, the connection over it and the records on disk (`NodeRepository`), the foreground service that keeps it while the app is closed, and message notifications. |
+| `app/src/main/kotlin/org/ternmesh/app/node/` | The node the app drives: the link, the connection over it and the records on disk (`NodeRepository`), the foreground service that keeps it while the app is closed, message notifications, and downloading firmware and checking it before it is sent (`Firmware.kt`). |
 | `app/src/main/kotlin/org/ternmesh/app/ui/` | The screens, in Jetpack Compose: choosing a node, chats, one conversation, contacts and the node. Every word they show is in `res/values/strings.xml`. |
 
 The vectors' `group_ids` are not run here. A client never holds a group's secret, since no frame
@@ -56,8 +59,7 @@ set `TERN_COMPANION_VECTORS` to its path.
 * Sharing an address as a QR code or link, once the specification's
   [sharing draft](https://github.com/ternmesh/spec/blob/main/draft/sharing.md) settles.
 * A release build, signed and published.
-* What the specification does not define yet: positions and a map, telemetry, firmware updates
-  over the link.
+* What the specification does not define yet: positions and a map, telemetry.
 
 * [CONTRIBUTING.md](CONTRIBUTING.md) — DCO sign-off, and the specification first
 * [Governance](https://github.com/ternmesh/spec/blob/main/GOVERNANCE.md)

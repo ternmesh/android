@@ -30,7 +30,7 @@ class CompanionVectorsTest {
     @Test
     fun framesBuiltReadWrappedAndFound() {
         val cases = v.list("frames")
-        assertTrue(cases.size >= 53)
+        assertTrue(cases.size >= 64)
         for (c in cases) {
             val name = c.str("type")
             val frame = Frame(c.int("seq"), body(name, c.obj("fields")))
@@ -122,9 +122,42 @@ class CompanionVectorsTest {
                 assertEquals(f.str("frame"), Hex.encode(Codec.encode(frame)), "$version $name")
             }
         }
-        // And by version 3, version 2's SYNCED is cut short.
+        // And by version 3 or later, version 2's SYNCED is cut short.
         assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x43, 0x02)) }
         assertEquals(Body.Synced(null), Codec.decode(byteArrayOf(0x43, 0x02), 2).body)
+    }
+
+    /** The update's and the refusals' frames, each read and built back; the image's digest is the one given. */
+    @Test
+    fun updateEveryFrameReadsAndBuildsBack() {
+        val image = v.bytes("image")
+        assertEquals(v.str("image_digest"), Hex.encode(java.security.MessageDigest.getInstance("SHA-256").digest(image)))
+        val connections = v.getValue("update").jsonArray.map { c -> c.jsonArray.map { it.jsonObject } }
+        assertEquals(2, connections.size)
+        for (f in connections.flatten() + v.list("refusals")) {
+            val name = f.str("type")
+            val frame = Codec.decode(f.bytes("frame"))
+            assertEquals(name, frame.body.typeName)
+            assertEquals(f.int("seq"), frame.seq, name)
+            assertEquals(f.str("from") == "client", Companion.isRequest(frame.body.type), name)
+            assertEquals(f.str("frame"), Hex.encode(Codec.encode(frame)), name)
+        }
+    }
+
+    /** `INFO`'s board and release are version 4's: a client of 4 reads a node of 3's without them, and a client of 3 a node of 4's. */
+    @Test
+    fun infoHasBoardAndReleaseOnlyWhenBothSpeak4() {
+        val four = Codec.encode(Frame(1, Body.Info(4, "tern", "heltec-v3", "0.2.0")))
+        assertEquals(Body.Info(4, "tern", "heltec-v3", "0.2.0"), Codec.decode(four).body)
+        assertEquals(Body.Info(4, "tern"), Codec.decode(four, 3).body)
+        val three = Codec.encode(Frame(1, Body.Info(3, "tern")))
+        assertEquals(Body.Info(3, "tern"), Codec.decode(three).body)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Info(4, "tern", "heltec-v3", null))) }
+        // Version 3 does not define updates.
+        val begin = Codec.encode(Frame(1, Body.UpdateBegin(1, ByteArray(32))))
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(begin, 3) }.reason)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.UpdateData(0, ByteArray(173)))) }
+        assertFailsWith<IllegalArgumentException> { Body.UpdateBegin(1, ByteArray(31)) }
     }
 
     /** A frame of a later version than the one both ends speak is one that version does not define. */
@@ -191,12 +224,20 @@ class CompanionVectorsTest {
         "SEND_GROUP" -> Body.SendGroup(f.long("ref"), f.gid("group"), f.str("text"))
         "SEND_INVITE" -> Body.SendInvite(f.gid("group"), f.addr("to"))
         "JOIN" -> Body.Join(f.long("id"))
+        "UPDATE_BEGIN" -> Body.UpdateBegin(f.long("size"), f.bytes("digest"))
+        "UPDATE_DATA" -> Body.UpdateData(f.long("offset"), f.bytes("data"))
+        "UPDATE_END" -> Body.UpdateEnd
         "OK" -> Body.Ok
         "ERROR" -> Body.Error(f.int("code"))
-        "INFO" -> Body.Info(f.int("version"), f.str("firmware"))
+        "INFO" -> Body.Info(
+            f.int("version"), f.str("firmware"),
+            if (f.containsKey("board")) f.str("board") else null,
+            if (f.containsKey("release")) f.str("release") else null,
+        )
         "SYNCED" -> Body.Synced(if (f.containsKey("news")) f.int("news") else null)
         "QUEUED" -> Body.Queued(f.long("id"))
         "MADE" -> Body.Made(f.gid("group"))
+        "UPDATING" -> Body.Updating(f.long("offset"))
         "SELF" -> Body.Self(f.addr("address"), f.int("role"), f.str("region"), f.int("power"), f.long("time"))
         "CONTACT" -> Body.Contact(f.addr("address"), f.int("session"), f.str("name"))
         "CONTACT_GONE" -> Body.ContactGone(f.addr("address"))

@@ -39,6 +39,8 @@
     <string name="error_7">the Bluetooth packet size (MTU) is too small</string>
     <string name="error_8">the node is busy; try again shortly</string>
     <string name="error_9">the node is not in that group, or no longer holds that invite</string>
+    <string name="error_10">the node is not where the update is</string>
+    <string name="error_11">that is not firmware this node runs</string>
     <string name="error_other">error %1$d</string>
 
     <string name="outcome_unsupported">Your node\'s firmware does not support this yet.</string>
@@ -168,6 +170,42 @@
     <string name="passkey">Bluetooth passkey</string>
     <string name="passkey_hint">6 digits, or empty for a new random one each time</string>
     <string name="set">Set</string>
+
+    <!-- Firmware -->
+    <string name="firmware">Firmware</string>
+    <string name="firmware_release">Release %1$s, for %2$s</string>
+    <string name="firmware_no_release">No release number (built by hand), for %1$s</string>
+    <string name="firmware_usb_only">This node cannot be updated over Bluetooth. Flash it once over USB, at ternmesh.org/flash, and later updates can come this way.</string>
+    <string name="firmware_too_old">Your node\'s firmware is too old to be updated over Bluetooth. Flash it once over USB, at ternmesh.org/flash, and later updates can come this way.</string>
+    <string name="update_check">Check for update</string>
+    <string name="update_checking">Checking ternmesh.org…</string>
+    <string name="update_check_failed">Could not reach ternmesh.org. Check the phone\'s internet connection and try again.</string>
+    <string name="update_up_to_date">Up to date: %1$s is the latest release.</string>
+    <string name="update_newer">Release %1$s is available.</string>
+    <string name="update_unknown">Release %1$s is published. Your node\'s firmware has no release number, so Tern cannot tell whether it is newer.</string>
+    <string name="update_no_image">Release %1$s has no firmware for %2$s in %3$s.</string>
+    <string name="update_no_region">Set the node\'s region first: its firmware is built for one.</string>
+    <string name="update">Update</string>
+    <string name="update_confirm_title">Update to %1$s?</string>
+    <string name="update_confirm_text">Tern downloads the firmware, checks it, and sends it to the node over Bluetooth, which takes a few minutes. The node then restarts, and is off the air for a moment. Keep the phone near the node until it is done. Its messages, contacts and settings stay.</string>
+    <string name="update_downloading">Downloading %1$s: %2$d%% (%3$s of %4$s)</string>
+    <string name="update_sending">Sending %1$s to the node: %2$d%% (%3$s of %4$s)</string>
+    <string name="update_waiting">Waiting for the node to come back, to go on with the update…</string>
+    <string name="update_restarting">The node is restarting into the new firmware…</string>
+    <string name="update_unconfirmed">The node did not confirm the last step. Waiting for it to come back, to see which firmware it runs…</string>
+    <string name="update_done">Updated: the node runs %1$s.</string>
+    <string name="update_not_started">The node did not start %1$s, and went back to %2$s.</string>
+    <string name="update_not_finished">The node still runs %2$s: the update to %1$s did not finish. Try again.</string>
+    <string name="update_no_room">This node cannot be updated over Bluetooth. Flash it once over USB, at ternmesh.org/flash.</string>
+    <string name="update_not_an_image">That is not firmware this node runs, so the node discarded it.</string>
+    <string name="update_refused">The node refused the update: %1$s</string>
+    <string name="update_download_failed">Could not download the firmware. Check the phone\'s internet connection and try again.</string>
+    <string name="update_corrupt">The firmware downloaded is not the one published: it was not sent to the node. Try again.</string>
+    <string name="update_unsupported">Your node\'s firmware cannot take updates over Bluetooth.</string>
+    <string name="update_notification_downloading">Downloading firmware: %1$d%%</string>
+    <string name="update_notification_sending">Updating the node\'s firmware: %1$d%%</string>
+    <string name="no_release">none</string>
+    <string name="ok">OK</string>
 
     <plurals name="bytes_left">
         <item quantity="one">%1$d byte left</item>

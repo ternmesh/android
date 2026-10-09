@@ -1,10 +1,12 @@
-// The node itself: its address to give others, its battery and airtime, the nodes it hears, and the
-// four settings a client may change; and disconnecting from it, changing it, or forgetting it.
+// The node itself: its address to give others, its battery and airtime, the nodes it hears, the
+// four settings a client may change, and its firmware and updating it; and disconnecting from it,
+// changing it, or forgetting it.
 package org.ternmesh.app.ui
 
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -39,10 +42,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import org.ternmesh.app.R
 import org.ternmesh.app.node.ChosenNode
+import org.ternmesh.app.node.FirmwareFailure
+import org.ternmesh.app.node.FirmwareUpdate
 import org.ternmesh.app.node.NodeRepository
 import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
+import org.ternmesh.app.node.percent
 import org.ternmesh.companion.Body
+import org.ternmesh.companion.ErrorCode
+import org.ternmesh.companion.Offer
 import org.ternmesh.companion.Setting
 
 /** The regions the specification's profiles define. */
@@ -143,6 +151,10 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
             }
         }
 
+        if (state.board != null || state.version != null) {
+            Section(stringResource(R.string.firmware)) { FirmwareUpdates(repository, state) }
+        }
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.phase == Phase.DISCONNECTED) {
                 Button(onClick = repository::connect) { Text(stringResource(R.string.connect)) }
@@ -158,6 +170,131 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
         }
     }
     forgetting?.let { node -> ForgetDialog(node, onDismiss = { forgetting = null }) { repository.forget(node.address) } }
+}
+
+/**
+ * The node's release and board, and updating it: checking ternmesh.org, asking before an update,
+ * how far one has gone, and what it came to.
+ */
+@Composable
+private fun FirmwareUpdates(repository: NodeRepository, state: NodeState) {
+    val context = LocalContext.current
+    val board = state.board
+    var confirming by remember { mutableStateOf<FirmwareUpdate.Checked?>(null) }
+
+    if (board.isNullOrEmpty()) {
+        // A node of version 3 or earlier says no board; one built without a way to update says an empty one.
+        Text(stringResource(if (board == null) R.string.firmware_too_old else R.string.firmware_usb_only))
+        return
+    }
+    val release = state.release.orEmpty()
+    Text(
+        if (release.isEmpty()) stringResource(R.string.firmware_no_release, board) else stringResource(R.string.firmware_release, release, board),
+    )
+    val ready = state.phase == Phase.READY
+    when (val u = state.update) {
+        FirmwareUpdate.Idle -> Button(onClick = repository::checkForUpdate, enabled = ready) { Text(stringResource(R.string.update_check)) }
+        FirmwareUpdate.Checking -> Text(stringResource(R.string.update_checking))
+        FirmwareUpdate.CheckFailed -> {
+            Text(stringResource(R.string.update_check_failed))
+            TextButton(onClick = repository::checkForUpdate, enabled = ready) { Text(stringResource(R.string.retry)) }
+        }
+        is FirmwareUpdate.Checked -> {
+            val region = state.records.self?.region.orEmpty()
+            when {
+                u.image == null && region.isEmpty() -> Text(stringResource(R.string.update_no_region))
+                u.image == null -> Text(stringResource(R.string.update_no_image, u.release, board, region))
+                u.offer == Offer.CURRENT -> Text(stringResource(R.string.update_up_to_date, u.release))
+                else -> {
+                    Text(stringResource(if (u.offer == Offer.NEWER) R.string.update_newer else R.string.update_unknown, u.release))
+                    Button(onClick = { confirming = u }, enabled = ready) { Text(stringResource(R.string.update)) }
+                }
+            }
+            if (u.image == null || u.offer == Offer.CURRENT) {
+                TextButton(onClick = repository::checkForUpdate, enabled = ready) { Text(stringResource(R.string.update_check)) }
+            }
+        }
+        is FirmwareUpdate.Downloading -> Progress(
+            stringResource(
+                R.string.update_downloading, u.release, percent(u) ?: 0,
+                Formatter.formatFileSize(context, u.received), Formatter.formatFileSize(context, u.size),
+            ),
+            u.received.toFloat() / u.size,
+            cancel = repository::cancelUpdate,
+        )
+        is FirmwareUpdate.Sending -> Progress(
+            if (u.waiting) {
+                stringResource(R.string.update_waiting)
+            } else {
+                stringResource(
+                    R.string.update_sending, u.release, percent(u) ?: 0,
+                    Formatter.formatFileSize(context, u.sent), Formatter.formatFileSize(context, u.size),
+                )
+            },
+            u.sent.toFloat() / u.size,
+            // Once every byte is sent the node has been told to run them: that cannot be taken back.
+            cancel = repository::cancelUpdate.takeIf { u.sent < u.size },
+        )
+        is FirmwareUpdate.Restarting -> {
+            Text(stringResource(if (u.confirmed) R.string.update_restarting else R.string.update_unconfirmed))
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
+        is FirmwareUpdate.Done -> Ended(stringResource(R.string.update_done, u.release), repository::dismissUpdate)
+        is FirmwareUpdate.NotRunning -> Ended(
+            stringResource(
+                if (u.confirmed) R.string.update_not_started else R.string.update_not_finished,
+                u.wanted, u.running.ifEmpty { stringResource(R.string.no_release) },
+            ),
+            repository::dismissUpdate,
+        )
+        is FirmwareUpdate.Refused -> Ended(
+            when (u.code) {
+                ErrorCode.NO_ROOM -> stringResource(R.string.update_no_room)
+                ErrorCode.NOT_AN_IMAGE -> stringResource(R.string.update_not_an_image)
+                else -> stringResource(R.string.update_refused, errorText(context, u.code))
+            },
+            repository::dismissUpdate,
+        )
+        is FirmwareUpdate.Failed -> Ended(
+            stringResource(
+                when (u.why) {
+                    FirmwareFailure.DOWNLOAD -> R.string.update_download_failed
+                    FirmwareFailure.CORRUPT -> R.string.update_corrupt
+                    FirmwareFailure.UNSUPPORTED -> R.string.update_unsupported
+                },
+            ),
+            repository::dismissUpdate,
+        )
+    }
+
+    confirming?.let { c ->
+        AlertDialog(
+            onDismissRequest = { confirming = null },
+            title = { Text(stringResource(R.string.update_confirm_title, c.release)) },
+            text = { Text(stringResource(R.string.update_confirm_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirming = null
+                    c.image?.let { repository.startUpdate(c.release, it) }
+                }) { Text(stringResource(R.string.update)) }
+            },
+            dismissButton = { TextButton(onClick = { confirming = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+}
+
+@Composable
+private fun Progress(text: String, fraction: Float, cancel: (() -> Unit)?) {
+    Text(text)
+    LinearProgressIndicator(progress = { fraction.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+    cancel?.let { TextButton(onClick = it) { Text(stringResource(R.string.cancel)) } }
+}
+
+/** What an update came to, until the user has read it. */
+@Composable
+private fun Ended(text: String, dismiss: () -> Unit) {
+    Text(text)
+    TextButton(onClick = dismiss) { Text(stringResource(R.string.ok)) }
 }
 
 /** Asks before [node] is forgotten, saying what that deletes and what it does not. */
