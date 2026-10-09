@@ -63,6 +63,7 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Un
     var menu by remember { mutableStateOf(false) }
     var picking by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf(false) }
+    var joining by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val shown = remember(conversations, query) { conversations.filter { matches(it, query.trim()) } }
 
@@ -112,6 +113,9 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Un
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text(stringResource(R.string.new_chat)) }, onClick = { menu = false; picking = true })
                 DropdownMenuItem(text = { Text(stringResource(R.string.new_group)) }, onClick = { menu = false; naming = true })
+                if (hasJoinCodes(state)) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.join_group)) }, onClick = { menu = false; joining = true })
+                }
             }
         }
     }
@@ -122,6 +126,7 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Un
             open(Peer.Contact(address))
         }
     }
+    if (joining) JoinDialog(repository, state, "", onDismiss = { joining = false }, open = open)
     if (naming) {
         val report = rememberReport()
         NameDialog(stringResource(R.string.new_group), "", Companion.NAME_MAX, stringResource(R.string.make), onDismiss = { naming = false }) { name ->

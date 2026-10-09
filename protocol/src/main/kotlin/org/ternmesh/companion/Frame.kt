@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 6: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 7: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -9,8 +9,8 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 5 is this without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 6
+    /** The version this client speaks. Version 6 is this without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 7
     const val MAX_FRAME = 180
     const val TEXT_MAX = 128
     const val NAME_MAX = 31
@@ -18,6 +18,9 @@ object Companion {
     const val FIRMWARE_MAX = 31
     const val BOARD_MAX = 31
     const val RELEASE_MAX = 31
+
+    /** A join code's link, the longest: a group whose name is 31 bytes. */
+    const val LINK_MAX = 102
 
     /** The name a node's cards carry, and a card's. */
     const val CARD_NAME_MAX = 31
@@ -71,6 +74,7 @@ object Companion {
         in 0x30..0x32, 0x46 -> 4
         in 0x33..0x35, in 0x8E..0x91 -> 5
         0x92, 0x93 -> 6
+        0x26, 0x27, 0x47 -> 7
         else -> 0
     }
 
@@ -112,7 +116,10 @@ class Address(bytes: ByteArray) {
     }
 }
 
-/** A group's id, which the node works out from the group's secret. A client never holds the secret: no frame carries it. */
+/**
+ * A group's id, which the node works out from the group's secret. No frame carries the secret but a
+ * join code's, in `LINK` and `JOIN_LINK`, which a client passes on and does not keep.
+ */
 class GroupId(bytes: ByteArray) {
     private val bytes = bytes.copyOf()
 
@@ -232,7 +239,7 @@ object MessageState {
     const val RECEIVED = 4
 }
 
-/** What a frame says: every frame of version 6. [since] is the least version that defines it. */
+/** What a frame says: every frame of version 7. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String) {
     /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
     open val since: Int get() = Companion.since(type)
@@ -257,6 +264,19 @@ sealed class Body(val type: Int, val typeName: String) {
     data class SendGroup(val ref: Long, val group: GroupId, val text: String) : Body(0x23, "SEND_GROUP")
     data class SendInvite(val group: GroupId, val to: Address) : Body(0x24, "SEND_INVITE")
     data class Join(val id: Long) : Body(0x25, "JOIN")
+
+    /** The join code of [group], which the node answers with `LINK`. Only ever what the user asked to see or share. */
+    data class GroupLink(val group: GroupId) : Body(0x26, "GROUP_LINK")
+
+    /**
+     * Join the group a join code is for, which the node answers with `MADE`. Only ever a code the
+     * user asked to join from. [toString] leaves the link out: it is the group's secret.
+     */
+    class JoinLink(val link: String) : Body(0x27, "JOIN_LINK") {
+        override fun equals(other: Any?) = other is JoinLink && link == other.link
+        override fun hashCode() = link.hashCode()
+        override fun toString() = "JoinLink(…)"
+    }
 
     /** An image of [size] bytes, whose SHA-256 is [digest], follows. */
     class UpdateBegin(val size: Long, digest: ByteArray) : Body(0x30, "UPDATE_BEGIN") {
@@ -323,6 +343,13 @@ sealed class Body(val type: Int, val typeName: String) {
 
     /** The offset to send an update's image from. */
     data class Updating(val offset: Long) : Body(0x46, "UPDATING")
+
+    /** A group's join code, which `GROUP_LINK` asked for. [toString] leaves it out: it is the group's secret. */
+    class Link(val link: String) : Body(0x47, "LINK") {
+        override fun equals(other: Any?) = other is Link && link == other.link
+        override fun hashCode() = link.hashCode()
+        override fun toString() = "Link(…)"
+    }
 
     // News, sent by the node with its count as seq.
 

@@ -25,15 +25,22 @@ class ConnectionTest {
         val link = Link(Connection(now = { 0 }, wallTime = { setTime.time }))
         val answers = link.replay(frames)
 
-        assertEquals(20, answers.size)
-        // SHARE_GROUP asks for a precision past 24, and SET 5 for a value neither 0 nor 1.
-        assertEquals(List(2) { Outcome.Refused(ErrorCode.REFUSED) }, answers.filter { it !is Outcome.Answered })
+        assertEquals(23, answers.size)
+        // SHARE_GROUP asks for a precision past 24, SET 5 for a value neither 0 nor 1, and the last
+        // JOIN_LINK hands the node a join code whose check fails.
+        assertEquals(List(3) { Outcome.Refused(ErrorCode.REFUSED) }, answers.filter { it !is Outcome.Answered })
+        val shown = answers.firstNotNullOf { (it as? Outcome.Answered)?.body as? Body.Link }
+        assertEquals(JoinCode(GroupId.fromHex("c8eafadc0857a696")!!, "Ridge walkers"), JoinCode.read(shown.link))
         val r = link.connection.records
         assertEquals("EU868", r.self?.region)
         assertEquals(Companion.VERSION, r.syncedVersion)
         assertEquals(listOf("Bob", "Carol", "Dave (trail crew)"), r.contacts.values.map { it.name }.sorted())
         assertEquals(listOf(0, 0, 0), r.contacts.values.map { it.session }, "Bob's session ended; Carol and Dave never had one")
-        assertEquals(listOf("Ridge walkers"), r.groups.values.map { it.name }, "the group made was left, the one joined renamed")
+        assertEquals(
+            listOf("Hut", "Ridge walkers"),
+            r.groups.values.map { it.name }.sorted(),
+            "the group made was left and joined again from its code, the one joined from an invite renamed",
+        )
         assertEquals((17L..22L).toList(), r.items.keys.sorted())
         assertEquals(emptyList(), r.ordered.filter { it.isUnread }, "READ marked the message, group message and invite read")
         assertEquals(MessageState.DELIVERED, r.items[18L]?.state)
@@ -102,13 +109,13 @@ class ConnectionTest {
     }
 
     /**
-     * Clients of versions 3 and 4 are sent no position and no sharing, and one of version 5 no card
-     * and a `SELF` without the cards' fields. None sends the request, or the setting, its version
-     * does not define: it fails here, with nothing on the link.
+     * Clients of versions 3 and 4 are sent no position and no sharing, one of version 5 no card and
+     * a `SELF` without the cards' fields, and one of version 6 its card. None sends the request, or
+     * the setting, its version does not define: it fails here, with nothing on the link.
      */
     @Test
-    fun olderVersions3To5AndTheRequestEachMustNotSend() {
-        for (version in 3..5) {
+    fun olderVersions3To6AndTheRequestEachMustNotSend() {
+        for (version in 3..6) {
             val frames = vectors.list("older").first { it.int("version") == version }.list("frames")
             val link = Link(Connection(version = version, now = { 0 }, wallTime = null))
             link.replay(frames.dropLast(2))
@@ -118,9 +125,9 @@ class ConnectionTest {
             assertEquals(version, link.connection.records.syncedVersion)
             assertEquals(emptyMap(), link.connection.records.positions)
             assertEquals(emptyMap(), link.connection.records.sharing)
-            assertEquals(emptyMap(), link.connection.records.cards)
-            assertNull(link.connection.records.self?.cards)
-            assertNull(link.connection.records.self?.cardName)
+            assertEquals(if (version >= 6) 1 else 0, link.connection.records.cards.size)
+            assertEquals(version >= 6, link.connection.records.self?.cards != null)
+            assertEquals(version >= 6, link.connection.records.self?.cardName != null)
 
             val refused = Codec.decode(frames[frames.size - 2].bytes("frame")).body
             assertEquals(version + 1, refused.since)

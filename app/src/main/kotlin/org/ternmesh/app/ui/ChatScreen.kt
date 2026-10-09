@@ -102,6 +102,9 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
                         is Peer.Group -> {
                             DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { menu = false; dialog = ChatDialog.RENAME })
                             DropdownMenuItem(text = { Text(stringResource(R.string.invite)) }, onClick = { menu = false; dialog = ChatDialog.INVITE })
+                            if (hasJoinCodes(state) && state.records.groups[peer.group] != null) {
+                                DropdownMenuItem(text = { Text(stringResource(R.string.join_code)) }, onClick = { menu = false; dialog = ChatDialog.JOIN_CODE })
+                            }
                             DropdownMenuItem(text = { Text(stringResource(R.string.leave)) }, onClick = { menu = false; dialog = ChatDialog.LEAVE })
                         }
                         is Peer.Contact -> {
@@ -194,11 +197,12 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
             dismissButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.cancel)) } },
         )
         ChatDialog.SHARE -> ShareDialog(repository, state, peer) { dialog = null }
+        ChatDialog.JOIN_CODE -> if (peer is Peer.Group) JoinCodeDialog(repository, peer.group, conversation.name) { dialog = null }
         null -> {}
     }
 }
 
-private enum class ChatDialog { RENAME, INVITE, END_SESSION, LEAVE, SHARE }
+private enum class ChatDialog { RENAME, INVITE, END_SESSION, LEAVE, SHARE, JOIN_CODE }
 
 @Composable
 private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {

@@ -78,6 +78,8 @@ object Codec {
                 w.addr(b.to)
             }
             is Body.Join -> w.u32(b.id)
+            is Body.GroupLink -> w.gid(b.group)
+            is Body.JoinLink -> w.str(b.link, Companion.LINK_MAX)
             is Body.UpdateBegin -> {
                 w.u32(b.size)
                 w.raw(b.digest)
@@ -116,6 +118,7 @@ object Codec {
             is Body.Queued -> w.u32(b.id)
             is Body.Made -> w.gid(b.group)
             is Body.Updating -> w.u32(b.offset)
+            is Body.Link -> w.str(b.link, Companion.LINK_MAX)
             is Body.Self -> {
                 w.addr(b.address)
                 w.u8(b.role)
@@ -270,6 +273,8 @@ object Codec {
             0x23 -> Body.SendGroup(r.u32(), r.gid(), r.str(Companion.TEXT_MAX))
             0x24 -> Body.SendInvite(r.gid(), r.addr())
             0x25 -> Body.Join(r.u32())
+            0x26 -> Body.GroupLink(r.gid())
+            0x27 -> Body.JoinLink(r.str(Companion.LINK_MAX))
             0x30 -> Body.UpdateBegin(r.u32(), r.raw(Companion.DIGEST))
             0x31 -> Body.UpdateData(r.u32(), r.bytes(Companion.UPDATE_CHUNK))
             0x32 -> Body.UpdateEnd
@@ -293,6 +298,7 @@ object Codec {
             0x44 -> Body.Queued(r.u32())
             0x45 -> Body.Made(r.gid())
             0x46 -> Body.Updating(r.u32())
+            0x47 -> Body.Link(r.str(Companion.LINK_MAX))
             0x80 -> {
                 val address = r.addr()
                 val role = r.u8()

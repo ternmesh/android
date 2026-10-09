@@ -24,6 +24,11 @@ before anything goes on the air. The map's tiles come from [OpenFreeMap](https:/
 drawn by [MapLibre](https://maplibre.org): the tile server sees which areas the map shows, and
 nothing else of the user's.
 
+It hands a group on with its join code, a link and a QR code that the node writes when the user
+asks, after saying that anyone who sees it can read the group. It joins one from a code scanned,
+pasted or opened from a `ternmesh.org/G` link, naming the group first; the node reads the code,
+and the app keeps neither the link nor the secret in it.
+
 **To try it**, install `tern.apk` from the
 [latest release](https://github.com/ternmesh/android/releases/latest/download/tern.apk) on
 Android 8 or later, or the one from the latest CI run on `main` (the `tern-apk` artifact). Both
@@ -49,7 +54,7 @@ its tests run on any JVM.
 
 | Path | |
 |---|---|
-| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 6, as Kotlin types, and its numbers. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 7, as Kotlin types, and its numbers. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Codec.kt` | A frame built into bytes, and read back from them. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/ByteStream.kt` | Frames on a byte stream (USB serial, TCP), with the node's console text between them. Bluetooth does not need it. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Connection.kt` | One connection, the client's half: `HELLO` and the version both speak, one request at a time, counted news, syncing again, and the `PING` that keeps a node from taking the app for gone. No I/O and no clock of its own: a link hands it frames and calls `tick()`. |
@@ -57,21 +62,25 @@ its tests run on any JVM.
 | `protocol/src/main/kotlin/org/ternmesh/companion/Release.kt` | The firmware manifest at `ternmesh.org/firmware/latest.json`: the image for a board and region, and whether its release is newer than a node's, by Semantic Versioning. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Records.kt` | What the node has said it holds, as news leaves it, positions received, sharing and the cards of who is about included, and the `after` the next sync asks from. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/RecordsFile.kt` | The records on disk, each as the frame that carried it, so the next run syncs only what is new; not positions, sharing or cards, which every sync sends whole. The Apple app keeps the same format. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Sharing.kt`, `JoinCode.kt` | An address's text, link and short code (draft/sharing.md); and a group's join code read, to name the group before the user joins it (draft/groups.md). |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Conversations.kt` | The records as conversations, and how far a `READ` may reach without marking another conversation's messages read. |
 | `protocol/src/test/` | The conformance section of the specification, as a client: the codec against every vector, the connection as the client in `exchange`, `older` and `unknown_to_older`, and the updater as the client in `update`. |
 | `app/src/main/kotlin/org/ternmesh/app/link/` | Bluetooth LE: scanning for the node's service, and the GATT link (an MTU of at least 183, passkey pairing, one frame per write and per notification). |
 | `app/src/main/kotlin/org/ternmesh/app/node/` | The node the app drives: the link, the connection over it and the records on disk (`NodeRepository`), the foreground service that keeps it while the app is closed, message notifications, downloading firmware and checking it before it is sent (`Firmware.kt`), and the phone's location given to the node while it shares (`LocationFeed.kt`). |
 | `app/src/main/kotlin/org/ternmesh/app/ui/` | The screens, in Jetpack Compose: choosing a node, chats, one conversation, contacts, the map, sharing a position, and the node. Every word they show is in `res/values/strings.xml`. |
 
-The vectors' `group_ids` are not run here. A client never holds a group's secret, since no frame
-carries one, so working out an id from it is the node's part.
+The vectors' `group_ids` are run against the join code reader, which works out the id of the
+group a code is for, so that the app can say whether the node holds it already.
 
-`protocol/src/test/resources/vectors/companion.json` is a copy of the specification's
-[`vectors/companion.json`](https://github.com/ternmesh/spec/blob/main/vectors/companion.json).
-CI runs the tests against the copy, and against the specification's own as it is on `main`, which
-also runs once a week: if the specification changes, that job fails or warns. Copy the new file
-here in the pull request that changes the code to match. To run against another file locally,
-set `TERN_COMPANION_VECTORS` to its path.
+`protocol/src/test/resources/vectors/` holds copies of the specification's
+[`companion.json`](https://github.com/ternmesh/spec/blob/main/vectors/companion.json),
+[`sharing.json`](https://github.com/ternmesh/spec/blob/main/vectors/sharing.json) and
+[`groups.json`](https://github.com/ternmesh/spec/blob/main/vectors/groups.json), of which only
+the join codes are run here. CI runs the tests against the copies, and against the
+specification's own as they are on `main`, which also runs once a week: if the specification
+changes, that job fails or warns. Copy the new file here in the pull request that changes the code
+to match. To run against other files locally, set `TERN_COMPANION_VECTORS`,
+`TERN_SHARING_VECTORS` or `TERN_GROUPS_VECTORS` to their paths.
 
 ## Still to come
 

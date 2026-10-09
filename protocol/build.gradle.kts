@@ -24,4 +24,5 @@ tasks.test {
     // CI points this at the specification's own vectors; by default the tests read the copy here.
     System.getenv("TERN_COMPANION_VECTORS")?.let { systemProperty("tern.companion.vectors", it) }
     System.getenv("TERN_SHARING_VECTORS")?.let { systemProperty("tern.sharing.vectors", it) }
+    System.getenv("TERN_GROUPS_VECTORS")?.let { systemProperty("tern.groups.vectors", it) }
 }

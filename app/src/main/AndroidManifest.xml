@@ -44,9 +44,11 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- A node's link (draft/sharing.md in ternmesh/spec), opened here rather than in a
-                 browser once ternmesh.org's assetlinks.json names this app. The path's letter is
-                 either case: a QR code holds it upper-case. -->
+            <!-- A node's link (draft/sharing.md in ternmesh/spec), and a group's join code
+                 (draft/groups.md), opened here rather than in a browser once ternmesh.org's
+                 assetlinks.json names this app. The path's letter is either case: a QR code holds
+                 it upper-case. A join code is all after the path's #, which Android hands on in
+                 the intent's data. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -55,6 +57,8 @@
                 <data android:host="ternmesh.org" />
                 <data android:pathPrefix="/a/" />
                 <data android:pathPrefix="/A/" />
+                <data android:path="/g" />
+                <data android:path="/G" />
             </intent-filter>
             <!-- The same link as a QR code holds it, upper-case throughout. Android matches a
                  scheme and host case-sensitively, and a scanner may pass the link on as it read
@@ -68,6 +72,8 @@
                 <data android:host="TERNMESH.ORG" tools:ignore="AppLinkUrlError" />
                 <data android:pathPrefix="/A/" />
                 <data android:pathPrefix="/a/" />
+                <data android:path="/G" />
+                <data android:path="/g" />
             </intent-filter>
         </activity>
 
