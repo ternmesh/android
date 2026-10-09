@@ -28,6 +28,9 @@ class LocationFeed(private val context: Context, private val give: (Body.SetPosi
     /** When the last position went to the node, on the elapsed clock; none since listening began, 0. */
     private var lastGiven = 0L
 
+    /** How exact the last position given was, in metres; [Float.MAX_VALUE] for unknown. */
+    private var lastAccuracy = Float.MAX_VALUE
+
     private val listener = LocationListener { location -> take(location) }
 
     /** Listens while [wanted] and the user allows it; stops otherwise. */
@@ -69,9 +72,18 @@ class LocationFeed(private val context: Context, private val give: (Body.SetPosi
     private fun take(location: Location) {
         if (!listening) return
         val now = SystemClock.elapsedRealtime()
-        // Not more often than every few seconds, as the specification asks of a client.
-        if (lastGiven != 0L && now - lastGiven < MIN_GAP_MS) return
+        // Not more often than every few seconds, as the specification asks of a client; but a fix
+        // much better than the last given, such as satellites' just after a network's, goes at once
+        // rather than being lost to the network's again at the next turn.
+        val accuracy = if (location.hasAccuracy() && location.accuracy > 0) location.accuracy else Float.MAX_VALUE
+        if (lastGiven != 0L && now - lastGiven < MIN_GAP_MS) {
+            if (now - lastGiven < BETTER_GAP_MS || accuracy * 2 >= lastAccuracy) return
+        } else if (lastGiven != 0L && now - lastGiven < INTERVAL_MS && accuracy > lastAccuracy * 2) {
+            // And a much worse one does not replace a good one at once: the next better fix will.
+            return
+        }
         lastGiven = now
+        lastAccuracy = accuracy
         give(positionOf(location))
     }
 
@@ -94,6 +106,7 @@ class LocationFeed(private val context: Context, private val give: (Body.SetPosi
     companion object {
         private const val INTERVAL_MS = 30_000L
         private const val MIN_GAP_MS = 15_000L
+        private const val BETTER_GAP_MS = 3_000L
         private const val RECENT_S = 600L
 
         fun permitted(context: Context) = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
