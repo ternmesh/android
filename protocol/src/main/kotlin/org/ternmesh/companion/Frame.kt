@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 5: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 6: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -9,8 +9,8 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 4 is this without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 5
+    /** The version this client speaks. Version 5 is this without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 6
     const val MAX_FRAME = 180
     const val TEXT_MAX = 128
     const val NAME_MAX = 31
@@ -18,6 +18,9 @@ object Companion {
     const val FIRMWARE_MAX = 31
     const val BOARD_MAX = 31
     const val RELEASE_MAX = 31
+
+    /** The name a node's cards carry, and a card's. */
+    const val CARD_NAME_MAX = 31
 
     /** The `data` an `UPDATE_DATA` carries, all but the last: the longest that fits a frame. */
     const val UPDATE_CHUNK = 172
@@ -67,8 +70,12 @@ object Companion {
         in 0x20..0x25, 0x45, in 0x8A..0x8D -> 2
         in 0x30..0x32, 0x46 -> 4
         in 0x33..0x35, in 0x8E..0x91 -> 5
+        0x92, 0x93 -> 6
         else -> 0
     }
+
+    /** The least version that defines `SET`'s setting [setting]. */
+    fun settingSince(setting: Int): Int = if (setting in 5..6) 6 else 0
 }
 
 /** A node's address: an Ed25519 public key. */
@@ -189,6 +196,9 @@ data class Frame(val seq: Int, val body: Body)
 sealed interface Setting {
     val number: Int
 
+    /** The least version that defines this setting. */
+    val since: Int get() = Companion.settingSince(number)
+
     data class Region(val name: String) : Setting { override val number get() = 1 }
 
     /** 0 a leaf, 1 a relay. */
@@ -205,6 +215,12 @@ sealed interface Setting {
             const val RANDOM = 0xFFFF_FFFFL
         }
     }
+
+    /** 1 to send cards, 0 to send none. Only ever what the user asked for. */
+    data class Cards(val cards: Int) : Setting { override val number get() = 5 }
+
+    /** The name the node's cards carry, the one name it puts on the air in clear; empty for none. Only ever what the user asked for. */
+    data class CardName(val name: String) : Setting { override val number get() = 6 }
 }
 
 /** A message's state. */
@@ -216,17 +232,20 @@ object MessageState {
     const val RECEIVED = 4
 }
 
-/** What a frame says: every frame of version 5. [since] is the least version that defines it. */
+/** What a frame says: every frame of version 6. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String) {
     /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
-    val since: Int get() = Companion.since(type)
+    open val since: Int get() = Companion.since(type)
 
     // Requests, sent by the client.
     data class Hello(val version: Int) : Body(0x01, "HELLO")
     data class Sync(val after: Long) : Body(0x02, "SYNC")
     data object Ping : Body(0x03, "PING")
     data class SetTime(val time: Long) : Body(0x04, "SET_TIME")
-    data class Set(val setting: Setting) : Body(0x05, "SET")
+    data class Set(val setting: Setting) : Body(0x05, "SET") {
+        /** The setting's: a node answers one the client's version does not define as it does a request it does not. */
+        override val since: Int get() = setting.since
+    }
     data class Send(val ref: Long, val to: Address, val text: String) : Body(0x10, "SEND")
     data class Read(val through: Long) : Body(0x11, "READ")
     data class SaveContact(val address: Address, val name: String) : Body(0x18, "SAVE_CONTACT")
@@ -307,13 +326,18 @@ sealed class Body(val type: Int, val typeName: String) {
 
     // News, sent by the node with its count as seq.
 
-    /** The node itself. [time] is 0 if it does not know it. */
+    /**
+     * The node itself. [time] is 0 if it does not know it. [cards] is 1 if it sends cards, and
+     * [cardName] the name they carry; both are null below version 6, from either end.
+     */
     data class Self(
         val address: Address,
         val role: Int,
         val region: String,
         val power: Int,
         val time: Long,
+        val cards: Int? = null,
+        val cardName: String? = null,
     ) : Body(0x80, "SELF")
 
     /** An address the user saved, with a name. [session] is 1 if the node shares one with it. */
@@ -438,6 +462,15 @@ sealed class Body(val type: Int, val typeName: String) {
     /** [Sharing] with a group. */
     data class GroupSharing(val group: GroupId, val precision: Int, val fields: Int, val interval: Int, val minutes: Int) :
         Body(0x91, "GROUP_SHARING")
+
+    /**
+     * A card the node holds from [address]: [name] is what the card carried, its sender's claim and
+     * not a name the user gave, and may be empty; [heard] how many seconds ago the node accepted it,
+     * as of when sent.
+     */
+    data class Card(val address: Address, val heard: Long, val name: String) : Body(0x92, "CARD")
+
+    data class CardGone(val address: Address) : Body(0x93, "CARD_GONE")
 }
 
 internal object Hex {

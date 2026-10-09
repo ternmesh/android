@@ -160,6 +160,37 @@ class CompanionVectorsTest {
         assertFailsWith<IllegalArgumentException> { Body.UpdateBegin(1, ByteArray(31)) }
     }
 
+    /** `SELF`'s cards and card name are version 6's, and so are the two settings and the two news types. */
+    @Test
+    fun cardsAreVersion6s() {
+        val ada = Address(ByteArray(32) { 0xAD.toByte() })
+        val six = Codec.encode(Frame(0, Body.Self(ada, 1, "EU868", 14, 0, 1, "Ada")))
+        assertEquals(Body.Self(ada, 1, "EU868", 14, 0, 1, "Ada"), Codec.decode(six).body)
+        assertEquals(Body.Self(ada, 1, "EU868", 14, 0), Codec.decode(six, 5).body)
+        val five = Codec.encode(Frame(0, Body.Self(ada, 1, "EU868", 14, 0)))
+        assertEquals(Body.Self(ada, 1, "EU868", 14, 0), Codec.decode(five, 5).body)
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(five) }.reason)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, Body.Self(ada, 1, "EU868", 14, 0, 1, null))) }
+
+        for (setting in listOf(Setting.Cards(1), Setting.CardName("Ada"))) {
+            val set = Codec.encode(Frame(1, Body.Set(setting)))
+            assertEquals(6, Body.Set(setting).since)
+            assertEquals(Body.Set(setting), Codec.decode(set).body)
+            assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(set, 5) }.reason)
+            // Undefined before its value is read: cut short, it is still a setting the version lacks.
+            assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(set.copyOf(3), 5) }.reason)
+            assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(set.copyOf(3)) }.reason)
+        }
+        assertEquals(0, Body.Set(Setting.Passkey(1)).since)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Set(Setting.CardName("x".repeat(32))))) }
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Set(Setting.Cards(256)))) }
+
+        // A card is held a day, which is past two bytes of seconds.
+        val card = Body.Card(ada, 86_399, "")
+        assertEquals(card, Codec.decode(Codec.encode(Frame(0, card))).body)
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(Codec.encode(Frame(0, card)), 5) }.reason)
+    }
+
     /** A frame of a later version than the one both ends speak is one that version does not define. */
     @Test
     fun aFrameOfALaterVersionIsUndefined() {
@@ -245,6 +276,8 @@ class CompanionVectorsTest {
                 2 -> Setting.Role(f.int("value"))
                 3 -> Setting.Power(f.int("value"))
                 4 -> Setting.Passkey(f.long("value"))
+                5 -> Setting.Cards(f.int("value"))
+                6 -> Setting.CardName(f.str("value"))
                 else -> fail("setting ${f.int("setting")}")
             },
         )
@@ -276,7 +309,11 @@ class CompanionVectorsTest {
         "QUEUED" -> Body.Queued(f.long("id"))
         "MADE" -> Body.Made(f.gid("group"))
         "UPDATING" -> Body.Updating(f.long("offset"))
-        "SELF" -> Body.Self(f.addr("address"), f.int("role"), f.str("region"), f.int("power"), f.long("time"))
+        "SELF" -> Body.Self(
+            f.addr("address"), f.int("role"), f.str("region"), f.int("power"), f.long("time"),
+            if (f.containsKey("cards")) f.int("cards") else null,
+            if (f.containsKey("card_name")) f.str("card_name") else null,
+        )
         "CONTACT" -> Body.Contact(f.addr("address"), f.int("session"), f.str("name"))
         "CONTACT_GONE" -> Body.ContactGone(f.addr("address"))
         "MESSAGE" -> Body.Message(
@@ -311,6 +348,8 @@ class CompanionVectorsTest {
         "GROUP_SHARING" -> Body.GroupSharing(
             f.gid("group"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"),
         )
+        "CARD" -> Body.Card(f.addr("address"), f.long("heard"), f.str("name"))
+        "CARD_GONE" -> Body.CardGone(f.addr("address"))
         else -> fail("no frame named $name")
     }
 }

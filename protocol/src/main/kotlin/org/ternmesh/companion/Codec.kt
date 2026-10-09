@@ -46,6 +46,8 @@ object Codec {
                     is Setting.Role -> w.u8(s.role)
                     is Setting.Power -> w.i8(s.dbm)
                     is Setting.Passkey -> w.u32(s.passkey)
+                    is Setting.Cards -> w.u8(s.cards)
+                    is Setting.CardName -> w.str(s.name, Companion.CARD_NAME_MAX)
                 }
             }
             is Body.Send -> {
@@ -120,6 +122,12 @@ object Codec {
                 w.str(b.region, Companion.REGION_MAX)
                 w.i8(b.power)
                 w.u32(b.time)
+                // Both or neither: the two are one addition, of version 6.
+                require((b.cards == null) == (b.cardName == null)) { "SELF has cards and card_name, or neither" }
+                if (b.cards != null && b.cardName != null) {
+                    w.u8(b.cards)
+                    w.str(b.cardName, Companion.CARD_NAME_MAX)
+                }
             }
             is Body.Contact -> {
                 w.addr(b.address)
@@ -209,6 +217,12 @@ object Codec {
                 w.gid(b.group)
                 w.sharing(b.precision, b.fields, b.interval, b.minutes)
             }
+            is Body.Card -> {
+                w.addr(b.address)
+                w.u32(b.heard)
+                w.str(b.name, Companion.CARD_NAME_MAX)
+            }
+            is Body.CardGone -> w.addr(b.address)
         }
         val out = w.toByteArray()
         require(out.size <= Companion.MAX_FRAME) { "${b.typeName} is ${out.size} bytes, more than a frame holds" }
@@ -234,11 +248,14 @@ object Codec {
             0x03 -> Body.Ping
             0x04 -> Body.SetTime(r.u32())
             0x05 -> Body.Set(
-                when (r.u8()) {
+                // A setting the version spoken does not define is undefined however its value reads.
+                when (r.u8().also { if (Companion.settingSince(it) > version) throw DecodeException(Unreadable.UNDEFINED) }) {
                     1 -> Setting.Region(r.str(Companion.REGION_MAX))
                     2 -> Setting.Role(r.u8())
                     3 -> Setting.Power(r.i8())
                     4 -> Setting.Passkey(r.u32())
+                    5 -> Setting.Cards(r.u8())
+                    6 -> Setting.CardName(r.str(Companion.CARD_NAME_MAX))
                     else -> throw DecodeException(Unreadable.UNDEFINED)
                 },
             )
@@ -276,7 +293,18 @@ object Codec {
             0x44 -> Body.Queued(r.u32())
             0x45 -> Body.Made(r.gid())
             0x46 -> Body.Updating(r.u32())
-            0x80 -> Body.Self(r.addr(), r.u8(), r.str(Companion.REGION_MAX), r.i8(), r.u32())
+            0x80 -> {
+                val address = r.addr()
+                val role = r.u8()
+                val region = r.str(Companion.REGION_MAX)
+                val power = r.i8()
+                val time = r.u32()
+                if (version >= 6) {
+                    Body.Self(address, role, region, power, time, r.u8(), r.str(Companion.CARD_NAME_MAX))
+                } else {
+                    Body.Self(address, role, region, power, time)
+                }
+            }
             0x81 -> Body.Contact(r.addr(), r.u8(), r.str(Companion.NAME_MAX))
             0x82 -> Body.ContactGone(r.addr())
             0x83 -> Body.Message(
@@ -300,6 +328,8 @@ object Codec {
             0x8F -> Body.GroupPosition(r.gid(), r.u32(), r.u8(), r.i32(), r.i32(), r.i16(), r.u8(), r.u32())
             0x90 -> Body.Sharing(r.addr(), r.u8(), r.u8(), r.u16(), r.u16())
             0x91 -> Body.GroupSharing(r.gid(), r.u8(), r.u8(), r.u16(), r.u16())
+            0x92 -> Body.Card(r.addr(), r.u32(), r.str(Companion.CARD_NAME_MAX))
+            0x93 -> Body.CardGone(r.addr())
             else -> throw DecodeException(Unreadable.UNDEFINED)
         }
         return Frame(seq, body)
