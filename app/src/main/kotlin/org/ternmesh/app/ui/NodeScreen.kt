@@ -132,6 +132,8 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
                 Choice(
                     stringResource(R.string.region), s.region.ifEmpty { stringResource(R.string.region_none) },
                     REGIONS.map { it to it },
+                    // An image is for one region, and a new region restarts the node: not while one is on its way.
+                    enabled = state.update !is FirmwareUpdate.Downloading && state.update !is FirmwareUpdate.Sending,
                 ) { repository.submit(Body.Set(Setting.Region(it)), report) }
                 HorizontalDivider()
                 Choice(
@@ -325,14 +327,14 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun <T> Choice(label: String, current: String, options: List<Pair<String, T>>, chosen: (T) -> Unit) {
+private fun <T> Choice(label: String, current: String, options: List<Pair<String, T>>, enabled: Boolean = true, chosen: (T) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.labelLarge)
             Text(current)
         }
-        TextButton(onClick = { open = true }) { Text(stringResource(R.string.set)) }
+        TextButton(onClick = { open = true }, enabled = enabled) { Text(stringResource(R.string.set)) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             for ((text, value) in options) {
                 DropdownMenuItem(text = { Text(text) }, onClick = { open = false; chosen(value) })
