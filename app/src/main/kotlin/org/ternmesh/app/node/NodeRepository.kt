@@ -101,6 +101,8 @@ data class NodeState(
     val unanswered: List<Unanswered> = emptyList(),
     /** Every node the app keeps records of, most recently chosen first. */
     val known: List<ChosenNode> = emptyList(),
+    /** The first-run setup was finished, or skipped, for this node. */
+    val setUp: Boolean = true,
 )
 
 class NodeRepository(private val context: Context) {
@@ -110,6 +112,7 @@ class NodeRepository(private val context: Context) {
     private val unansweredPrefs = context.getSharedPreferences("unanswered", Context.MODE_PRIVATE)
     private val askedPrefs = context.getSharedPreferences("asked", Context.MODE_PRIVATE)
     private val knownPrefs = context.getSharedPreferences("known", Context.MODE_PRIVATE)
+    private val setupPrefs = context.getSharedPreferences("setup", Context.MODE_PRIVATE)
     private val notifier = Notifier(context)
     private var connection = newConnection(Records())
 
@@ -246,7 +249,26 @@ class NodeRepository(private val context: Context) {
         unansweredPrefs.edit().remove(address).apply()
         askedPrefs.edit().remove(address).apply()
         knownPrefs.edit().remove(address).apply()
+        setupPrefs.edit().remove(address).apply()
         update { it.copy(known = loadKnown()) }
+    }
+
+    /** The first-run setup is over for the app's node: it is not offered for it again. */
+    fun finishSetup() {
+        val address = _state.value.node?.address ?: return
+        setupPrefs.edit().putBoolean(address, true).apply()
+        update { it.copy(setUp = true) }
+    }
+
+    /**
+     * Whether the setup is over for [address]. A node met before the setup existed, already given a
+     * region and a contact, counts as set up rather than being walked through it again.
+     */
+    private fun setUp(address: String, records: Records): Boolean {
+        if (setupPrefs.getBoolean(address, false)) return true
+        val done = records.self?.region?.isNotEmpty() == true && records.contacts.isNotEmpty()
+        if (done) setupPrefs.edit().putBoolean(address, true).apply()
+        return done
     }
 
     /** Adds [node] to the nodes the app keeps, as the one chosen last. */
@@ -689,7 +711,7 @@ class NodeRepository(private val context: Context) {
         if (_state.value.unanswered.any { Conversations.holdsSent(records, it.peer, it.text, it.after) }) {
             setUnanswered { list -> list.filterNot { Conversations.holdsSent(records, it.peer, it.text, it.after) } }
         }
-        update { it.copy(records = connection.records.copy()) }
+        update { it.copy(records = connection.records.copy(), setUp = it.node?.let { n -> setUp(n.address, records) } ?: true) }
         NodeService.refresh(context, _state.value)
         // What was seen may now be readable: news read on another client, or a sync come in.
         handler.post(::flushRead)

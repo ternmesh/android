@@ -17,8 +17,11 @@ android {
         versionName = "0.1.0"
     }
 
-    // A debug key kept in the repository, not one made fresh on each machine: an APK from CI then
-    // installs over the one before it, keeping what the app holds. It signs nothing published.
+    // Two keys. The debug key is kept in the repository, so that every debug build, from CI or a
+    // laptop, installs over the one before it; anyone can sign with it, so it signs only the debug
+    // app, which has a package of its own (org.ternmesh.app.debug) and is never the one ternmesh.org
+    // names. The release key is the maintainers' alone: CI is given it as secrets on main, and a
+    // build without them leaves the release APK unsigned.
     signingConfigs {
         getByName("debug") {
             storeFile = file("debug.keystore")
@@ -26,11 +29,23 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        System.getenv("TERN_RELEASE_KEYSTORE")?.let { keystore ->
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = System.getenv("TERN_RELEASE_STORE_PASSWORD")
+                keyAlias = System.getenv("TERN_RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("TERN_RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
@@ -65,4 +80,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.8.7")
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // QR codes: ZXing's encoder draws a node's link, and its embedded scanner reads one with the
+    // camera. Neither needs Google Play services, which not every phone that runs a node has.
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0") { isTransitive = false }
 }

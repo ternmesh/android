@@ -1,5 +1,6 @@
-// Every conversation, newest first, with what was said last and how much is unread; and the first
-// contacts the node turned away, for the user to save or dismiss.
+// Every conversation, newest first, with what was said last and how much is unread, and a search
+// over their names and what was said in them; and the first contacts the node turned away, for the
+// user to save or dismiss.
 package org.ternmesh.app.ui
 
 import androidx.compose.foundation.clickable
@@ -7,11 +8,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
@@ -20,6 +24,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -29,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +47,7 @@ import org.ternmesh.app.node.NodeRepository
 import org.ternmesh.app.node.NodeState
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Companion
+import org.ternmesh.companion.Conversation
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.Item
 import org.ternmesh.companion.Outcome
@@ -53,14 +60,33 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Un
     var menu by remember { mutableStateOf(false) }
     var picking by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val shown = remember(conversations, query) { conversations.filter { matches(it, query.trim()) } }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize()) {
-            items(state.asked, key = { "asked:${it.address}" }) { a -> AskedCard(repository, state, a) }
+            if (conversations.isNotEmpty()) {
+                item(key = "search") {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        placeholder = { Text(stringResource(R.string.search)) },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        trailingIcon = if (query.isNotEmpty()) ({
+                            IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Clear, stringResource(R.string.cancel)) }
+                        }) else null,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+            }
+            if (query.isBlank()) items(state.asked, key = { "asked:${it.address}" }) { a -> AskedCard(repository, state, a) }
             if (conversations.isEmpty()) {
                 item { Text(stringResource(R.string.chats_empty), Modifier.padding(24.dp)) }
+            } else if (shown.isEmpty()) {
+                item { Text(stringResource(R.string.search_none), Modifier.padding(24.dp)) }
             }
-            items(conversations, key = { org.ternmesh.app.node.Notifier.key(it.peer) }) { c ->
+            items(shown, key = { org.ternmesh.app.node.Notifier.key(it.peer) }) { c ->
                 ListItem(
                     headlineContent = { Text(c.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     overlineContent = if (c.peer is Peer.Group) ({ Text(stringResource(R.string.group_label)) }) else null,
@@ -176,6 +202,19 @@ fun NameDialog(title: String, initial: String, limit: Int, confirm: String, onDi
         confirmButton = { TextButton(onClick = { done(text.trim()) }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
+}
+
+/** Whether [c] has [query] in its name or in anything said in it, ignoring case. */
+private fun matches(c: Conversation, query: String): Boolean {
+    if (query.isEmpty() || c.name.contains(query, ignoreCase = true)) return true
+    return c.items.any { item ->
+        when (item) {
+            is Body.Message -> item.text.contains(query, ignoreCase = true)
+            is Body.GroupMessage -> item.text.contains(query, ignoreCase = true)
+            is Body.Invite -> item.name.contains(query, ignoreCase = true)
+            else -> false
+        }
+    }
 }
 
 private fun preview(context: android.content.Context, item: Item): String = when (item) {
