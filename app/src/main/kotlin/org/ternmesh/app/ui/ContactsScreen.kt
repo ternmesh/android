@@ -122,7 +122,7 @@ fun ContactsScreen(repository: NodeRepository, state: NodeState, incoming: Addre
 }
 
 @Composable
-private fun AddContactDialog(given: String, onDismiss: () -> Unit, done: (Address, String) -> Unit) {
+internal fun AddContactDialog(given: String, onDismiss: () -> Unit, done: (Address, String) -> Unit) {
     var text by remember(given) { mutableStateOf(given) }
     var name by remember { mutableStateOf("") }
     val say = LocalSay.current
