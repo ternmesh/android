@@ -105,3 +105,16 @@ keytool -list -v -keystore tern-release.jks -alias tern | grep SHA256   # what a
 A build signs with it locally when `TERN_RELEASE_KEYSTORE` (the file's path) and the three
 passwords and alias above, without `_BASE64`, are in the environment; without them
 `assembleRelease` leaves the APK unsigned.
+
+## Versions
+
+A release is a tag `v` MAJOR.MINOR.PATCH, and its APK's version is the tag's: the Release
+workflow passes the tag as `TERN_VERSION`, and `app/build.gradle.kts` makes `v1.2.3` versionName
+`1.2.3` and versionCode `10203` (major × 10000 + minor × 100 + patch), so each release's code is
+greater than the last. A tag that is not that shape, or has a minor or patch over 99, fails the
+build. Any other build, on a laptop or on `main`, is `0.1.0`, code 1, unless given
+`-PternVersion=1.2.3`.
+
+The store listing is in `fastlane/metadata/android/en-US`. A release's notes for F-Droid go
+beside it in `changelogs/` under its versionCode, `changelogs/10203.txt` for `v1.2.3`; F-Droid,
+building from the tag, gives the same version with `gradleprops: [ternVersion=1.2.3]`.
