@@ -122,7 +122,8 @@ fun MapScreen(repository: NodeRepository, state: NodeState) {
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().weight(1f)) {
-            PositionMap(marks, selected) { selected = it }
+            // Read at each composition: the user may allow it from the sharing dialog while the map is open.
+            PositionMap(marks, selected, LocationFeed.permitted(context)) { selected = it }
         }
         LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
             if (shared.isNotEmpty()) {
@@ -176,10 +177,10 @@ private fun details(context: Context, m: Mark): String = buildList {
 
 /**
  * The map itself: MapLibre's view, kept through the screen's lifecycle. [selected] is centred on as
- * it changes, and a tap on a dot selects it.
+ * it changes, and a tap on a dot selects it. The phone is shown once [permitted].
  */
 @Composable
-private fun PositionMap(marks: List<Mark>, selected: String?, select: (String) -> Unit) {
+private fun PositionMap(marks: List<Mark>, selected: String?, permitted: Boolean, select: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val accent = MaterialTheme.colorScheme.primary.toArgb()
@@ -213,7 +214,6 @@ private fun PositionMap(marks: List<Mark>, selected: String?, select: (String) -
             m.uiSettings.isRotateGesturesEnabled = false
             m.setStyle(Style.Builder().fromUri(STYLE)) { s ->
                 addLayers(s, accent)
-                showMe(context, m, s)
                 style = s
             }
         }
@@ -240,6 +240,10 @@ private fun PositionMap(marks: List<Mark>, selected: String?, select: (String) -
             framed = true
             map?.moveCamera(frame(marks))
         }
+    }
+    LaunchedEffect(style, permitted) {
+        val s = style ?: return@LaunchedEffect
+        map?.let { showMe(context, it, s) }
     }
     LaunchedEffect(map, selected) {
         val m = map ?: return@LaunchedEffect

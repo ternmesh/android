@@ -278,6 +278,7 @@
     <string name="share_hour">1 hour</string>
     <string name="share_8_hours">8 hours</string>
     <string name="share_until_stopped">Until I stop</string>
+    <string name="share_as_now">As now (%1$s)</string>
     <string name="share_every_min">%1$d min</string>
     <string name="share_every_hour">1 h</string>
     <string name="share_update">Update</string>

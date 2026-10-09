@@ -88,13 +88,21 @@ fun precisionText(context: Context, precision: Int): String = when (precision) {
     else -> context.getString(R.string.precision_within, sizeText(context, cellMetres(precision)))
 }
 
-/** How long sharing goes on, counted on from when its record came: "45 min left", or until stopped. */
-fun leftText(context: Context, state: NodeState, s: Shared, now: Long = SystemClock.elapsedRealtime()): String {
-    if (s.minutes == 0) return context.getString(R.string.until_stopped)
+/** The seconds sharing has left, counted on from when its record came, at least a minute; 0 until stopped. */
+fun secondsLeft(state: NodeState, s: Shared, now: Long = SystemClock.elapsedRealtime()): Long {
+    if (s.minutes == 0) return 0
     val since = (now - (state.arrived[s.record] ?: now)) / 1000
-    val left = (s.minutes * 60L - since).coerceAtLeast(60)
-    return context.getString(R.string.time_left, spanText(left))
+    return (s.minutes * 60L - since).coerceAtLeast(60)
 }
+
+/** How long sharing goes on: "45 min left", or until stopped. */
+fun leftText(context: Context, state: NodeState, s: Shared, now: Long = SystemClock.elapsedRealtime()): String {
+    val left = secondsLeft(state, s, now)
+    return if (left == 0L) context.getString(R.string.until_stopped) else context.getString(R.string.time_left, spanText(left))
+}
+
+/** A duration on the dialog that keeps what sharing has left, so a change of precision does not change it. */
+private const val AS_NOW = -1
 
 /** The elapsed clock, read again every half minute, so ages and time left count on while on screen. */
 @Composable
@@ -139,11 +147,12 @@ fun ShareDialog(repository: NodeRepository, state: NodeState, peer: Peer, onDism
     val current = sharedWith(state, peer)
     val group = peer is Peer.Group
     val intervals = if (group) listOf(300, 900, 3600) else listOf(60, 300, 900, 3600)
-    val durations = listOf(60, 480, 0)
+    val finite = current != null && current.minutes != 0
+    val durations = if (finite) listOf(AS_NOW, 60, 480, 0) else listOf(60, 480, 0)
     var precision by remember { mutableIntStateOf(current?.precision ?: 16) }
     var fields by remember { mutableIntStateOf(current?.fields ?: 0) }
     var interval by remember { mutableIntStateOf(current?.interval?.takeIf { it in intervals } ?: if (group) 900 else 300) }
-    var minutes by remember { mutableIntStateOf(if (current != null && current.minutes == 0) 0 else 60) }
+    var minutes by remember { mutableIntStateOf(if (current == null) 60 else if (finite) AS_NOW else 0) }
     var asking by remember { mutableStateOf(false) }
     val noPermission = stringResource(R.string.share_no_permission)
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -154,6 +163,8 @@ fun ShareDialog(repository: NodeRepository, state: NodeState, peer: Peer, onDism
 
     fun send(p: Int) {
         val f = if (p >= FIELDS_FROM) fields else 0
+        // What is left, rounded up, as the node counts it.
+        val minutes = if (minutes == AS_NOW && current != null) ((secondsLeft(state, current) + 59) / 60).toInt() else minutes
         val body = when (peer) {
             is Peer.Contact -> if (p == 0) Body.Share(peer.address, 0, 0, 0, 0) else Body.Share(peer.address, p, f, interval, minutes)
             is Peer.Group -> if (p == 0) Body.ShareGroup(peer.group, 0, 0, 0, 0) else Body.ShareGroup(peer.group, p, f, interval, minutes)
@@ -202,13 +213,12 @@ fun ShareDialog(repository: NodeRepository, state: NodeState, peer: Peer, onDism
                 Heading(R.string.share_how_long)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (m in durations) {
-                        val label = stringResource(
-                            when (m) {
-                                60 -> R.string.share_hour
-                                480 -> R.string.share_8_hours
-                                else -> R.string.share_until_stopped
-                            },
-                        )
+                        val label = when (m) {
+                            AS_NOW -> stringResource(R.string.share_as_now, current?.let { leftText(context, state, it) }.orEmpty())
+                            60 -> stringResource(R.string.share_hour)
+                            480 -> stringResource(R.string.share_8_hours)
+                            else -> stringResource(R.string.share_until_stopped)
+                        }
                         FilterChip(selected = minutes == m, onClick = { minutes = m }, label = { Text(label) })
                     }
                 }
