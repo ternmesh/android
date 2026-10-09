@@ -97,6 +97,9 @@
     <string name="search_none">Nothing matches.</string>
     <string name="chats_empty">No conversations yet. Start one from a contact, or make a group.</string>
     <string name="new_chat">New chat</string>
+    <string name="open_chat">Open chat</string>
+    <string name="or_contact">Or a contact</string>
+    <string name="address_own">That is your own node\'s address.</string>
     <string name="new_group">New group</string>
     <string name="make">Make</string>
     <string name="cancel">Cancel</string>
