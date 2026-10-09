@@ -12,6 +12,13 @@ with contacts and groups, where each message is and what it waits for, the node'
 and the nodes it hears, and changes its region, role, power and passkey. It updates the node's
 firmware over the same link, with the release ternmesh.org publishes for its board and region.
 
+It shares the user's position with the contacts and groups they choose, each at the precision
+they choose, and shows on a map where those sharing with them are. The phone gives the node its
+exact location only while the node shares with someone; the node rounds it for each destination
+before anything goes on the air. The map's tiles come from [OpenFreeMap](https://openfreemap.org),
+drawn by [MapLibre](https://maplibre.org): the tile server sees which areas the map shows, and
+nothing else of the user's.
+
 **To try it**, install the APK from the latest CI run on `main` (the `tern-apk` artifact) on
 Android 8 or later. It is signed with the maintainers' release key, so a newer one installs over an
 older one, and it is the app that `ternmesh.org` links open in. The first connection asks for the
@@ -46,8 +53,8 @@ its tests run on any JVM.
 | `protocol/src/main/kotlin/org/ternmesh/companion/Conversations.kt` | The records as conversations, and how far a `READ` may reach without marking another conversation's messages read. |
 | `protocol/src/test/` | The conformance section of the specification, as a client: the codec against every vector, the connection as the client in `exchange`, `older` and `unknown_to_older`, and the updater as the client in `update`. |
 | `app/src/main/kotlin/org/ternmesh/app/link/` | Bluetooth LE: scanning for the node's service, and the GATT link (an MTU of at least 183, passkey pairing, one frame per write and per notification). |
-| `app/src/main/kotlin/org/ternmesh/app/node/` | The node the app drives: the link, the connection over it and the records on disk (`NodeRepository`), the foreground service that keeps it while the app is closed, message notifications, and downloading firmware and checking it before it is sent (`Firmware.kt`). |
-| `app/src/main/kotlin/org/ternmesh/app/ui/` | The screens, in Jetpack Compose: choosing a node, chats, one conversation, contacts and the node. Every word they show is in `res/values/strings.xml`. |
+| `app/src/main/kotlin/org/ternmesh/app/node/` | The node the app drives: the link, the connection over it and the records on disk (`NodeRepository`), the foreground service that keeps it while the app is closed, message notifications, downloading firmware and checking it before it is sent (`Firmware.kt`), and the phone's location given to the node while it shares (`LocationFeed.kt`). |
+| `app/src/main/kotlin/org/ternmesh/app/ui/` | The screens, in Jetpack Compose: choosing a node, chats, one conversation, contacts, the map, sharing a position, and the node. Every word they show is in `res/values/strings.xml`. |
 
 The vectors' `group_ids` are not run here. A client never holds a group's secret, since no frame
 carries one, so working out an id from it is the node's part.
@@ -61,12 +68,6 @@ set `TERN_COMPANION_VECTORS` to its path.
 
 ## Still to come
 
-* Sharing an address as a QR code or link, once the specification's
-  [sharing draft](https://github.com/ternmesh/spec/blob/main/draft/sharing.md) settles.
-* A release build, signed and published.
-* Positions: the protocol layer speaks them (`SET_POSITION`, `SHARE`, and the positions and
-  sharing a node reports are held with its records), but the app neither shows them nor shares
-  its own yet, and has no map.
 * What the specification does not define yet: telemetry.
 
 * [CONTRIBUTING.md](CONTRIBUTING.md) — DCO sign-off, and the specification first

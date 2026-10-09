@@ -68,12 +68,22 @@ class Records {
                 contacts[news.address] = news
                 syncing?.contacts?.add(news.address)
             }
-            is Body.ContactGone -> contacts.remove(news.address)
+            // A contact removed or a group left takes its positions and sharing with it, as the node
+            // forgets them: no record comes to say so.
+            is Body.ContactGone -> {
+                contacts.remove(news.address)
+                positions.remove(news.address)
+                sharing.remove(news.address)
+            }
             is Body.Group -> {
                 groups[news.group] = news
                 syncing?.groups?.add(news.group)
             }
-            is Body.GroupGone -> groups.remove(news.group)
+            is Body.GroupGone -> {
+                groups.remove(news.group)
+                groupPositions.keys.removeAll { it.first == news.group }
+                groupSharing.remove(news.group)
+            }
             is Item -> items[news.id] = news
             is Body.State -> items[news.id]?.let { items[news.id] = it.with(news) }
             is Body.Neighbour -> {

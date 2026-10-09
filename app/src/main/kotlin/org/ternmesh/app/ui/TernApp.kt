@@ -1,4 +1,4 @@
-// The app's frame: the three tabs, the conversation over them, and a line saying where the link to
+// The app's frame: the four tabs, the conversation over them, and a line saying where the link to
 // the node is whenever it is not simply connected.
 package org.ternmesh.app.ui
 
@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -75,6 +76,7 @@ fun rememberReport(): (Outcome) -> Unit {
 private enum class Tab(val route: String, val label: Int, val icon: ImageVector) {
     CHATS("chats", R.string.tab_chats, Icons.Filled.Email),
     CONTACTS("contacts", R.string.tab_contacts, Icons.Filled.AccountCircle),
+    MAP("map", R.string.tab_map, Icons.Filled.LocationOn),
     NODE("node", R.string.tab_node, Icons.Filled.Settings),
 }
 
@@ -174,6 +176,7 @@ fun TernApp(repository: NodeRepository, opening: String?, incoming: Address?, op
                 NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.weight(1f)) {
                     composable(Tab.CHATS.route) { ChatsScreen(repository, state) { nav.navigate(chatRoute(it)) } }
                     composable(Tab.CONTACTS.route) { ContactsScreen(repository, state, incoming, taken) { nav.navigate(chatRoute(it)) } }
+                    composable(Tab.MAP.route) { MapScreen(repository, state) }
                     composable(Tab.NODE.route) { NodeScreen(repository, state) }
                     composable("chat/{peer}") { entry ->
                         val peer = entry.arguments?.getString("peer")?.let(Notifier::peer)

@@ -147,4 +147,21 @@ class RecordsFileTest {
         assertEquals(3, Conversations.readThrough(r, bobSeen + (Peer.Contact(alice) to 1L)), "both seen: all three")
         assertEquals(2, Conversations.readThrough(r, mapOf(Peer.Contact(alice) to 1L, Peer.Contact(bob) to 2L)), "Bob's 3 came after he was seen")
     }
+
+    @Test
+    fun aContactRemovedOrAGroupLeftTakesItsPositionsAndSharingWithIt() {
+        val r = Records()
+        r.apply(Body.Contact(alice, 1, "Alice"))
+        r.apply(Body.Group(hikers, "Hikers"))
+        r.apply(Body.Position(alice, 16, 1, 2, Companion.NO_ALTITUDE, 0, 5))
+        r.apply(Body.Sharing(alice, 12, 0, 300, 60))
+        r.apply(Body.GroupPosition(hikers, 0x1234, 16, 1, 2, Companion.NO_ALTITUDE, 0, 5))
+        r.apply(Body.GroupSharing(hikers, 12, 0, 900, 0))
+        r.apply(Body.ContactGone(alice))
+        r.apply(Body.GroupGone(hikers))
+        assertTrue(r.positions.isEmpty())
+        assertTrue(r.sharing.isEmpty())
+        assertTrue(r.groupPositions.isEmpty())
+        assertTrue(r.groupSharing.isEmpty())
+    }
 }

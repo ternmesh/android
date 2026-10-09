@@ -10,6 +10,7 @@
     <string name="tab_chats">Chats</string>
     <string name="tab_contacts">Contacts</string>
     <string name="tab_node">Node</string>
+    <string name="tab_map">Map</string>
 
     <!-- Where the link is -->
     <string name="phase_none">No node chosen</string>
@@ -244,4 +245,43 @@
     <string name="setup_next">Next</string>
     <string name="setup_done">Done</string>
     <string name="setup_skip">Skip</string>
+
+    <!-- Positions -->
+    <string name="map_old_node">Your node\'s firmware does not share positions. Update it from the Node tab.</string>
+    <string name="map_empty">No one is sharing their location with you yet.</string>
+    <string name="map_sharing_with">You\'re sharing with</string>
+    <string name="map_positions">Shared with you</string>
+    <string name="precision_8">Region</string>
+    <string name="precision_12">Town</string>
+    <string name="precision_16">Neighbourhood</string>
+    <string name="precision_20">Street</string>
+    <string name="precision_24">Exact</string>
+    <string name="precision_choice">%1$s (about %2$s)</string>
+    <string name="precision_choice_24">Exact (a few metres)</string>
+    <string name="precision_within">Within about %1$s</string>
+    <string name="size_km">%1$s km</string>
+    <string name="size_m">%1$d m</string>
+    <string name="altitude">%1$d m up</string>
+    <string name="accuracy">± %1$d m</string>
+    <string name="ago">%1$s ago</string>
+    <string name="time_left">%1$s left</string>
+    <string name="until_stopped">until you stop</string>
+    <string name="sharing_line">Sharing your location · %1$s · %2$s</string>
+    <string name="share_location">Share my location…</string>
+    <string name="share_title">Share my location with %1$s</string>
+    <string name="share_explained">Your node rounds your location to the size you pick before it leaves. The exact location stays between this phone and your node.</string>
+    <string name="share_how_exact">How exactly</string>
+    <string name="share_altitude">Include altitude</string>
+    <string name="share_accuracy">Include accuracy</string>
+    <string name="share_how_often">At most every</string>
+    <string name="share_how_long">For</string>
+    <string name="share_hour">1 hour</string>
+    <string name="share_8_hours">8 hours</string>
+    <string name="share_until_stopped">Until I stop</string>
+    <string name="share_as_now">As now (%1$s)</string>
+    <string name="share_every_min">%1$d min</string>
+    <string name="share_every_hour">1 h</string>
+    <string name="share_update">Update</string>
+    <string name="share_stop">Stop sharing</string>
+    <string name="share_no_permission">Without location access, your node shares only what its own receiver finds, if it has one.</string>
 </resources>
