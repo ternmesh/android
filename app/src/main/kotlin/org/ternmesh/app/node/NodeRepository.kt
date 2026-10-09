@@ -121,6 +121,7 @@ class NodeRepository(private val context: Context) {
     private val askedPrefs = context.getSharedPreferences("asked", Context.MODE_PRIVATE)
     private val knownPrefs = context.getSharedPreferences("known", Context.MODE_PRIVATE)
     private val setupPrefs = context.getSharedPreferences("setup", Context.MODE_PRIVATE)
+    private val locationPrefs = context.getSharedPreferences("location", Context.MODE_PRIVATE)
     private val notifier = Notifier(context)
     private val location = LocationFeed(context) { position ->
         connection.submit(position) {} // a fix the node did not take is followed by the next
@@ -270,6 +271,7 @@ class NodeRepository(private val context: Context) {
         askedPrefs.edit().remove(address).apply()
         knownPrefs.edit().remove(address).apply()
         setupPrefs.edit().remove(address).apply()
+        locationPrefs.edit().remove(address).apply()
         update { it.copy(known = loadKnown()) }
     }
 
@@ -452,6 +454,18 @@ class NodeRepository(private val context: Context) {
     }
 
     /**
+     * The user has shared their position from this app with someone through the app's node: the
+     * phone may give the node its location while it shares. A permission granted for something
+     * else, such as scanning on Android 11 and earlier, or sharing turned on from another client,
+     * is not the user choosing this.
+     */
+    fun chooseToShare() {
+        val address = _state.value.node?.address ?: return
+        locationPrefs.edit().putBoolean(address, true).apply()
+        location.want(wantsLocation(_state.value))
+    }
+
+    /**
      * The user has just allowed the app their location, or not: the service may now keep it while
      * the app is away, and the node is given it if it shares its position.
      */
@@ -466,7 +480,8 @@ class NodeRepository(private val context: Context) {
      * shares its own with someone. It rounds the fix itself for each of them.
      */
     private fun wantsLocation(s: NodeState) = s.phase == Phase.READY && (s.version ?: 0) >= 5 &&
-        (s.records.sharing.isNotEmpty() || s.records.groupSharing.isNotEmpty())
+        (s.records.sharing.isNotEmpty() || s.records.groupSharing.isNotEmpty()) &&
+        s.node?.let { locationPrefs.getBoolean(it.address, false) } == true
 
     /** Asks ternmesh.org for the latest release, and finds the image for the node's board and region. */
     fun checkForUpdate() {

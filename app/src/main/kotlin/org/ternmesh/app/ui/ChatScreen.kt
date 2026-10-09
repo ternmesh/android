@@ -91,7 +91,11 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
             actions = {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, stringResource(R.string.more)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    if (hasPositions(state) && (peer !is Peer.Contact || state.records.contacts[peer.address] != null)) {
+                    if (hasPositions(state) && when (peer) {
+                            is Peer.Contact -> state.records.contacts[peer.address] != null
+                            is Peer.Group -> state.records.groups[peer.group] != null
+                        }
+                    ) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.share_location)) }, onClick = { menu = false; dialog = ChatDialog.SHARE })
                     }
                     when (peer) {

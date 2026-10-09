@@ -164,12 +164,18 @@ fun ShareDialog(repository: NodeRepository, state: NodeState, peer: Peer, onDism
     fun send(p: Int) {
         val f = if (p >= FIELDS_FROM) fields else 0
         // What is left, rounded up, as the node counts it.
-        val minutes = if (minutes == AS_NOW && current != null) ((secondsLeft(state, current) + 59) / 60).toInt() else minutes
+        val minutes = when {
+            minutes != AS_NOW -> minutes
+            current != null -> ((secondsLeft(state, current) + 59) / 60).toInt()
+            // Sharing ended while the dialog was open: what it had left is none, so an hour.
+            else -> 60
+        }
         val body = when (peer) {
             is Peer.Contact -> if (p == 0) Body.Share(peer.address, 0, 0, 0, 0) else Body.Share(peer.address, p, f, interval, minutes)
             is Peer.Group -> if (p == 0) Body.ShareGroup(peer.group, 0, 0, 0, 0) else Body.ShareGroup(peer.group, p, f, interval, minutes)
         }
         repository.submit(body, report)
+        if (p != 0) repository.chooseToShare()
         if (p != 0 && !LocationFeed.permitted(context)) {
             asking = true
             ask.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
