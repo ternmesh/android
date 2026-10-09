@@ -91,6 +91,9 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
             actions = {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, stringResource(R.string.more)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (hasPositions(state) && (peer !is Peer.Contact || state.records.contacts[peer.address] != null)) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.share_location)) }, onClick = { menu = false; dialog = ChatDialog.SHARE })
+                    }
                     when (peer) {
                         is Peer.Group -> {
                             DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { menu = false; dialog = ChatDialog.RENAME })
@@ -115,6 +118,7 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
                 }
             },
         )
+        SharingLine(state, peer) { dialog = ChatDialog.SHARE }
         LazyColumn(
             state = list,
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -174,11 +178,12 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
             },
             dismissButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.cancel)) } },
         )
+        ChatDialog.SHARE -> ShareDialog(repository, state, peer) { dialog = null }
         null -> {}
     }
 }
 
-private enum class ChatDialog { RENAME, INVITE, END_SESSION }
+private enum class ChatDialog { RENAME, INVITE, END_SESSION, SHARE }
 
 @Composable
 private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {

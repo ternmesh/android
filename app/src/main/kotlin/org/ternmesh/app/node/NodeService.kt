@@ -26,7 +26,15 @@ class NodeService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val state = (application as TernApplication).repository.state.value
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0
-        runCatching { ServiceCompat.startForeground(this, ID, notification(this, state), type) }
+        // With the user's location too, so the node is still given it while the app is away: Android
+        // allows that type only when started from the app on screen, and the link alone otherwise.
+        val withLocation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && LocationFeed.permitted(this)) {
+            type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+        } else {
+            type
+        }
+        runCatching { ServiceCompat.startForeground(this, ID, notification(this, state), withLocation) }
+            .recoverCatching { if (withLocation != type) ServiceCompat.startForeground(this, ID, notification(this, state), type) else throw it }
             .onFailure { stopSelf() }
         return START_NOT_STICKY
     }

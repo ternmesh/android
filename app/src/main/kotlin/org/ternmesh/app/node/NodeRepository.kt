@@ -106,6 +106,11 @@ data class NodeState(
     val known: List<ChosenNode> = emptyList(),
     /** The first-run setup was finished, or skipped, for this node. */
     val setUp: Boolean = true,
+    /**
+     * When each position and sharing record held arrived, on the elapsed clock: the `age` and
+     * `minutes` each gives are as of then.
+     */
+    val arrived: Map<Body, Long> = emptyMap(),
 )
 
 class NodeRepository(private val context: Context) {
@@ -117,6 +122,10 @@ class NodeRepository(private val context: Context) {
     private val knownPrefs = context.getSharedPreferences("known", Context.MODE_PRIVATE)
     private val setupPrefs = context.getSharedPreferences("setup", Context.MODE_PRIVATE)
     private val notifier = Notifier(context)
+    private val location = LocationFeed(context) { position ->
+        connection.submit(position) {} // a fix the node did not take is followed by the next
+        scheduleTick()
+    }
     private var connection = newConnection(Records())
 
     /** Ids already notified or already held, so one item makes one notification. */
@@ -157,6 +166,9 @@ class NodeRepository(private val context: Context) {
 
     /** The conversation on screen, whose new messages need no notification. */
     var viewing: Peer? = null
+
+    /** When each position and sharing record arrived; see [NodeState.arrived]. */
+    private val arrived = mutableMapOf<Body, Long>()
 
     /** The `through` of the READ last sent, so the same one is not sent again and again. */
     private var readSent = 0L
@@ -439,6 +451,23 @@ class NodeRepository(private val context: Context) {
         }
     }
 
+    /**
+     * The user has just allowed the app their location, or not: the service may now keep it while
+     * the app is away, and the node is given it if it shares its position.
+     */
+    fun locationPermissionChanged() {
+        val s = _state.value
+        if (s.node != null && s.phase != Phase.DISCONNECTED) NodeService.start(context)
+        location.want(wantsLocation(s))
+    }
+
+    /**
+     * Whether the node is given the phone's position: while it is synced, speaks positions, and
+     * shares its own with someone. It rounds the fix itself for each of them.
+     */
+    private fun wantsLocation(s: NodeState) = s.phase == Phase.READY && (s.version ?: 0) >= 5 &&
+        (s.records.sharing.isNotEmpty() || s.records.groupSharing.isNotEmpty())
+
     /** Asks ternmesh.org for the latest release, and finds the image for the node's board and region. */
     fun checkForUpdate() {
         val s = _state.value
@@ -659,6 +688,7 @@ class NodeRepository(private val context: Context) {
         queuedFloor = 0
         notified.clear()
         notified += records.items.keys
+        arrived.clear()
     }
 
     private fun connectTo(node: ChosenNode, waitForIt: Boolean) {
@@ -739,6 +769,9 @@ class NodeRepository(private val context: Context) {
             setAsked { list -> list.filter { it.address != body.address } + body }
             return
         }
+        if (body is Body.Position || body is Body.GroupPosition || body is Body.Sharing || body is Body.GroupSharing) {
+            arrived[body] = SystemClock.elapsedRealtime()
+        }
         if (body is Item && body.isUnread && body.state == MessageState.RECEIVED && body.id !in notified &&
             connection.records.syncedVersion != null
         ) {
@@ -761,7 +794,14 @@ class NodeRepository(private val context: Context) {
         if (_state.value.unanswered.any { Conversations.holdsSent(records, it.peer, it.text, it.after) }) {
             setUnanswered { list -> list.filterNot { Conversations.holdsSent(records, it.peer, it.text, it.after) } }
         }
-        update { it.copy(records = connection.records.copy(), setUp = it.node?.let { n -> setUp(n.address, records) } ?: true) }
+        val held = records.positions.values + records.groupPositions.values + records.sharing.values + records.groupSharing.values
+        arrived.keys.retainAll(held.toSet())
+        update {
+            it.copy(
+                records = connection.records.copy(), setUp = it.node?.let { n -> setUp(n.address, records) } ?: true,
+                arrived = arrived.toMap(),
+            )
+        }
         NodeService.refresh(context, _state.value)
         // What was seen may now be readable: news read on another client, or a sync come in.
         handler.post(::flushRead)
@@ -799,6 +839,7 @@ class NodeRepository(private val context: Context) {
         _state.value = change(before)
         // The service's notification says where the link is: it follows every change of phase.
         if (_state.value.phase != before.phase) NodeService.refresh(context, _state.value)
+        location.want(wantsLocation(_state.value))
     }
 
     companion object {

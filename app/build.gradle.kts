@@ -85,4 +85,7 @@ dependencies {
     // camera. Neither needs Google Play services, which not every phone that runs a node has.
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0") { isTransitive = false }
+
+    // The map: MapLibre draws OpenFreeMap's tiles, which need no key and no Google Play services.
+    implementation("org.maplibre.gl:android-sdk:11.13.5")
 }
