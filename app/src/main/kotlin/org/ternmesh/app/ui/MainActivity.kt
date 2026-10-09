@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import org.ternmesh.app.TernApplication
 import org.ternmesh.app.node.Notifier
 import org.ternmesh.companion.Address
+import org.ternmesh.companion.JoinCode
 import org.ternmesh.companion.Sharing
 
 class MainActivity : ComponentActivity() {
@@ -30,16 +31,20 @@ class MainActivity : ComponentActivity() {
     /** An address from a link opened in the app, which the contacts take and clear. */
     private val incoming = mutableStateOf<Address?>(null)
 
+    /** A join code's link opened in the app, held only until its dialog closes. */
+    private val joining = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         opening.value = intent.getStringExtra(Notifier.EXTRA_PEER)
         incoming.value = linked(intent)
+        joining.value = joinLink(intent)
         val repository = (application as TernApplication).repository
         setContent {
             TernTheme {
                 TernApp(
-                    repository, opening.value, incoming.value,
+                    repository, opening.value, incoming.value, joining.value,
                     opened = {
                         // Consumed: an activity made again, on rotation, must not open it a second time.
                         opening.value = null
@@ -47,6 +52,10 @@ class MainActivity : ComponentActivity() {
                     },
                     taken = {
                         incoming.value = null
+                        intent.data = null
+                    },
+                    joined = {
+                        joining.value = null
                         intent.data = null
                     },
                 )
@@ -66,11 +75,19 @@ class MainActivity : ComponentActivity() {
             setIntent(intent)
             incoming.value = it
         }
+        joinLink(intent)?.let {
+            setIntent(intent)
+            joining.value = it
+        }
     }
 
     /** The address in a ternmesh.org link the app was opened with (draft/sharing.md), if any. */
     private fun linked(intent: Intent): Address? =
         intent.takeIf { it.action == Intent.ACTION_VIEW }?.dataString?.let(Sharing::read)
+
+    /** A join code's link the app was opened with (draft/groups.md), if any: the link as it came, for the node to read. */
+    private fun joinLink(intent: Intent): String? =
+        intent.takeIf { it.action == Intent.ACTION_VIEW }?.dataString?.takeIf { JoinCode.read(it) != null }
 
     override fun onStart() {
         super.onStart()

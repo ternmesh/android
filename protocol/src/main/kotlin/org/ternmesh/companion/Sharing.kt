@@ -54,8 +54,6 @@ object Sharing {
     /** A code's value written as it is shown, leading zeros kept. */
     fun format(value: Long): String = value.toString().padStart(12, '0').chunked(4).joinToString(" ")
 
-    private fun asciiUpper(s: String) = String(CharArray(s.length) { val c = s[it]; if (c in 'a'..'z') c - 32 else c })
-
     private fun base32(bytes: ByteArray): String = buildString {
         var n = 0
         var bits = 0
@@ -70,11 +68,17 @@ object Sharing {
         if (bits > 0) append(BASE32[(n shl (5 - bits)) and 31])
     }
 
-    /** The 32 bytes of canonical base32, either case, or null: wrong length, a character outside
-     * the alphabet, or a spare bit set, which would give one address two links. */
-    private fun unbase32(text: String): ByteArray? {
-        if (text.length != BASE32_LENGTH) return null
-        val out = ByteArray(Address.LENGTH)
+    /** The 32 bytes of an address's canonical base32, either case, or null. */
+    private fun unbase32(text: String): ByteArray? = if (text.length == BASE32_LENGTH) unbase32Any(text) else null
+
+    /**
+     * Canonical base32 of any length, either case, as bytes, or null: a character outside the
+     * alphabet, a last character that carries no bit of any byte, or a spare bit set, which would
+     * give the same bytes two spellings.
+     */
+    internal fun unbase32Any(text: String): ByteArray? {
+        if (text.length * 5 % 8 >= 5) return null
+        val out = ByteArray(text.length * 5 / 8)
         var n = 0
         var bits = 0
         var i = 0
@@ -88,8 +92,9 @@ object Sharing {
                 out[i++] = (n shr bits).toByte()
             }
         }
-        // 52 characters are 260 bits: the 256 of the address and four that must be zero.
-        if (bits != 4 || n and 0xF != 0) return null
+        if (n and ((1 shl bits) - 1) != 0) return null
         return out
     }
+
+    internal fun asciiUpper(s: String) = String(CharArray(s.length) { val c = s[it]; if (c in 'a'..'z') c - 32 else c })
 }

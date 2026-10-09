@@ -81,7 +81,15 @@ private enum class Tab(val route: String, val label: Int, val icon: ImageVector)
 }
 
 @Composable
-fun TernApp(repository: NodeRepository, opening: String?, incoming: Address?, opened: () -> Unit, taken: () -> Unit) {
+fun TernApp(
+    repository: NodeRepository,
+    opening: String?,
+    incoming: Address?,
+    joining: String?,
+    opened: () -> Unit,
+    taken: () -> Unit,
+    joined: () -> Unit,
+) {
     val state by repository.state.collectAsStateWithLifecycle()
     val nav = rememberNavController()
     val snackbar = remember { SnackbarHostState() }
@@ -171,6 +179,18 @@ fun TernApp(repository: NodeRepository, opening: String?, incoming: Address?, op
                 }
             },
         ) { padding ->
+            // A join code opened from elsewhere: offered once the node has said what it speaks.
+            if (joining != null && state.version != null) {
+                if (hasJoinCodes(state)) {
+                    JoinDialog(repository, state, joining, onDismiss = joined) { nav.navigate(chatRoute(it)) }
+                } else {
+                    val older = stringResource(R.string.join_code_needs_update)
+                    LaunchedEffect(joining) {
+                        say(older)
+                        joined()
+                    }
+                }
+            }
             Column(Modifier.fillMaxSize().padding(padding)) {
                 LinkBanner(repository, state)
                 NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.weight(1f)) {

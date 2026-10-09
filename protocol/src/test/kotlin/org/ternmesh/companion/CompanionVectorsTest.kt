@@ -191,6 +191,20 @@ class CompanionVectorsTest {
         assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(Codec.encode(Frame(0, card)), 5) }.reason)
     }
 
+    /** Join codes are version 7's, a link is at most 102 bytes, and a frame's text leaves the secret out. */
+    @Test
+    fun joinCodesAreVersion7s() {
+        val link = "HTTPS://TERNMESH.ORG/G#" + "A".repeat(Companion.LINK_MAX - 23)
+        for (body in listOf(Body.GroupLink(GroupId(ByteArray(8) { 1 })), Body.JoinLink(link), Body.Link(link))) {
+            val bytes = Codec.encode(Frame(1, body))
+            assertEquals(7, body.since)
+            assertEquals(body, Codec.decode(bytes).body)
+            assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(bytes, 6) }.reason)
+        }
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.JoinLink(link + "A"))) }
+        assertTrue("TERNMESH" !in Body.JoinLink(link).toString() && "TERNMESH" !in Body.Link(link).toString())
+    }
+
     /** A frame of a later version than the one both ends speak is one that version does not define. */
     @Test
     fun aFrameOfALaterVersionIsUndefined() {
@@ -292,6 +306,8 @@ class CompanionVectorsTest {
         "SEND_GROUP" -> Body.SendGroup(f.long("ref"), f.gid("group"), f.str("text"))
         "SEND_INVITE" -> Body.SendInvite(f.gid("group"), f.addr("to"))
         "JOIN" -> Body.Join(f.long("id"))
+        "GROUP_LINK" -> Body.GroupLink(f.gid("group"))
+        "JOIN_LINK" -> Body.JoinLink(f.str("link"))
         "UPDATE_BEGIN" -> Body.UpdateBegin(f.long("size"), f.bytes("digest"))
         "UPDATE_DATA" -> Body.UpdateData(f.long("offset"), f.bytes("data"))
         "UPDATE_END" -> Body.UpdateEnd
@@ -309,6 +325,7 @@ class CompanionVectorsTest {
         "QUEUED" -> Body.Queued(f.long("id"))
         "MADE" -> Body.Made(f.gid("group"))
         "UPDATING" -> Body.Updating(f.long("offset"))
+        "LINK" -> Body.Link(f.str("link"))
         "SELF" -> Body.Self(
             f.addr("address"), f.int("role"), f.str("region"), f.int("power"), f.long("time"),
             if (f.containsKey("cards")) f.int("cards") else null,
