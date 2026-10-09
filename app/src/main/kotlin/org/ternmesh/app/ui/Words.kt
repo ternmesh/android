@@ -21,6 +21,7 @@ fun phaseText(context: Context, state: NodeState): String = context.getString(
         Phase.SYNCING -> R.string.phase_syncing
         Phase.READY -> R.string.phase_ready
         Phase.STOPPED -> R.string.phase_stopped
+        Phase.DISCONNECTED -> R.string.phase_disconnected
     },
 )
 

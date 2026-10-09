@@ -1,5 +1,5 @@
 // The node itself: its address to give others, its battery and airtime, the nodes it hears, and the
-// four settings a client may change.
+// four settings a client may change; and disconnecting from it, changing it, or forgetting it.
 package org.ternmesh.app.ui
 
 import android.content.ClipData
@@ -14,6 +14,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -36,8 +38,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import org.ternmesh.app.R
+import org.ternmesh.app.node.ChosenNode
 import org.ternmesh.app.node.NodeRepository
 import org.ternmesh.app.node.NodeState
+import org.ternmesh.app.node.Phase
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Setting
 
@@ -51,6 +55,7 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
     val report = rememberReport()
     val r = state.records
     val self = r.self
+    var forgetting by remember { mutableStateOf<ChosenNode?>(null) }
 
     Column(
         Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
@@ -139,9 +144,36 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = repository::forget) { Text(stringResource(R.string.change_node)) }
+            if (state.phase == Phase.DISCONNECTED) {
+                Button(onClick = repository::connect) { Text(stringResource(R.string.connect)) }
+            } else {
+                OutlinedButton(onClick = repository::disconnect) { Text(stringResource(R.string.disconnect)) }
+            }
+            OutlinedButton(onClick = repository::leave) { Text(stringResource(R.string.change_node)) }
+        }
+        state.node?.let { node ->
+            TextButton(onClick = { forgetting = node }) {
+                Text(stringResource(R.string.forget_node), color = MaterialTheme.colorScheme.error)
+            }
         }
     }
+    forgetting?.let { node -> ForgetDialog(node, onDismiss = { forgetting = null }) { repository.forget(node.address) } }
+}
+
+/** Asks before [node] is forgotten, saying what that deletes and what it does not. */
+@Composable
+fun ForgetDialog(node: ChosenNode, onDismiss: () -> Unit, forget: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.forget_node_title, node.name ?: stringResource(R.string.unnamed_device))) },
+        text = { Text(stringResource(R.string.forget_node_explained)) },
+        confirmButton = {
+            TextButton(onClick = { onDismiss(); forget() }) {
+                Text(stringResource(R.string.forget), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }
 
 @Composable

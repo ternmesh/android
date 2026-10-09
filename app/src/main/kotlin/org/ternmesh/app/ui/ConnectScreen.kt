@@ -1,5 +1,6 @@
 // Choosing a node: permission to use Bluetooth, Bluetooth on, then the nodes advertising Tern's
-// service nearby. Picking one connects, and Android asks for its passkey the first time.
+// service nearby, after the nodes used before. Picking one connects, and Android asks for its passkey
+// the first time.
 package org.ternmesh.app.ui
 
 import android.content.Context
@@ -19,8 +20,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +59,7 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
     val scanner = remember { Scanner(context) }
     val found by scanner.found.collectAsStateWithLifecycle()
     val scanning by scanner.scanning.collectAsStateWithLifecycle()
+    var forgetting by remember { mutableStateOf<ChosenNode?>(null) }
 
     val enable = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         on = BleLink.isOn(context)
@@ -77,28 +83,59 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
                 permitted = true
                 if (BleLink.isOn(context)) scanner.start()
             }
-            !on -> Button(onClick = { enable.launch(BleLink.enableIntent()) }) { Text(stringResource(R.string.connect_turn_on)) }
-            !located -> {
-                Text(stringResource(R.string.connect_location))
-                Button(onClick = { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }) {
-                    Text(stringResource(R.string.connect_turn_on_location))
-                }
-            }
             else -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (scanning) {
-                        LinearProgressIndicator(Modifier.weight(1f))
-                        OutlinedButton(onClick = scanner::stop, Modifier.padding(start = 12.dp)) { Text(stringResource(R.string.connect_stop)) }
-                    } else {
-                        Button(onClick = scanner::start) { Text(stringResource(R.string.connect_scan)) }
+                // The nodes used before need no scan, so they are offered whatever stops one.
+                val canScan = on && located
+                when {
+                    !on -> Button(onClick = { enable.launch(BleLink.enableIntent()) }) { Text(stringResource(R.string.connect_turn_on)) }
+                    !located -> {
+                        Text(stringResource(R.string.connect_location))
+                        Button(onClick = { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }) {
+                            Text(stringResource(R.string.connect_turn_on_location))
+                        }
+                    }
+                    else -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (scanning) {
+                                LinearProgressIndicator(Modifier.weight(1f))
+                                OutlinedButton(onClick = scanner::stop, Modifier.padding(start = 12.dp)) { Text(stringResource(R.string.connect_stop)) }
+                            } else {
+                                Button(onClick = scanner::start) { Text(stringResource(R.string.connect_scan)) }
+                            }
+                        }
+                        state.problem?.let { Text(problemText(context, it), color = MaterialTheme.colorScheme.error) }
+                        if (found.isEmpty()) {
+                            Text(stringResource(R.string.connect_none), style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
-                state.problem?.let { Text(problemText(context, it), color = MaterialTheme.colorScheme.error) }
-                if (found.isEmpty()) {
-                    Text(stringResource(R.string.connect_none), style = MaterialTheme.typography.bodyMedium)
-                }
+                val known = state.known.map { it.address }.toSet()
+                val nearby = if (canScan) found.filter { it.address !in known } else emptyList()
                 LazyColumn(Modifier.fillMaxWidth()) {
-                    items(found, key = { it.address }) { f ->
+                    if (state.known.isNotEmpty()) {
+                        item { Heading(stringResource(R.string.known_nodes)) }
+                        items(state.known, key = { "k" + it.address }) { node ->
+                            val here = canScan && found.any { it.address == node.address }
+                            ListItem(
+                                headlineContent = { Text(node.name ?: stringResource(R.string.unnamed_device)) },
+                                supportingContent = {
+                                    Text(if (here) stringResource(R.string.known_nearby) else node.address)
+                                },
+                                trailingContent = {
+                                    IconButton(onClick = { forgetting = node }) {
+                                        Icon(Icons.Filled.Delete, stringResource(R.string.forget_node))
+                                    }
+                                },
+                                modifier = Modifier.clickable {
+                                    scanner.stop()
+                                    repository.choose(node)
+                                },
+                            )
+                            HorizontalDivider()
+                        }
+                        if (nearby.isNotEmpty()) item { Heading(stringResource(R.string.nearby_nodes)) }
+                    }
+                    items(nearby, key = { it.address }) { f ->
                         ListItem(
                             headlineContent = { Text(f.name ?: stringResource(R.string.unnamed_device)) },
                             supportingContent = { Text(f.address) },
@@ -114,6 +151,15 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
             }
         }
     }
+    forgetting?.let { node -> ForgetDialog(node, onDismiss = { forgetting = null }) { repository.forget(node.address) } }
+}
+
+@Composable
+private fun Heading(text: String) {
+    Text(
+        text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+    )
 }
 
 /** Whether a scan can find anything: on Android 11 and earlier, only with the location setting on. */

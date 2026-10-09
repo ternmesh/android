@@ -53,6 +53,9 @@ enum class Phase {
 
     /** Stopped, for [NodeState.problem]; the user decides whether to try again. */
     STOPPED,
+
+    /** The user disconnected: the node stays chosen, and nothing connects until they say so. */
+    DISCONNECTED,
 }
 
 /** What went wrong, for the screens to put in words. */
@@ -83,6 +86,8 @@ data class NodeState(
     /** First contacts the node refused, newest last, until the user deals with them. */
     val asked: List<Body.Asked> = emptyList(),
     val unanswered: List<Unanswered> = emptyList(),
+    /** Every node the app keeps records of, most recently chosen first. */
+    val known: List<ChosenNode> = emptyList(),
 )
 
 class NodeRepository(private val context: Context) {
@@ -91,6 +96,7 @@ class NodeRepository(private val context: Context) {
     private val prefs = context.getSharedPreferences("node", Context.MODE_PRIVATE)
     private val unansweredPrefs = context.getSharedPreferences("unanswered", Context.MODE_PRIVATE)
     private val askedPrefs = context.getSharedPreferences("asked", Context.MODE_PRIVATE)
+    private val knownPrefs = context.getSharedPreferences("known", Context.MODE_PRIVATE)
     private val notifier = Notifier(context)
     private var connection = newConnection(Records())
 
@@ -127,9 +133,18 @@ class NodeRepository(private val context: Context) {
         val address = prefs.getString(KEY_ADDRESS, null)
         if (address != null) {
             val node = ChosenNode(address, prefs.getString(KEY_NAME, null))
+            // A node chosen before the app kept a list of them.
+            if (!knownPrefs.contains(address)) remember(node)
             adopt(load(address))
-            update { it.copy(node = node, records = connection.records.copy(), unanswered = loadUnanswered(address), asked = loadAsked(address)) }
+            val phase = if (prefs.getBoolean(KEY_DISCONNECTED, false)) Phase.DISCONNECTED else Phase.NONE
+            update {
+                it.copy(
+                    node = node, phase = phase, records = connection.records.copy(),
+                    unanswered = loadUnanswered(address), asked = loadAsked(address),
+                )
+            }
         }
+        update { it.copy(known = loadKnown()) }
     }
 
     /** Connects to the node chosen before, if there is one and the app is not already at it. */
@@ -144,20 +159,44 @@ class NodeRepository(private val context: Context) {
     /** Makes [node] the app's node and connects to it. */
     fun choose(node: ChosenNode) {
         if (_state.value.node?.address != node.address) {
-            forget()
+            leave()
             prefs.edit().putString(KEY_ADDRESS, node.address).putString(KEY_NAME, node.name).apply()
             adopt(load(node.address))
-            update { NodeState(node = node, records = connection.records.copy(), unanswered = loadUnanswered(node.address), asked = loadAsked(node.address)) }
+            update {
+                NodeState(
+                    node = node, records = connection.records.copy(), unanswered = loadUnanswered(node.address),
+                    asked = loadAsked(node.address),
+                )
+            }
         }
+        remember(node)
+        update { it.copy(known = loadKnown()) }
         connectTo(node, waitForIt = false)
     }
 
-    fun retry() {
+    /** Connects again, after a failure or after the user disconnected. */
+    fun connect() {
         _state.value.node?.let { connectTo(it, waitForIt = false) }
     }
 
+    /**
+     * Drops the link and stays off it, across restarts too, until the user connects again. The node
+     * stays chosen and its records stay: connecting again syncs only what is new.
+     */
+    fun disconnect() {
+        if (_state.value.node == null) return
+        // Before the link closes, so nothing that answers to its closing shows the service again.
+        update { it.copy(phase = Phase.DISCONNECTED, problem = null) }
+        prefs.edit().putBoolean(KEY_DISCONNECTED, true).apply()
+        handler.removeCallbacksAndMessages(null)
+        link.disconnect()
+        connection.close()
+        save()
+        NodeService.stop(context)
+    }
+
     /** Drops the link and the node, keeping its records on disk in case it is chosen again. */
-    fun forget() {
+    fun leave() {
         handler.removeCallbacksAndMessages(null)
         link.disconnect()
         connection.close()
@@ -167,8 +206,31 @@ class NodeRepository(private val context: Context) {
         // A notification names only an address or group: opened after another node is chosen, it
         // would open that conversation against the wrong node.
         notifier.cancelAll()
-        update { NodeState() }
+        update { NodeState(known = loadKnown()) }
     }
+
+    /**
+     * Forgets the node at [address]: leaves it if it is the app's node, and deletes what the app kept
+     * of it. Its messages stay on the node, and come back with a sync if it is chosen again.
+     */
+    fun forget(address: String) {
+        if (_state.value.node?.address == address) leave()
+        file(address).delete()
+        unansweredPrefs.edit().remove(address).apply()
+        askedPrefs.edit().remove(address).apply()
+        knownPrefs.edit().remove(address).apply()
+        update { it.copy(known = loadKnown()) }
+    }
+
+    /** Adds [node] to the nodes the app keeps, as the one chosen last. */
+    private fun remember(node: ChosenNode) {
+        knownPrefs.edit().putString(node.address, "${System.currentTimeMillis()}:${node.name.orEmpty()}").apply()
+    }
+
+    private fun loadKnown(): List<ChosenNode> = knownPrefs.all.mapNotNull { (address, value) ->
+        val (at, name) = (value as? String)?.split(':', limit = 2)?.takeIf { it.size == 2 } ?: return@mapNotNull null
+        (at.toLongOrNull() ?: 0L) to ChosenNode(address, name.ifEmpty { null })
+    }.sortedByDescending { it.first }.map { it.second }
 
     /** Makes a request; [then] runs on the main thread with what came of it. */
     fun submit(body: Body, then: (Outcome) -> Unit = {}) {
@@ -341,6 +403,7 @@ class NodeRepository(private val context: Context) {
     }
 
     private fun connectTo(node: ChosenNode, waitForIt: Boolean) {
+        prefs.edit().remove(KEY_DISCONNECTED).apply()
         NodeService.start(context)
         connection.close()
         link.connect(node.address, waitForIt)
@@ -365,12 +428,18 @@ class NodeRepository(private val context: Context) {
                 if (s.why == LinkFailure.LOST && node != null) {
                     // Out of range, or the node restarted: Android reconnects when it is back.
                     update { it.copy(phase = Phase.CONNECTING, problem = Problem.Link(s.why)) }
-                    handler.postDelayed({ if (_state.value.node == node) link.connect(node.address, waitForIt = true) }, 1_000)
+                    handler.postDelayed({ reconnect(node) }, 1_000)
                 } else {
                     update { it.copy(phase = Phase.STOPPED, problem = Problem.Link(s.why)) }
                 }
             }
         }
+    }
+
+    /** Connects again to [node] after the link dropped, if it is still the node and still wanted. */
+    private fun reconnect(node: ChosenNode) {
+        val s = _state.value
+        if (s.node == node && s.phase != Phase.DISCONNECTED) link.connect(node.address, waitForIt = true)
     }
 
     private fun event(e: ConnectionEvent) {
@@ -393,7 +462,7 @@ class NodeRepository(private val context: Context) {
                 link.disconnect()
                 val node = _state.value.node ?: return
                 update { it.copy(phase = Phase.CONNECTING, problem = Problem.Gone) }
-                handler.postDelayed({ if (_state.value.node == node) link.connect(node.address, waitForIt = true) }, 1_000)
+                handler.postDelayed({ reconnect(node) }, 1_000)
             }
         }
         publish()
@@ -469,5 +538,6 @@ class NodeRepository(private val context: Context) {
     companion object {
         private const val KEY_ADDRESS = "address"
         private const val KEY_NAME = "name"
+        private const val KEY_DISCONNECTED = "disconnected"
     }
 }

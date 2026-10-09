@@ -169,18 +169,24 @@ private fun LinkBanner(repository: NodeRepository, state: NodeState) {
             Column(Modifier.weight(1f)) {
                 Text(phaseText(context, state), style = MaterialTheme.typography.labelLarge)
                 state.problem?.let { Text(problemText(context, it), style = MaterialTheme.typography.bodySmall) }
+                if (state.phase == Phase.DISCONNECTED) {
+                    Text(stringResource(R.string.disconnected_explained), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (state.phase == Phase.DISCONNECTED) {
+                TextButton(onClick = repository::connect) { Text(stringResource(R.string.connect)) }
             }
             if (state.phase == Phase.STOPPED) {
                 if (state.problem == Problem.Link(LinkFailure.BLUETOOTH_OFF)) {
                     // Bluetooth off: turning it on is the way back, and the link is tried again after.
                     val enable = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-                        if (BleLink.isOn(context)) repository.retry()
+                        if (BleLink.isOn(context)) repository.connect()
                     }
                     TextButton(onClick = { enable.launch(BleLink.enableIntent()) }) {
                         Text(stringResource(R.string.connect_turn_on))
                     }
                 } else {
-                    TextButton(onClick = repository::retry) { Text(stringResource(R.string.retry)) }
+                    TextButton(onClick = repository::connect) { Text(stringResource(R.string.retry)) }
                 }
             }
         }
