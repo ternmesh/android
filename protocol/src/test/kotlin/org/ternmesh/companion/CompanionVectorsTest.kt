@@ -175,6 +175,41 @@ class CompanionVectorsTest {
         assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x8A.toByte(), 1), 1) }.reason)
     }
 
+    /**
+     * A frame of a type only a later version defines is, to a receiver speaking an earlier one, a
+     * type it does not know, whatever its own version: a node answers the code given, and a client
+     * reads nothing from it. The connection's half, news ignored and answers discarded, is in
+     * ConnectionTest.
+     */
+    @Test
+    fun unknownToOlderIsUndefinedByTheVersionSpoken() {
+        val cases = v.list("unknown_to_older")
+        assertTrue(cases.isNotEmpty())
+        for (c in cases) {
+            val name = c.str("type")
+            val version = c.int("version")
+            val bytes = c.bytes("frame")
+            assertEquals(name, Codec.decode(bytes).body.typeName)
+            assertTrue(Codec.decode(bytes).body.since > version, name)
+            val e = assertFailsWith<DecodeException>("$version $name") { Codec.decode(bytes, version) }
+            assertEquals(Unreadable.UNDEFINED, e.reason, "$version $name")
+            val answer = c["answer"].let { if (it == null || it is JsonNull) null else it.jsonPrimitive.int }
+            assertEquals(answer, Codec.errorCode(bytes, e.reason), "$version $name")
+        }
+    }
+
+    /** Positions' signed fields, at their ends, build and read back. */
+    @Test
+    fun positionsSignedFieldsAtTheirEnds() {
+        val south = Body.SetPosition(-900_000_000, -1_800_000_000, Companion.NO_ALTITUDE, 0xFFFF, 0xFFFF)
+        assertEquals(south, Codec.decode(Codec.encode(Frame(1, south))).body)
+        val group = GroupId(ByteArray(8) { 1 })
+        val there = Body.GroupPosition(group, 0xFFFF_FFFFL, 24, Int.MAX_VALUE, Int.MIN_VALUE, 32767, 255, 0xFFFF_FFFFL)
+        assertEquals(there, Codec.decode(Codec.encode(Frame(0, there))).body)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, south.copy(altitude = -32769))) }
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, south.copy(accuracy = 0x10000))) }
+    }
+
     @Test
     fun aFrameThatNeverFinishesIsGivenUpAsText() {
         val r = StreamReader()
@@ -227,6 +262,9 @@ class CompanionVectorsTest {
         "UPDATE_BEGIN" -> Body.UpdateBegin(f.long("size"), f.bytes("digest"))
         "UPDATE_DATA" -> Body.UpdateData(f.long("offset"), f.bytes("data"))
         "UPDATE_END" -> Body.UpdateEnd
+        "SET_POSITION" -> Body.SetPosition(f.int("lat"), f.int("lon"), f.int("altitude"), f.int("accuracy"), f.int("age"))
+        "SHARE" -> Body.Share(f.addr("contact"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"))
+        "SHARE_GROUP" -> Body.ShareGroup(f.gid("group"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"))
         "OK" -> Body.Ok
         "ERROR" -> Body.Error(f.int("code"))
         "INFO" -> Body.Info(
@@ -260,6 +298,18 @@ class CompanionVectorsTest {
         "INVITE" -> Body.Invite(
             f.long("id"), f.addr("contact"), f.gid("group"), f.long("time"), f.int("flags"), f.int("state"),
             f.int("reason"), f.int("wait"), f.str("name"),
+        )
+        "POSITION" -> Body.Position(
+            f.addr("contact"), f.int("precision"), f.int("lat"), f.int("lon"), f.int("altitude"), f.int("accuracy"),
+            f.long("age"),
+        )
+        "GROUP_POSITION" -> Body.GroupPosition(
+            f.gid("group"), f.long("from"), f.int("precision"), f.int("lat"), f.int("lon"), f.int("altitude"),
+            f.int("accuracy"), f.long("age"),
+        )
+        "SHARING" -> Body.Sharing(f.addr("contact"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"))
+        "GROUP_SHARING" -> Body.GroupSharing(
+            f.gid("group"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"),
         )
         else -> fail("no frame named $name")
     }

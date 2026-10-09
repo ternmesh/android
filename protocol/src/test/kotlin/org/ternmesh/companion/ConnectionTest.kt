@@ -25,11 +25,12 @@ class ConnectionTest {
         val link = Link(Connection(now = { 0 }, wallTime = { setTime.time }))
         val answers = link.replay(frames)
 
-        assertEquals(11, answers.size)
-        assertTrue(answers.all { it is Outcome.Answered }, "every request answered: $answers")
+        assertEquals(15, answers.size)
+        // SHARE_GROUP asks for a precision past 24.
+        assertEquals(listOf(Outcome.Refused(ErrorCode.REFUSED)), answers.filter { it !is Outcome.Answered })
         val r = link.connection.records
         assertEquals("EU868", r.self?.region)
-        assertEquals(4, r.syncedVersion)
+        assertEquals(Companion.VERSION, r.syncedVersion)
         assertEquals(listOf("Bob", "Carol"), r.contacts.values.map { it.name }.sorted())
         assertEquals(listOf(0, 0), r.contacts.values.map { it.session }, "Bob's session ended; Carol never had one")
         assertEquals(listOf("Ridge walkers"), r.groups.values.map { it.name }, "the group made was left, the one joined renamed")
@@ -39,6 +40,15 @@ class ConnectionTest {
         assertEquals(MessageState.SENT, r.items[20L]?.state)
         assertEquals(1, r.neighbours.size)
         assertEquals(1, link.events.count { it is ConnectionEvent.News && it.body is Body.Asked })
+        val bob = Codec.decode(frames.first { it.str("type") == "POSITION" }.bytes("frame")).body as Body.Position
+        assertEquals(mapOf(bob.contact to bob), r.positions, "Bob's position is held")
+        assertEquals(16, bob.precision)
+        assertEquals(Companion.NO_ALTITUDE, bob.altitude)
+        assertEquals(emptyMap(), r.groupPositions)
+        val shared = link.events.mapNotNull { (it as? ConnectionEvent.News)?.body as? Body.Sharing }
+        assertEquals(listOf(20, 0), shared.map { it.precision }, "sharing with Bob on for an hour, then off")
+        assertEquals(emptyMap(), r.sharing, "and off is not held")
+        assertEquals(emptyMap(), r.groupSharing)
     }
 
     /** A client of version 0 that holds messages through 17 asks only for those after them, and sets no clock when it has none to give. */
@@ -82,6 +92,69 @@ class ConnectionTest {
         assertEquals(2, link.connection.agreed)
         assertEquals(1, link.events.count { it == ConnectionEvent.Synced })
         assertEquals(2, link.connection.records.syncedVersion)
+    }
+
+    /**
+     * Clients of versions 3 and 4 are sent no position and no sharing, and do not send the request
+     * their version does not define: it fails here, with nothing on the link.
+     */
+    @Test
+    fun olderVersions3And4AndTheRequestEachMustNotSend() {
+        for (version in 3..4) {
+            val frames = vectors.list("older").first { it.int("version") == version }.list("frames")
+            val link = Link(Connection(version = version, now = { 0 }, wallTime = null))
+            link.replay(frames.dropLast(2))
+            assertEquals(version, link.connection.agreed)
+            assertEquals(if (version >= 4) "heltec-v3" else null, link.connection.board)
+            assertEquals(1, link.events.count { it == ConnectionEvent.Synced })
+            assertEquals(version, link.connection.records.syncedVersion)
+            assertEquals(emptyMap(), link.connection.records.positions)
+            assertEquals(emptyMap(), link.connection.records.sharing)
+
+            val refused = Codec.decode(frames[frames.size - 2].bytes("frame")).body
+            assertEquals(version + 1, refused.since)
+            var result: Outcome? = null
+            link.connection.submit(refused) { result = it }
+            assertEquals(Outcome.Unsupported, result)
+            assertEquals(0, link.out.size)
+        }
+    }
+
+    /**
+     * A client of an earlier version takes a frame only a later one defines as of a type it does
+     * not know: news is ignored, but counted, so nothing is taken for missed; an answer is discarded,
+     * and the request it came for still waits for its own.
+     */
+    @Test
+    fun unknownToOlderIgnoredAsNewsAndDiscardedAsAnAnswer() {
+        for (c in vectors.list("unknown_to_older")) {
+            val name = c.str("type")
+            val version = c.int("version")
+            val frame = c.bytes("frame")
+            if (Companion.isRequest(frame[0].toInt() and 0xFF)) continue
+            val node = Node(version = Companion.VERSION, clientVersion = version)
+            node.connection.open()
+            node.answerAll()
+            assertEquals(version, node.connection.agreed, name)
+            val before = node.connection.records.copy()
+            val events = node.events.size
+            if (Companion.isNews(frame[0].toInt() and 0xFF)) {
+                node.connection.receive(frame.copyOf().also { it[1] = node.newsCount.toByte() })
+                node.newsCount++
+                assertEquals(before, node.connection.records, "$version $name")
+                assertEquals(events, node.events.size, "$version $name")
+                node.news(Body.Power(3900, 80, 0))
+                assertEquals(0, node.sent.size, "$version $name: nothing missed")
+            } else {
+                var result: Outcome? = null
+                node.connection.submit(Body.Ping) { result = it }
+                val ping = Codec.decode(node.sent.removeFirst())
+                node.connection.receive(frame.copyOf().also { it[1] = ping.seq.toByte() })
+                assertNull(result, "$version $name")
+                node.connection.receive(Codec.encode(Frame(ping.seq, Body.Ok)))
+                assertEquals(Outcome.Answered(Body.Ok), result, "$version $name")
+            }
+        }
     }
 
     /** A client of version 4 talking to a node of version 1 does the same. */
@@ -168,7 +241,7 @@ class ConnectionTest {
         node.time += Companion.ANSWER_WAIT_MS
         node.connection.tick()
         assertEquals(listOf("HELLO", "SET_TIME", "SYNC"), node.answerAll().map { it.typeName })
-        assertEquals(4, node.connection.agreed)
+        assertEquals(Companion.VERSION, node.connection.agreed)
     }
 
     /** Opening again fails what was held only once the new HELLO is out, so a callback that opens again too sends no second one: one request at a time holds. */
@@ -236,7 +309,7 @@ class ConnectionTest {
         node.news(Node.groupMessage(6, MessageState.SENT))
         node.news(Node.message(9, MessageState.RECEIVED))
         node.answerSync()
-        assertEquals(4, node.connection.records.syncedVersion)
+        assertEquals(Companion.VERSION, node.connection.records.syncedVersion)
 
         node.newsCount++ // one lost
         node.news(Body.State(9, MessageState.RECEIVED, 0, 0))
@@ -458,6 +531,72 @@ class ConnectionTest {
         assertEquals(emptyMap(), r.groups)
     }
 
+    /** A position or sharing of precision 0 is none: it takes away the one held, and is not held. */
+    @Test
+    fun precision0IsNone() {
+        val r = Records()
+        r.apply(Body.Position(Node.BOB, 16, 603_945_922, 52_871_704, Companion.NO_ALTITUDE, 0, 40))
+        r.apply(Body.GroupPosition(Node.HUT, 7, 24, 1, 2, 3, 4, 5))
+        r.apply(Body.Sharing(Node.BOB, 20, 3, 900, 60))
+        r.apply(Body.GroupSharing(Node.HUT, 12, 0, 300, 0))
+        assertEquals(setOf(Node.BOB), r.positions.keys)
+        assertEquals(setOf(Node.HUT to 7L), r.groupPositions.keys)
+        assertEquals(setOf(Node.BOB), r.sharing.keys)
+        assertEquals(setOf(Node.HUT), r.groupSharing.keys)
+        r.apply(Body.Position(Node.BOB, 0, 0, 0, 0, 0, 0))
+        r.apply(Body.GroupPosition(Node.HUT, 8, 0, 0, 0, 0, 0, 0))
+        r.apply(Body.Sharing(Node.CAROL, 0, 0, 0, 0))
+        r.apply(Body.GroupSharing(Node.HUT, 0, 0, 0, 0))
+        assertEquals(emptyMap(), r.positions)
+        assertEquals(setOf(Node.HUT to 7L), r.groupPositions.keys, "another member's position is another record")
+        assertEquals(setOf(Node.BOB), r.sharing.keys)
+        assertEquals(emptyMap(), r.groupSharing)
+    }
+
+    /** A sync is the whole list of positions and of sharing: what it did not send is forgotten, or off. One of version 4 sends neither, and says nothing of them. */
+    @Test
+    fun aSyncIsTheWholeListOfPositionsAndSharing() {
+        val r = Records()
+        r.apply(Body.Position(Node.BOB, 16, 1, 2, 3, 4, 5))
+        r.apply(Body.Position(Node.CAROL, 16, 1, 2, 3, 4, 5))
+        r.apply(Body.GroupPosition(Node.HUT, 7, 24, 1, 2, 3, 4, 5))
+        r.apply(Body.Sharing(Node.BOB, 20, 3, 900, 60))
+        r.apply(Body.GroupSharing(Node.HUT, 12, 0, 300, 0))
+        val held = r.copy()
+        r.beginSync()
+        assertTrue(r.finishSync(4))
+        assertEquals(held.copy().also { it.syncedVersion = 4 }, r)
+
+        r.beginSync()
+        r.apply(Body.Position(Node.CAROL, 12, 1, 2, 3, 4, 50))
+        r.apply(Body.GroupSharing(Node.HUT, 12, 0, 300, 0))
+        assertTrue(r.finishSync(5))
+        assertEquals(setOf(Node.CAROL), r.positions.keys)
+        assertEquals(emptyMap(), r.groupPositions)
+        assertEquals(emptyMap(), r.sharing, "sharing the sync did not send is off")
+        assertEquals(setOf(Node.HUT), r.groupSharing.keys)
+    }
+
+    /** A sync that missed some of its news forgets no position and turns no sharing off. */
+    @Test
+    fun aSyncThatMissedNewsKeepsPositionsAndSharing() {
+        val node = Node()
+        node.connection.open()
+        node.answerOne()
+        node.answerOne()
+        node.sent.removeFirst() // SYNC
+        node.news(Body.Position(Node.BOB, 16, 1, 2, 3, 4, 5))
+        node.news(Body.Sharing(Node.BOB, 20, 3, 900, 60))
+        node.answerSync()
+
+        node.connection.resync()
+        node.sent.removeFirst()
+        node.newsCount += 2 // both, lost
+        node.answerSync()
+        assertEquals(setOf(Node.BOB), node.connection.records.positions.keys)
+        assertEquals(setOf(Node.BOB), node.connection.records.sharing.keys)
+    }
+
     @Test
     fun newsOfATypeThisClientDoesNotKnowIsCountedAndIgnored() {
         val node = Node()
@@ -616,7 +755,8 @@ private class Link(val connection: Connection) {
 /** The version a [Node] speaks unless told otherwise: Node's own companion object hides [Companion]. */
 private const val LATEST = Companion.VERSION
 
-private class Node(val version: Int = LATEST, records: Records = Records()) {
+/** [version] is the node's; [clientVersion] the connection's. */
+private class Node(val version: Int = LATEST, records: Records = Records(), clientVersion: Int = LATEST) {
     var time = 0L
     var newsCount = 0
     val sent = ArrayDeque<ByteArray>()
@@ -625,7 +765,7 @@ private class Node(val version: Int = LATEST, records: Records = Records()) {
     /** The seq of the last request. */
     var seq = 0
 
-    val connection = Connection(records = records, now = { time }, wallTime = { 1_790_000_000 }).also {
+    val connection = Connection(clientVersion, records, now = { time }, wallTime = { 1_790_000_000 }).also {
         it.send = { bytes ->
             sent.addLast(bytes)
             seq = bytes[1].toInt() and 0xFF

@@ -41,6 +41,7 @@
     <string name="error_9">the node is not in that group, or no longer holds that invite</string>
     <string name="error_10">the node is not where the update is</string>
     <string name="error_11">that is not firmware this node runs</string>
+    <string name="error_12">that is not one of the node\'s contacts</string>
     <string name="error_other">error %1$d</string>
 
     <string name="outcome_unsupported">Your node\'s firmware does not support this yet.</string>

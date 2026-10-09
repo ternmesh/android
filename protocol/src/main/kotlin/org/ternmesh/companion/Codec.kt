@@ -1,5 +1,5 @@
-// Building and reading frames, field by field: big-endian numbers, 32-byte addresses and digests,
-// and text and bytes as a length byte then the bytes.
+// Building and reading frames, field by field: big-endian numbers, signed ones in two's complement,
+// 32-byte addresses and digests, and text and bytes as a length byte then the bytes.
 package org.ternmesh.companion
 
 import java.io.ByteArrayOutputStream
@@ -85,6 +85,21 @@ object Codec {
                 w.bytes(b.data, Companion.UPDATE_CHUNK)
             }
             Body.UpdateEnd -> {}
+            is Body.SetPosition -> {
+                w.i32(b.lat)
+                w.i32(b.lon)
+                w.i16(b.altitude)
+                w.u16(b.accuracy)
+                w.u16(b.age)
+            }
+            is Body.Share -> {
+                w.addr(b.contact)
+                w.sharing(b.precision, b.fields, b.interval, b.minutes)
+            }
+            is Body.ShareGroup -> {
+                w.gid(b.group)
+                w.sharing(b.precision, b.fields, b.interval, b.minutes)
+            }
             is Body.Error -> w.u8(b.code)
             is Body.Info -> {
                 w.u8(b.version)
@@ -177,6 +192,23 @@ object Codec {
                 w.u16(b.wait)
                 w.str(b.name, Companion.NAME_MAX)
             }
+            is Body.Position -> {
+                w.addr(b.contact)
+                w.position(b.precision, b.lat, b.lon, b.altitude, b.accuracy, b.age)
+            }
+            is Body.GroupPosition -> {
+                w.gid(b.group)
+                w.u32(b.from)
+                w.position(b.precision, b.lat, b.lon, b.altitude, b.accuracy, b.age)
+            }
+            is Body.Sharing -> {
+                w.addr(b.contact)
+                w.sharing(b.precision, b.fields, b.interval, b.minutes)
+            }
+            is Body.GroupSharing -> {
+                w.gid(b.group)
+                w.sharing(b.precision, b.fields, b.interval, b.minutes)
+            }
         }
         val out = w.toByteArray()
         require(out.size <= Companion.MAX_FRAME) { "${b.typeName} is ${out.size} bytes, more than a frame holds" }
@@ -224,6 +256,9 @@ object Codec {
             0x30 -> Body.UpdateBegin(r.u32(), r.raw(Companion.DIGEST))
             0x31 -> Body.UpdateData(r.u32(), r.bytes(Companion.UPDATE_CHUNK))
             0x32 -> Body.UpdateEnd
+            0x33 -> Body.SetPosition(r.i32(), r.i32(), r.i16(), r.u16(), r.u16())
+            0x34 -> Body.Share(r.addr(), r.u8(), r.u8(), r.u16(), r.u16())
+            0x35 -> Body.ShareGroup(r.gid(), r.u8(), r.u8(), r.u16(), r.u16())
             0x40 -> Body.Ok
             0x41 -> Body.Error(r.u8())
             0x42 -> {
@@ -261,6 +296,10 @@ object Codec {
             0x8D -> Body.Invite(
                 r.u32(), r.addr(), r.gid(), r.u32(), r.u8(), r.u8(), r.u8(), r.u16(), r.str(Companion.NAME_MAX),
             )
+            0x8E -> Body.Position(r.addr(), r.u8(), r.i32(), r.i32(), r.i16(), r.u8(), r.u32())
+            0x8F -> Body.GroupPosition(r.gid(), r.u32(), r.u8(), r.i32(), r.i32(), r.i16(), r.u8(), r.u32())
+            0x90 -> Body.Sharing(r.addr(), r.u8(), r.u8(), r.u16(), r.u16())
+            0x91 -> Body.GroupSharing(r.gid(), r.u8(), r.u8(), r.u16(), r.u16())
             else -> throw DecodeException(Unreadable.UNDEFINED)
         }
         return Frame(seq, body)
@@ -293,6 +332,34 @@ private class Writer {
     fun i8(v: Int) {
         require(v in -128..127) { "$v does not fit a signed byte" }
         out.write(v and 0xFF)
+    }
+
+    fun i16(v: Int) {
+        require(v in Short.MIN_VALUE..Short.MAX_VALUE) { "$v does not fit two signed bytes" }
+        out.write(v shr 8 and 0xFF)
+        out.write(v and 0xFF)
+    }
+
+    fun i32(v: Int) {
+        for (shift in intArrayOf(24, 16, 8, 0)) out.write(v shr shift and 0xFF)
+    }
+
+    /** `precision`, `fields`, `interval` and `minutes`: `SHARE`'s, `SHARE_GROUP`'s and their news'. */
+    fun sharing(precision: Int, fields: Int, interval: Int, minutes: Int) {
+        u8(precision)
+        u8(fields)
+        u16(interval)
+        u16(minutes)
+    }
+
+    /** `POSITION`'s and `GROUP_POSITION`'s fields after the sender's. */
+    fun position(precision: Int, lat: Int, lon: Int, altitude: Int, accuracy: Int, age: Long) {
+        u8(precision)
+        i32(lat)
+        i32(lon)
+        i16(altitude)
+        u8(accuracy)
+        u32(age)
     }
 
     fun addr(a: Address) = out.write(a.toByteArray())
@@ -332,7 +399,9 @@ private class Reader(private val bytes: ByteArray) {
     fun u8() = next()
     fun i8() = next().toByte().toInt()
     fun u16() = next() shl 8 or next()
+    fun i16() = u16().toShort().toInt()
     fun u32(): Long = (0 until 4).fold(0L) { v, _ -> v shl 8 or next().toLong() }
+    fun i32() = u32().toInt()
 
     fun addr(): Address {
         if (at + Address.LENGTH > bytes.size) throw DecodeException(Unreadable.MALFORMED)

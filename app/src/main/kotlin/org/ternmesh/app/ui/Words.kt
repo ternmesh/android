@@ -53,6 +53,7 @@ fun errorText(context: Context, code: Int): String = when (code) {
     9 -> context.getString(R.string.error_9)
     10 -> context.getString(R.string.error_10)
     11 -> context.getString(R.string.error_11)
+    12 -> context.getString(R.string.error_12)
     else -> context.getString(R.string.error_other, code)
 }
 

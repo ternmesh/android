@@ -1,16 +1,16 @@
-// The companion protocol's frames, version 4: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 5: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
 //
-// Numbers are Kotlin's signed types, wide enough for the field: Int for u8, i8 and u16, Long for
-// u32. Building a frame checks each fits.
+// Numbers are Kotlin's signed types, wide enough for the field: Int for u8, i8, u16, i16 and i32,
+// Long for u32. Building a frame checks each fits.
 package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 3 is this without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 4
+    /** The version this client speaks. Version 4 is this without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 5
     const val MAX_FRAME = 180
     const val TEXT_MAX = 128
     const val NAME_MAX = 31
@@ -21,6 +21,12 @@ object Companion {
 
     /** The `data` an `UPDATE_DATA` carries, all but the last: the longest that fits a frame. */
     const val UPDATE_CHUNK = 172
+
+    /** A position's `altitude` when it has none. */
+    const val NO_ALTITUDE = -32768
+
+    /** The finest precision a position is shared at; 0 is none, or sharing off. */
+    const val PRECISION_MAX = 24
 
     /** A SHA-256 digest's length. */
     const val DIGEST = 32
@@ -60,6 +66,7 @@ object Companion {
         0x1A, 0x89 -> 1
         in 0x20..0x25, 0x45, in 0x8A..0x8D -> 2
         in 0x30..0x32, 0x46 -> 4
+        in 0x33..0x35, in 0x8E..0x91 -> 5
         else -> 0
     }
 }
@@ -140,6 +147,9 @@ object ErrorCode {
 
     /** Not an image this node runs, or not the one its digest names: the update is discarded. */
     const val NOT_AN_IMAGE = 11
+
+    /** Not a contact: `SHARE` names an address the node does not hold as one. */
+    const val NOT_A_CONTACT = 12
 }
 
 /**
@@ -194,7 +204,7 @@ object MessageState {
     const val RECEIVED = 4
 }
 
-/** What a frame says: every frame of version 4. [since] is the least version that defines it. */
+/** What a frame says: every frame of version 5. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String) {
     /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
     val since: Int get() = Companion.since(type)
@@ -244,6 +254,22 @@ sealed class Body(val type: Int, val typeName: String) {
     }
 
     data object UpdateEnd : Body(0x32, "UPDATE_END")
+
+    /**
+     * The client's own position: [lat] and [lon] in 10⁻⁷ degree, north and east positive;
+     * [altitude] in metres, [Companion.NO_ALTITUDE] for none; [accuracy] in metres, 0 for none;
+     * [age] how many seconds old the fix is.
+     */
+    data class SetPosition(val lat: Int, val lon: Int, val altitude: Int, val accuracy: Int, val age: Int) :
+        Body(0x33, "SET_POSITION")
+
+    /** Sharing with [contact] on, changed, or with [precision] 0 off; [minutes] 0 until turned off. Only ever what the user asked for. */
+    data class Share(val contact: Address, val precision: Int, val fields: Int, val interval: Int, val minutes: Int) :
+        Body(0x34, "SHARE")
+
+    /** [Share] for a group. */
+    data class ShareGroup(val group: GroupId, val precision: Int, val fields: Int, val interval: Int, val minutes: Int) :
+        Body(0x35, "SHARE_GROUP")
 
     // Answers, sent by the node with the request's seq.
     data object Ok : Body(0x40, "OK")
@@ -362,6 +388,44 @@ sealed class Body(val type: Int, val typeName: String) {
     ) : Body(0x8D, "INVITE"), Item {
         override fun with(s: State) = copy(state = s.state, reason = s.reason, wait = s.wait)
     }
+
+    /**
+     * The position the node holds from [contact]: the centre of its cell at [precision], in 10⁻⁷
+     * degree; [altitude] [Companion.NO_ALTITUDE] and [accuracy] 0 where it gave none; [age] seconds
+     * as of when sent. [precision] 0: the node holds none from it.
+     */
+    data class Position(
+        val contact: Address,
+        val precision: Int,
+        val lat: Int,
+        val lon: Int,
+        val altitude: Int,
+        val accuracy: Int,
+        val age: Long,
+    ) : Body(0x8E, "POSITION")
+
+    /** [Position] from a routing id in a group: [from] is what a member claimed. */
+    data class GroupPosition(
+        val group: GroupId,
+        val from: Long,
+        val precision: Int,
+        val lat: Int,
+        val lon: Int,
+        val altitude: Int,
+        val accuracy: Int,
+        val age: Long,
+    ) : Body(0x8F, "GROUP_POSITION")
+
+    /**
+     * How the node shares its position with [contact]: [precision] 1 to 24, or 0 when off; [fields]
+     * bit 0 altitude, bit 1 accuracy; [interval] in seconds; [minutes] left, 0 until turned off.
+     */
+    data class Sharing(val contact: Address, val precision: Int, val fields: Int, val interval: Int, val minutes: Int) :
+        Body(0x90, "SHARING")
+
+    /** [Sharing] with a group. */
+    data class GroupSharing(val group: GroupId, val precision: Int, val fields: Int, val interval: Int, val minutes: Int) :
+        Body(0x91, "GROUP_SHARING")
 }
 
 internal object Hex {
