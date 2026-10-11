@@ -290,7 +290,9 @@
     <!-- First-run setup -->
     <string name="setup_region_title">Where are you?</string>
     <string name="setup_region_explained">Your node does not transmit until it knows which radio rules to follow. Choose the region you are in.</string>
+    <string name="region_au915">Australia</string>
     <string name="region_eu868">Europe and the UK</string>
+    <string name="region_nz915">New Zealand</string>
     <string name="region_us915">The United States, Canada and Mexico</string>
     <string name="setup_region_law">Only use a region that is legal where you are. You can change it later on the Node tab.</string>
     <string name="setup_role_title">Should your node help others?</string>
