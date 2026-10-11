@@ -291,9 +291,14 @@
     <string name="setup_region_title">Where are you?</string>
     <string name="setup_region_explained">Your node does not transmit until it knows which radio rules to follow. Choose the region you are in.</string>
     <string name="region_au915">Australia</string>
-    <string name="region_eu868">Europe and the UK</string>
+    <string name="region_cl915">Chile</string>
+    <string name="region_eu868">Europe, the UK, Ukraine and South Africa</string>
+    <string name="region_kz863">Kazakhstan</string>
+    <string name="region_my919">Malaysia</string>
     <string name="region_nz915">New Zealand</string>
-    <string name="region_us915">The United States, Canada and Mexico</string>
+    <string name="region_ru868">Russia</string>
+    <string name="region_th920">Thailand: set the power to at least 17 dBm radiated first</string>
+    <string name="region_us915">The United States, Canada, Mexico, Brazil, Argentina and Peru</string>
     <string name="setup_region_law">Only use a region that is legal where you are. You can change it later on the Node tab.</string>
     <string name="setup_role_title">Should your node help others?</string>
     <string name="setup_role_explained">A relay passes on messages for nodes it can hear, which helps the mesh reach further but uses more battery. You can change this later.</string>
