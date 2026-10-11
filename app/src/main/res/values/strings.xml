@@ -297,7 +297,7 @@
     <string name="region_my919">Malaysia</string>
     <string name="region_nz915">New Zealand</string>
     <string name="region_ru868">Russia</string>
-    <string name="region_th920">Thailand: set the power to at least 17 dBm radiated first</string>
+    <string name="region_th920">Thailand: the node raises its power to 17 dBm radiated if it is lower</string>
     <string name="region_us915">The United States, Canada, Mexico, Brazil, Argentina and Peru</string>
     <string name="setup_region_law">Only use a region that is legal where you are. You can change it later on the Node tab.</string>
     <string name="setup_role_title">Should your node help others?</string>
