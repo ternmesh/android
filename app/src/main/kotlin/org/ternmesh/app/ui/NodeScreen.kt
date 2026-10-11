@@ -61,8 +61,13 @@ import org.ternmesh.companion.Sharing
 /** The regions the specification's profiles define, each with where it is for. */
 internal val REGIONS = listOf(
     "AU915" to R.string.region_au915,
+    "CL915" to R.string.region_cl915,
     "EU868" to R.string.region_eu868,
+    "KZ863" to R.string.region_kz863,
+    "MY919" to R.string.region_my919,
     "NZ915" to R.string.region_nz915,
+    "RU868" to R.string.region_ru868,
+    "TH920" to R.string.region_th920,
     "US915" to R.string.region_us915,
 )
 
