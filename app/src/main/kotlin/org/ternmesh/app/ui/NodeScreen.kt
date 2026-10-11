@@ -58,8 +58,13 @@ import org.ternmesh.companion.Offer
 import org.ternmesh.companion.Setting
 import org.ternmesh.companion.Sharing
 
-/** The regions the specification's profiles define. */
-internal val REGIONS = listOf("EU868", "US915")
+/** The regions the specification's profiles define, each with where it is for. */
+internal val REGIONS = listOf(
+    "AU915" to R.string.region_au915,
+    "EU868" to R.string.region_eu868,
+    "NZ915" to R.string.region_nz915,
+    "US915" to R.string.region_us915,
+)
 
 @Composable
 fun NodeScreen(repository: NodeRepository, state: NodeState) {
@@ -138,7 +143,7 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
             Section(stringResource(R.string.settings)) {
                 Choice(
                     stringResource(R.string.region), s.region.ifEmpty { stringResource(R.string.region_none) },
-                    REGIONS.map { it to it },
+                    REGIONS.map { (name, _) -> name to name },
                     // An image is for one region, and a new region restarts the node: not while one is on its way.
                     enabled = state.update !is FirmwareUpdate.Downloading && state.update !is FirmwareUpdate.Sending,
                 ) { repository.submit(Body.Set(Setting.Region(it)), report) }

@@ -69,11 +69,11 @@ fun SetupScreen(repository: NodeRepository, state: NodeState, modifier: Modifier
             Step.REGION -> {
                 Text(stringResource(R.string.setup_region_title), style = MaterialTheme.typography.headlineSmall)
                 Text(stringResource(R.string.setup_region_explained))
-                for (region in REGIONS) {
+                for ((region, detail) in REGIONS) {
                     Option(
                         selected = self.region == region,
                         title = region,
-                        detail = stringResource(if (region == "EU868") R.string.region_eu868 else R.string.region_us915),
+                        detail = stringResource(detail),
                     ) { repository.submit(Body.Set(Setting.Region(region)), report) }
                 }
                 Text(stringResource(R.string.setup_region_law), style = MaterialTheme.typography.bodySmall)
