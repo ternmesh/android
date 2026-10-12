@@ -325,6 +325,7 @@
     <string name="map_your_node">Your node</string>
     <string name="fix_none">No position yet</string>
     <string name="fix_from_phone">Position from a phone</string>
+    <string name="fix_last_from_satellites">Last position from satellites</string>
     <string name="receiver_none">No satellite receiver</string>
     <string name="receiver_off">Satellite receiver off</string>
     <string name="receiver_searching">Looking for satellites</string>

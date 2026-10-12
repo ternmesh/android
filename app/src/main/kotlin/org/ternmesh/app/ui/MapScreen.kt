@@ -101,16 +101,28 @@ private fun ownMark(state: NodeState, name: String, now: Long): Mark? {
     return Mark("self", name, Companion.PRECISION_MAX, f.lat / 1e7, f.lon / 1e7, f.altitude, f.accuracy, age, own = true)
 }
 
-/** What the node's receiver is doing, and where its fix came from: "Fixed · 9 satellites", "Searching for satellites", "From a phone". */
-fun receiverText(context: Context, receiver: Int, source: Int, satellites: Int): String = when (receiver) {
-    ReceiverState.FIXED -> listOf(
-        context.getString(R.string.receiver_fixed),
-        context.resources.getQuantityString(R.plurals.satellites, satellites, satellites),
-    ).joinToString(" · ")
-    ReceiverState.SEARCHING -> context.getString(R.string.receiver_searching)
-    ReceiverState.OFF -> context.getString(R.string.receiver_off)
-    else -> context.getString(if (source == FixSource.NONE) R.string.receiver_none else R.string.fix_from_phone)
-}
+/**
+ * What the node's receiver is doing, and where its fix came from, which need not be the receiver:
+ * "Position from satellites · 9 satellites", "Looking for satellites · Position from a phone".
+ */
+fun receiverText(context: Context, receiver: Int, source: Int, satellites: Int): String = buildList {
+    when (receiver) {
+        // A receiver with a fix while the node's is a phone's: the phone's was the newer.
+        ReceiverState.FIXED -> {}
+        ReceiverState.SEARCHING -> add(context.getString(R.string.receiver_searching))
+        ReceiverState.OFF -> add(context.getString(R.string.receiver_off))
+        else -> if (source == FixSource.NONE) add(context.getString(R.string.receiver_none))
+    }
+    when (source) {
+        FixSource.RECEIVER -> if (receiver == ReceiverState.FIXED) {
+            add(context.getString(R.string.receiver_fixed))
+            add(context.resources.getQuantityString(R.plurals.satellites, satellites, satellites))
+        } else {
+            add(context.getString(R.string.fix_last_from_satellites))
+        }
+        FixSource.CLIENT -> add(context.getString(R.string.fix_from_phone))
+    }
+}.joinToString(" · ")
 
 private fun marks(state: NodeState, now: Long): List<Mark> {
     val r = state.records
