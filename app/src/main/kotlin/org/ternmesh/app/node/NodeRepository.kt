@@ -45,8 +45,14 @@ import java.io.File
 import java.io.IOException
 import kotlin.random.Random
 
-/** The node the user chose, by its Bluetooth address and the name Android showed for it. */
-data class ChosenNode(val address: String, val name: String?)
+/**
+ * The node the user chose, by its Bluetooth address and the name Android showed for it, and the
+ * [label] the user gave it, if any. The label is the app's alone: it never goes to the node.
+ */
+data class ChosenNode(val address: String, val name: String?, val label: String? = null) {
+    /** What the app calls the node: the user's label, else the Bluetooth name. */
+    val shown: String? get() = label ?: name
+}
 
 /** Where the app is with its node. */
 enum class Phase {
@@ -124,6 +130,7 @@ class NodeRepository(private val context: Context) {
     private val unansweredPrefs = context.getSharedPreferences("unanswered", Context.MODE_PRIVATE)
     private val askedPrefs = context.getSharedPreferences("asked", Context.MODE_PRIVATE)
     private val knownPrefs = context.getSharedPreferences("known", Context.MODE_PRIVATE)
+    private val labelPrefs = context.getSharedPreferences("labels", Context.MODE_PRIVATE)
     private val setupPrefs = context.getSharedPreferences("setup", Context.MODE_PRIVATE)
     private val locationPrefs = context.getSharedPreferences("location", Context.MODE_PRIVATE)
     private val notifier = Notifier(context)
@@ -186,7 +193,7 @@ class NodeRepository(private val context: Context) {
         }
         val address = prefs.getString(KEY_ADDRESS, null)
         if (address != null) {
-            val node = ChosenNode(address, prefs.getString(KEY_NAME, null))
+            val node = labelled(ChosenNode(address, prefs.getString(KEY_NAME, null)))
             // A node chosen before the app kept a list of them.
             if (!knownPrefs.contains(address)) remember(node)
             adopt(load(address))
@@ -210,8 +217,10 @@ class NodeRepository(private val context: Context) {
         }
     }
 
-    /** Makes [node] the app's node and connects to it. */
-    fun choose(node: ChosenNode) {
+    /** Makes [chosen] the app's node and connects to it. */
+    fun choose(chosen: ChosenNode) {
+        // Chosen from a scan, it comes without the label the user gave it.
+        val node = labelled(chosen)
         if (_state.value.node?.address != node.address) {
             leave()
             prefs.edit().putString(KEY_ADDRESS, node.address).putString(KEY_NAME, node.name).apply()
@@ -274,6 +283,7 @@ class NodeRepository(private val context: Context) {
         unansweredPrefs.edit().remove(address).apply()
         askedPrefs.edit().remove(address).apply()
         knownPrefs.edit().remove(address).apply()
+        labelPrefs.edit().remove(address).apply()
         setupPrefs.edit().remove(address).apply()
         locationPrefs.edit().remove(address).apply()
         update { it.copy(known = loadKnown()) }
@@ -297,6 +307,20 @@ class NodeRepository(private val context: Context) {
         return done
     }
 
+    /**
+     * Gives the node at [address] the [label] the app shows it by, on this phone alone; an empty
+     * label goes back to the Bluetooth name. Nothing is sent to the node.
+     */
+    fun rename(address: String, label: String) {
+        val trimmed = label.trim()
+        labelPrefs.edit().apply { if (trimmed.isEmpty()) remove(address) else putString(address, trimmed) }.apply()
+        update { s ->
+            s.copy(node = s.node?.let { if (it.address == address) labelled(it) else it }, known = loadKnown())
+        }
+    }
+
+    private fun labelled(node: ChosenNode) = node.copy(label = labelPrefs.getString(node.address, null))
+
     /** Adds [node] to the nodes the app keeps, as the one chosen last. */
     private fun remember(node: ChosenNode) {
         knownPrefs.edit().putString(node.address, "${System.currentTimeMillis()}:${node.name.orEmpty()}").apply()
@@ -304,7 +328,7 @@ class NodeRepository(private val context: Context) {
 
     private fun loadKnown(): List<ChosenNode> = knownPrefs.all.mapNotNull { (address, value) ->
         val (at, name) = (value as? String)?.split(':', limit = 2)?.takeIf { it.size == 2 } ?: return@mapNotNull null
-        (at.toLongOrNull() ?: 0L) to ChosenNode(address, name.ifEmpty { null })
+        (at.toLongOrNull() ?: 0L) to labelled(ChosenNode(address, name.ifEmpty { null }))
     }.sortedByDescending { it.first }.map { it.second }
 
     /** Makes a request; [then] runs on the main thread with what came of it. */

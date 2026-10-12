@@ -207,6 +207,9 @@
 
     <!-- Node -->
     <string name="node_identity">This node</string>
+    <string name="rename_node">Rename node</string>
+    <string name="rename_node_explained">Only this phone shows this name. It is not sent to your node, and no one else sees it. Leave it empty to use the Bluetooth name again.</string>
+    <string name="node_bluetooth_name">Bluetooth name: %1$s</string>
     <string name="node_address">Address</string>
     <string name="copy">Copy</string>
     <string name="share">Share</string>

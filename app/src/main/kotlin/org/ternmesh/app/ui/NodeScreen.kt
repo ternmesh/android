@@ -79,13 +79,22 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
     val r = state.records
     val self = r.self
     var forgetting by remember { mutableStateOf<ChosenNode?>(null) }
+    var renaming by remember { mutableStateOf(false) }
 
     Column(
         Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Section(stringResource(R.string.node_identity)) {
-            Text(state.node?.name ?: stringResource(R.string.unnamed_device), style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    state.node?.shown ?: stringResource(R.string.unnamed_device),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                if (state.node != null) TextButton(onClick = { renaming = true }) { Text(stringResource(R.string.rename)) }
+            }
+            state.node?.takeIf { it.label != null }?.name?.let { Text(stringResource(R.string.node_bluetooth_name, it)) }
             Text(phaseText(context, state))
             state.firmware?.let { fw ->
                 Text("${stringResource(R.string.node_firmware)}: $fw · ${stringResource(R.string.node_protocol, state.version ?: 0)}")
@@ -191,6 +200,19 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
             TextButton(onClick = { forgetting = node }) {
                 Text(stringResource(R.string.forget_node), color = MaterialTheme.colorScheme.error)
             }
+        }
+    }
+    state.node?.takeIf { renaming }?.let { node ->
+        NameDialog(
+            stringResource(R.string.rename_node),
+            node.shown.orEmpty(),
+            Companion.NAME_MAX,
+            stringResource(R.string.save),
+            onDismiss = { renaming = false },
+            explained = stringResource(R.string.rename_node_explained),
+        ) { label ->
+            renaming = false
+            repository.rename(node.address, label)
         }
     }
     forgetting?.let { node -> ForgetDialog(node, onDismiss = { forgetting = null }) { repository.forget(node.address) } }
@@ -373,7 +395,7 @@ private fun Ended(text: String, dismiss: () -> Unit) {
 fun ForgetDialog(node: ChosenNode, onDismiss: () -> Unit, forget: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.forget_node_title, node.name ?: stringResource(R.string.unnamed_device))) },
+        title = { Text(stringResource(R.string.forget_node_title, node.shown ?: stringResource(R.string.unnamed_device))) },
         text = { Text(stringResource(R.string.forget_node_explained)) },
         confirmButton = {
             TextButton(onClick = { onDismiss(); forget() }) {

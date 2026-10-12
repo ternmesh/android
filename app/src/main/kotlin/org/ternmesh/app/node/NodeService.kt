@@ -66,7 +66,7 @@ class NodeService : Service() {
         private fun notification(context: Context, state: NodeState) =
             NotificationCompat.Builder(context, Notifier.LINK)
                 .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle(state.node?.name ?: context.getString(R.string.app_name))
+                .setContentTitle(state.node?.shown ?: context.getString(R.string.app_name))
                 .setContentText(updateNotificationText(context, state) ?: phaseText(context, state))
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
