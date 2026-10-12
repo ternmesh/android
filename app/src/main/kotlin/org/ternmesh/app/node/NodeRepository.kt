@@ -317,6 +317,8 @@ class NodeRepository(private val context: Context) {
         update { s ->
             s.copy(node = s.node?.let { if (it.address == address) labelled(it) else it }, known = loadKnown())
         }
+        // The notification is rebuilt only when the phase changes: its title is the node's name.
+        if (_state.value.node?.address == address) NodeService.refresh(context, _state.value)
     }
 
     private fun labelled(node: ChosenNode) = node.copy(label = labelPrefs.getString(node.address, null))
@@ -806,7 +808,8 @@ class NodeRepository(private val context: Context) {
     /** Connects again to [node] after the link dropped, if it is still the node and still wanted. */
     private fun reconnect(node: ChosenNode) {
         val s = _state.value
-        if (s.node == node && s.phase != Phase.DISCONNECTED) link.connect(node.address, waitForIt = true)
+        // By address: a rename since the retry was set changes the label, not the node.
+        if (s.node?.address == node.address && s.phase != Phase.DISCONNECTED) link.connect(node.address, waitForIt = true)
     }
 
     private fun event(e: ConnectionEvent) {
