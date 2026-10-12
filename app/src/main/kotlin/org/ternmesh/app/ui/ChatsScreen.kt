@@ -254,18 +254,29 @@ private fun NewChatDialog(state: NodeState, onDismiss: () -> Unit, picked: (org.
 
 /** Asks for a name of at most [limit] UTF-8 bytes. */
 @Composable
-fun NameDialog(title: String, initial: String, limit: Int, confirm: String, onDismiss: () -> Unit, done: (String) -> Unit) {
+fun NameDialog(
+    title: String,
+    initial: String,
+    limit: Int,
+    confirm: String,
+    onDismiss: () -> Unit,
+    explained: String? = null,
+    done: (String) -> Unit,
+) {
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { if (utf8Length(it) <= limit) text = it },
-                label = { Text(stringResource(R.string.name)) },
-                singleLine = true,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { if (utf8Length(it) <= limit) text = it },
+                    label = { Text(stringResource(R.string.name)) },
+                    singleLine = true,
+                )
+                explained?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
         },
         confirmButton = { TextButton(onClick = { done(text.trim()) }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },

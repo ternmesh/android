@@ -117,7 +117,7 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
                         items(state.known, key = { "k" + it.address }) { node ->
                             val here = canScan && found.any { it.address == node.address }
                             ListItem(
-                                headlineContent = { Text(node.name ?: stringResource(R.string.unnamed_device)) },
+                                headlineContent = { Text(node.shown ?: stringResource(R.string.unnamed_device)) },
                                 supportingContent = {
                                     Text(if (here) stringResource(R.string.known_nearby) else node.address)
                                 },
