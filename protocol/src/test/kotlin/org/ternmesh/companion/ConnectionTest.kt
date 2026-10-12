@@ -25,10 +25,10 @@ class ConnectionTest {
         val link = Link(Connection(now = { 0 }, wallTime = { setTime.time }))
         val answers = link.replay(frames)
 
-        assertEquals(23, answers.size)
-        // SHARE_GROUP asks for a precision past 24, SET 5 for a value neither 0 nor 1, and the last
-        // JOIN_LINK hands the node a join code whose check fails.
-        assertEquals(List(3) { Outcome.Refused(ErrorCode.REFUSED) }, answers.filter { it !is Outcome.Answered })
+        assertEquals(26, answers.size)
+        // SHARE_GROUP asks for a precision past 24, SET 5 and SET 7 for a value neither 0 nor 1, and
+        // the last JOIN_LINK hands the node a join code whose check fails.
+        assertEquals(List(4) { Outcome.Refused(ErrorCode.REFUSED) }, answers.filter { it !is Outcome.Answered })
         val shown = answers.firstNotNullOf { (it as? Outcome.Answered)?.body as? Body.Link }
         assertEquals(JoinCode(GroupId.fromHex("c8eafadc0857a696")!!, "Ridge walkers"), JoinCode.read(shown.link))
         val r = link.connection.records
@@ -63,6 +63,10 @@ class ConnectionTest {
         assertEquals(emptyMap(), r.cards, "and the card forgotten since")
         assertEquals(0, r.self?.cards, "cards turned on, and off again")
         assertEquals("Ada · hut warden", r.self?.cardName, "the name is kept while they are off")
+        val fixes = link.events.mapNotNull { (it as? ConnectionEvent.News)?.body as? Body.Fix }
+        assertEquals(fixes.last(), r.fix)
+        assertEquals(ReceiverState.SEARCHING, r.fix?.receiver, "the receiver turned off, then on again")
+        assertEquals(FixSource.RECEIVER, r.fix?.source, "and its fix kept while it was off")
     }
 
     /** A client of version 0 that holds messages through 17 asks only for those after them, and sets no clock when it has none to give. */
@@ -110,12 +114,13 @@ class ConnectionTest {
 
     /**
      * Clients of versions 3 and 4 are sent no position and no sharing, one of version 5 no card and
-     * a `SELF` without the cards' fields, and one of version 6 its card. None sends the request, or
-     * the setting, its version does not define: it fails here, with nothing on the link.
+     * a `SELF` without the cards' fields, one of version 6 its card, and one of version 7 no fix.
+     * None sends the request, or the setting, its version does not define: it fails here, with
+     * nothing on the link.
      */
     @Test
-    fun olderVersions3To6AndTheRequestEachMustNotSend() {
-        for (version in 3..6) {
+    fun olderVersions3To7AndTheRequestEachMustNotSend() {
+        for (version in 3..7) {
             val frames = vectors.list("older").first { it.int("version") == version }.list("frames")
             val link = Link(Connection(version = version, now = { 0 }, wallTime = null))
             link.replay(frames.dropLast(2))
@@ -128,6 +133,7 @@ class ConnectionTest {
             assertEquals(if (version >= 6) 1 else 0, link.connection.records.cards.size)
             assertEquals(version >= 6, link.connection.records.self?.cards != null)
             assertEquals(version >= 6, link.connection.records.self?.cardName != null)
+            assertNull(link.connection.records.fix)
 
             val refused = Codec.decode(frames[frames.size - 2].bytes("frame")).body
             assertEquals(version + 1, refused.since)

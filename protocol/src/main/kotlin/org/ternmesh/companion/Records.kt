@@ -1,7 +1,8 @@
 // What a client holds of a node: the records its news gave, kept as the specification's "What the
 // node holds" says. A record replaces the one before it; STATE changes a message in place; a
 // position or sharing of precision 0 is none; a sync is the whole list of contacts, groups,
-// neighbours, positions, sharing and cards, but not of messages.
+// neighbours, positions, sharing and cards, but not of messages; and a sync of version 8 sends a
+// FIX, which replaces the one before it as AIRTIME and POWER do.
 package org.ternmesh.companion
 
 /**
@@ -33,6 +34,10 @@ class Records {
         private set
     var power: Body.Power? = null
         private set
+
+    /** The node's own fix and its satellite receiver; null before a node of version 8 has said. */
+    var fix: Body.Fix? = null
+        internal set
 
     /**
      * The version both ends spoke at the last sync that finished, null if none has. A node may hold
@@ -119,6 +124,7 @@ class Records {
             is Body.CardGone -> cards.remove(news.address)
             is Body.Airtime -> airtime = news
             is Body.Power -> power = news
+            is Body.Fix -> fix = news
             else -> {}
         }
     }
@@ -164,6 +170,8 @@ class Records {
         }
         // Nor one of version 5 or earlier of cards.
         if (version >= 6) cards.keys.retainAll(seen.cards)
+        // A node of version 7 or earlier tells no fix: one held is from before it was.
+        if (version < 8) fix = null
         syncedVersion = version
         missedSince = null
         syncing = null
@@ -189,6 +197,7 @@ class Records {
         it.cards += cards
         it.airtime = airtime
         it.power = power
+        it.fix = fix
         it.syncedVersion = syncedVersion
         it.missedSince = missedSince
     }
@@ -197,11 +206,12 @@ class Records {
         groups == other.groups && items == other.items && neighbours == other.neighbours &&
         positions == other.positions && groupPositions == other.groupPositions && sharing == other.sharing &&
         groupSharing == other.groupSharing && cards == other.cards && airtime == other.airtime && power == other.power &&
+        fix == other.fix &&
         syncedVersion == other.syncedVersion && missedSince == other.missedSince
 
     override fun hashCode() = listOf(
         self, contacts, groups, items, neighbours, positions, groupPositions, sharing, groupSharing, cards,
-        airtime, power, syncedVersion, missedSince,
+        airtime, power, fix, syncedVersion, missedSince,
     ).hashCode()
 }
 

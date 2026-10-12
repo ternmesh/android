@@ -26,8 +26,9 @@ class RecordsFileTest {
         }
     }
 
-    /** The records a file keeps: all but positions, sharing and cards, which the next sync sends whole. */
+    /** The records a file keeps: all but positions, sharing, cards and the node's fix, which the next sync sends whole. */
     private fun kept(r: Records) = r.copy().apply {
+        fix = null
         cards.clear()
         positions.clear()
         groupPositions.clear()
@@ -55,10 +56,11 @@ class RecordsFileTest {
         assertEquals(kept(r), back)
     }
 
-    /** Positions, sharing and cards are not kept: their counts would go stale on disk. A file that has them is read all the same. */
+    /** Positions, sharing, cards and the node's fix are not kept: their counts would go stale on disk. A file that has them is read all the same. */
     @Test
-    fun positionsSharingAndCardsAreNotKept() {
+    fun positionsSharingCardsAndTheFixAreNotKept() {
         val r = Records().apply {
+            apply(Body.Fix(ReceiverState.FIXED, FixSource.RECEIVER, 458_325_412, 68_643_871, 4809, 3, 0, 9))
             apply(Body.Card(bob, 1260, "Bob · ask me"))
             apply(Body.Position(bob, 16, 603_945_922, 52_871_704, Companion.NO_ALTITUDE, 0, 40))
             apply(Body.GroupPosition(hikers, 0x1234, 24, 1, 2, 3, 4, 5))
@@ -72,6 +74,8 @@ class RecordsFileTest {
         assertEquals(r.sharing, RecordsFile.decode(file + byteArrayOf(sharing.size.toByte()) + sharing).sharing)
         val card = Codec.encode(Frame(0, r.cards.values.single()))
         assertEquals(r.cards, RecordsFile.decode(file + byteArrayOf(card.size.toByte()) + card).cards)
+        val fix = Codec.encode(Frame(0, r.fix!!))
+        assertEquals(r.fix, RecordsFile.decode(file + byteArrayOf(fix.size.toByte()) + fix).fix)
     }
 
     /** A `SELF` from a node of version 5 or earlier has no cards' fields, and is kept and read back as it came: a file is not spoiled by the node's version. */

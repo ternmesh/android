@@ -322,6 +322,21 @@
     <string name="map_empty">No one is sharing their location with you yet.</string>
     <string name="map_sharing_with">You\'re sharing with</string>
     <string name="map_positions">Shared with you</string>
+    <string name="map_your_node">Your node</string>
+    <string name="fix_none">No position yet</string>
+    <string name="fix_from_phone">Position from a phone</string>
+    <string name="fix_last_from_satellites">Last position from satellites</string>
+    <string name="receiver_none">No satellite receiver</string>
+    <string name="receiver_off">Satellite receiver off</string>
+    <string name="receiver_searching">Looking for satellites</string>
+    <string name="receiver_fixed">Position from satellites</string>
+    <plurals name="satellites">
+        <item quantity="one">%1$d satellite</item>
+        <item quantity="other">%1$d satellites</item>
+    </plurals>
+    <string name="receiver_section">GPS</string>
+    <string name="receiver_on">Use the node\'s satellite receiver</string>
+    <string name="receiver_explained">On, the node works out where it is from satellites, on its own. Off saves its battery: it keeps the last position it had, and takes a newer one from your phone while you share your location.</string>
     <string name="precision_8">Region</string>
     <string name="precision_12">Town</string>
     <string name="precision_16">Neighbourhood</string>

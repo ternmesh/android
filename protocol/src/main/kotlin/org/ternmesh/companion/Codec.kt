@@ -48,6 +48,7 @@ object Codec {
                     is Setting.Passkey -> w.u32(s.passkey)
                     is Setting.Cards -> w.u8(s.cards)
                     is Setting.CardName -> w.str(s.name, Companion.CARD_NAME_MAX)
+                    is Setting.Receiver -> w.u8(s.on)
                 }
             }
             is Body.Send -> {
@@ -226,6 +227,16 @@ object Codec {
                 w.str(b.name, Companion.CARD_NAME_MAX)
             }
             is Body.CardGone -> w.addr(b.address)
+            is Body.Fix -> {
+                w.u8(b.receiver)
+                w.u8(b.source)
+                w.i32(b.lat)
+                w.i32(b.lon)
+                w.i16(b.altitude)
+                w.u16(b.accuracy)
+                w.u32(b.age)
+                w.u8(b.satellites)
+            }
         }
         val out = w.toByteArray()
         require(out.size <= Companion.MAX_FRAME) { "${b.typeName} is ${out.size} bytes, more than a frame holds" }
@@ -259,6 +270,7 @@ object Codec {
                     4 -> Setting.Passkey(r.u32())
                     5 -> Setting.Cards(r.u8())
                     6 -> Setting.CardName(r.str(Companion.CARD_NAME_MAX))
+                    7 -> Setting.Receiver(r.u8())
                     else -> throw DecodeException(Unreadable.UNDEFINED)
                 },
             )
@@ -336,6 +348,7 @@ object Codec {
             0x91 -> Body.GroupSharing(r.gid(), r.u8(), r.u8(), r.u16(), r.u16())
             0x92 -> Body.Card(r.addr(), r.u32(), r.str(Companion.CARD_NAME_MAX))
             0x93 -> Body.CardGone(r.addr())
+            0x94 -> Body.Fix(r.u8(), r.u8(), r.i32(), r.i32(), r.i16(), r.u16(), r.u32(), r.u8())
             else -> throw DecodeException(Unreadable.UNDEFINED)
         }
         return Frame(seq, body)

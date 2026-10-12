@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 7: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 8: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -9,8 +9,8 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 6 is this without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 7
+    /** The version this client speaks. Version 7 is this without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 8
     const val MAX_FRAME = 180
     const val TEXT_MAX = 128
     const val NAME_MAX = 31
@@ -52,7 +52,7 @@ object Companion {
     /** How many of its last messages a node matches a `SEND`'s `ref` against. */
     const val REFS = 16
 
-    /** The least time between two `ASKED`s for one address, or two of `NEIGHBOUR`, `AIRTIME` or `POWER`. */
+    /** The least time between two `ASKED`s for one address, or two of `NEIGHBOUR`, `AIRTIME` or `POWER`, or two `FIX`es for a fix that moved. */
     const val QUIET_MS = 10_000L
 
     /** The GATT service a node offers, and its two characteristics. */
@@ -75,11 +75,16 @@ object Companion {
         in 0x33..0x35, in 0x8E..0x91 -> 5
         0x92, 0x93 -> 6
         0x26, 0x27, 0x47 -> 7
+        0x94 -> 8
         else -> 0
     }
 
     /** The least version that defines `SET`'s setting [setting]. */
-    fun settingSince(setting: Int): Int = if (setting in 5..6) 6 else 0
+    fun settingSince(setting: Int): Int = when (setting) {
+        5, 6 -> 6
+        7 -> 8
+        else -> 0
+    }
 }
 
 /** A node's address: an Ed25519 public key. */
@@ -228,6 +233,26 @@ sealed interface Setting {
 
     /** The name the node's cards carry, the one name it puts on the air in clear; empty for none. Only ever what the user asked for. */
     data class CardName(val name: String) : Setting { override val number get() = 6 }
+
+    /** 1 to run the node's satellite receiver, 0 to turn it off. Only ever what the user asked for. */
+    data class Receiver(val on: Int) : Setting { override val number get() = 7 }
+}
+
+/** A `FIX`'s `receiver`: what the node's satellite receiver is doing. */
+object ReceiverState {
+    /** The node has no receiver. */
+    const val NONE = 0
+    const val OFF = 1
+    const val SEARCHING = 2
+    const val FIXED = 3
+}
+
+/** A `FIX`'s `source`: where the node's fix came from. */
+object FixSource {
+    /** The node has no fix. */
+    const val NONE = 0
+    const val RECEIVER = 1
+    const val CLIENT = 2
 }
 
 /** A message's state. */
@@ -239,7 +264,7 @@ object MessageState {
     const val RECEIVED = 4
 }
 
-/** What a frame says: every frame of version 7. [since] is the least version that defines it. */
+/** What a frame says: every frame of version 8. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String) {
     /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
     open val since: Int get() = Companion.since(type)
@@ -498,6 +523,26 @@ sealed class Body(val type: Int, val typeName: String) {
     data class Card(val address: Address, val heard: Long, val name: String) : Body(0x92, "CARD")
 
     data class CardGone(val address: Address) : Body(0x93, "CARD_GONE")
+
+    /**
+     * The node's own fix, and its satellite receiver: [receiver] a [ReceiverState], [source] a
+     * [FixSource]. With a source, [lat] and [lon] are in 10⁻⁷ degree, [altitude] metres above the
+     * ellipsoid or [Companion.NO_ALTITUDE], [accuracy] metres or 0 for none, [age] seconds as of when
+     * sent, and [satellites] how many made a receiver's fix; with none, all are 0.
+     */
+    data class Fix(
+        val receiver: Int,
+        val source: Int,
+        val lat: Int,
+        val lon: Int,
+        val altitude: Int,
+        val accuracy: Int,
+        val age: Long,
+        val satellites: Int,
+    ) : Body(0x94, "FIX") {
+        /** Whether it is a fix at all. */
+        val has: Boolean get() = source != FixSource.NONE
+    }
 }
 
 internal object Hex {

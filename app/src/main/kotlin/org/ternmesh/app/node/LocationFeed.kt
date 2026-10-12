@@ -121,5 +121,15 @@ class LocationFeed(private val context: Context, private val give: (Body.SetPosi
 
         fun permitted(context: Context) = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
             .any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+
+        /** The newest position the phone already knows, however old, if the user allows the app it: somewhere to open a map on. */
+        @SuppressLint("MissingPermission") // permitted() is asked first
+        fun lastKnown(context: Context): Location? {
+            if (!permitted(context)) return null
+            val m = context.getSystemService(LocationManager::class.java) ?: return null
+            return runCatching { m.allProviders }.getOrDefault(emptyList())
+                .mapNotNull { runCatching { m.getLastKnownLocation(it) }.getOrNull() }
+                .maxByOrNull { it.elapsedRealtimeNanos }
+        }
     }
 }

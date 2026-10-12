@@ -2,10 +2,10 @@
 // the frame that carried it, which the codec already builds and reads; the Apple app keeps the same
 // format.
 //
-// Positions, sharing and cards are not kept. Each carries a count (`age`, `minutes`, `heard`) as of
-// when it was sent, which a file would leave standing as the time passed, and every sync sends all
-// three whole, so the next connection has them again at once. A file with them in is read all the
-// same.
+// Positions, sharing, cards and the node's own fix are not kept. Each carries a count (`age`,
+// `minutes`, `heard`) as of when it was sent, which a file would leave standing as the time passed,
+// and every sync sends all four whole, so the next connection has them again at once. A file with
+// them in is read all the same.
 //
 // A `SELF` is kept as it came: without `cards` and `card_name` from a connection that spoke version
 // 5 or earlier, and read back so.

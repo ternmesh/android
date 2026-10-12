@@ -117,8 +117,8 @@ data class NodeState(
     /** The first-run setup was finished, or skipped, for this node. */
     val setUp: Boolean = true,
     /**
-     * When each position, sharing and card record held arrived, on the elapsed clock: the `age`,
-     * `minutes` and `heard` each gives are as of then.
+     * When each position, sharing and card record held, and the node's own fix, arrived, on the
+     * elapsed clock: the `age`, `minutes` and `heard` each gives are as of then.
      */
     val arrived: Map<Body, Long> = emptyMap(),
 )
@@ -851,7 +851,7 @@ class NodeRepository(private val context: Context) {
             return
         }
         if (body is Body.Position || body is Body.GroupPosition || body is Body.Sharing || body is Body.GroupSharing ||
-            body is Body.Card
+            body is Body.Card || body is Body.Fix
         ) {
             arrived[body] = SystemClock.elapsedRealtime()
         }
@@ -878,7 +878,7 @@ class NodeRepository(private val context: Context) {
             setUnanswered { list -> list.filterNot { Conversations.holdsSent(records, it.peer, it.text, it.after) } }
         }
         val held = records.positions.values + records.groupPositions.values + records.sharing.values + records.groupSharing.values +
-            records.cards.values
+            records.cards.values + listOfNotNull(records.fix)
         arrived.keys.retainAll(held.toSet())
         update {
             it.copy(
