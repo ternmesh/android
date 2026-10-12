@@ -55,6 +55,7 @@ import org.ternmesh.companion.Companion
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.ErrorCode
 import org.ternmesh.companion.Offer
+import org.ternmesh.companion.ReceiverState
 import org.ternmesh.companion.Setting
 import org.ternmesh.companion.Sharing
 
@@ -184,6 +185,11 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
             Section(stringResource(R.string.card_section)) { PresenceCard(repository, s) }
         }
 
+        // FIX comes from a node of version 8, and says whether it has a receiver to turn on or off.
+        r.fix?.takeIf { hasFix(state) && it.receiver != ReceiverState.NONE }?.let { f ->
+            Section(stringResource(R.string.receiver_section)) { ReceiverSwitch(repository, f) }
+        }
+
         if (state.board != null || state.version != null) {
             Section(stringResource(R.string.firmware)) { FirmwareUpdates(repository, state) }
         }
@@ -262,6 +268,25 @@ private fun PresenceCard(repository: NodeRepository, self: Body.Self) {
             enabled = !tooLong && name.trim() != current,
         ) { Text(stringResource(R.string.set)) }
     }
+}
+
+/**
+ * The node's satellite receiver, on or off, and what it is doing. Off saves the node's battery; its
+ * last fix is kept, and a phone sharing its position gives it a newer one.
+ */
+@Composable
+private fun ReceiverSwitch(repository: NodeRepository, fix: Body.Fix) {
+    val context = LocalContext.current
+    val report = rememberReport()
+    val on = fix.receiver != ReceiverState.OFF
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.receiver_on), style = MaterialTheme.typography.labelLarge)
+            Text(receiverText(context, fix.receiver, fix.source, fix.satellites))
+        }
+        Switch(checked = on, onCheckedChange = { repository.submit(Body.Set(Setting.Receiver(if (it) 1 else 0)), report) })
+    }
+    Text(stringResource(R.string.receiver_explained), style = MaterialTheme.typography.bodySmall)
 }
 
 /**

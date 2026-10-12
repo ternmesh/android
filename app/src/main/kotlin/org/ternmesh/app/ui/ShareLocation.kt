@@ -79,6 +79,9 @@ private fun ended(state: NodeState, s: Shared, now: Long): Boolean {
 /** Whether the node speaks positions: version 5 or later. */
 fun hasPositions(state: NodeState) = (state.version ?: 0) >= 5
 
+/** Whether the node tells its own fix and has the receiver setting: version 8 does. */
+fun hasFix(state: NodeState) = (state.version ?: 0) >= 8
+
 /** How far a cell at [precision] reaches, north to south, in metres. */
 fun cellMetres(precision: Int): Double = 360.0 / (1L shl precision) * 111_195.0
 

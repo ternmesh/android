@@ -205,6 +205,26 @@ class CompanionVectorsTest {
         assertTrue("TERNMESH" !in Body.JoinLink(link).toString() && "TERNMESH" !in Body.Link(link).toString())
     }
 
+    /** The node's own fix and the receiver setting are version 8's, and a fix's signed fields build and read back at their ends. */
+    @Test
+    fun theNodesOwnFixIsVersion8s() {
+        val set = Codec.encode(Frame(1, Body.Set(Setting.Receiver(0))))
+        assertEquals(8, Body.Set(Setting.Receiver(0)).since)
+        assertEquals(Body.Set(Setting.Receiver(0)), Codec.decode(set).body)
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(set, 7) }.reason)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Set(Setting.Receiver(256)))) }
+
+        val south = Body.Fix(ReceiverState.FIXED, FixSource.RECEIVER, -900_000_000, -1_800_000_000, -32768, 0xFFFF, 0xFFFF_FFFFL, 255)
+        val bytes = Codec.encode(Frame(0, south))
+        assertEquals(21, bytes.size)
+        assertEquals(south, Codec.decode(bytes).body)
+        assertTrue(south.has)
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(bytes, 7) }.reason)
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(bytes.copyOf(20)) }.reason)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, south.copy(altitude = -32769))) }
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, south.copy(satellites = 256))) }
+    }
+
     /** A frame of a later version than the one both ends speak is one that version does not define. */
     @Test
     fun aFrameOfALaterVersionIsUndefined() {
@@ -292,6 +312,7 @@ class CompanionVectorsTest {
                 4 -> Setting.Passkey(f.long("value"))
                 5 -> Setting.Cards(f.int("value"))
                 6 -> Setting.CardName(f.str("value"))
+                7 -> Setting.Receiver(f.int("value"))
                 else -> fail("setting ${f.int("setting")}")
             },
         )
@@ -367,6 +388,10 @@ class CompanionVectorsTest {
         )
         "CARD" -> Body.Card(f.addr("address"), f.long("heard"), f.str("name"))
         "CARD_GONE" -> Body.CardGone(f.addr("address"))
+        "FIX" -> Body.Fix(
+            f.int("receiver"), f.int("source"), f.int("lat"), f.int("lon"), f.int("altitude"), f.int("accuracy"),
+            f.long("age"), f.int("satellites"),
+        )
         else -> fail("no frame named $name")
     }
 }
