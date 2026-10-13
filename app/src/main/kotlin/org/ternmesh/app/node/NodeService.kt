@@ -54,7 +54,7 @@ class NodeService : Service() {
 
         /** Says where the link is now, if the service is showing. */
         fun refresh(context: Context, state: NodeState) {
-            if (state.node == null || state.phase == Phase.DISCONNECTED) return
+            if (state.node == null || state.phase.stayingOff) return
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
                 PackageManager.PERMISSION_GRANTED
             ) {

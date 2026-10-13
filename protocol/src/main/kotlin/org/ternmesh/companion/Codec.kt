@@ -36,7 +36,7 @@ object Codec {
         when (b) {
             is Body.Hello -> w.u8(b.version)
             is Body.Sync -> w.u32(b.after)
-            Body.Ping, Body.Ok -> {}
+            Body.Ping, Body.Off, Body.Ok -> {}
             is Body.Synced -> b.news?.let { w.u8(it) }
             is Body.SetTime -> w.u32(b.time)
             is Body.Set -> {
@@ -274,6 +274,7 @@ object Codec {
                     else -> throw DecodeException(Unreadable.UNDEFINED)
                 },
             )
+            0x06 -> Body.Off
             0x10 -> Body.Send(r.u32(), r.addr(), r.str(Companion.TEXT_MAX))
             0x11 -> Body.Read(r.u32())
             0x18 -> Body.SaveContact(r.addr(), r.str(Companion.NAME_MAX))

@@ -77,7 +77,16 @@ enum class Phase {
 
     /** The user disconnected: the node stays chosen, and nothing connects until they say so. */
     DISCONNECTED,
+
+    /**
+     * The user turned the node off, and it said it would: it is on again only once someone turns it
+     * on at the node, so, as after disconnecting, nothing connects until the user says so.
+     */
+    OFF,
 }
+
+/** Whether the app stays off its node until the user connects again. */
+val Phase.stayingOff: Boolean get() = this == Phase.DISCONNECTED || this == Phase.OFF
 
 /** What went wrong, for the screens to put in words. */
 sealed interface Problem {
@@ -197,7 +206,11 @@ class NodeRepository(private val context: Context) {
             // A node chosen before the app kept a list of them.
             if (!knownPrefs.contains(address)) remember(node)
             adopt(load(address))
-            val phase = if (prefs.getBoolean(KEY_DISCONNECTED, false)) Phase.DISCONNECTED else Phase.NONE
+            val phase = when {
+                prefs.getBoolean(KEY_OFF, false) -> Phase.OFF
+                prefs.getBoolean(KEY_DISCONNECTED, false) -> Phase.DISCONNECTED
+                else -> Phase.NONE
+            }
             update {
                 it.copy(
                     node = node, phase = phase, records = connection.records.copy(),
@@ -246,11 +259,26 @@ class NodeRepository(private val context: Context) {
      * Drops the link and stays off it, across restarts too, until the user connects again. The node
      * stays chosen and its records stay: connecting again syncs only what is new.
      */
-    fun disconnect() {
+    fun disconnect() = stayOff(Phase.DISCONNECTED)
+
+    /**
+     * Turns the node off, which only its button, reset or power turns on again: asked only once the
+     * user has been told so. Once the node answers, the app stays off it as after [disconnect], and
+     * says the node is off rather than lost, until the user connects again. [then] hears of any
+     * other outcome; an `OFF` the node did not answer may be sent again.
+     */
+    fun turnOff(then: (Outcome) -> Unit = {}) {
+        submit(Body.Off) { outcome ->
+            if (outcome == Outcome.Answered(Body.Ok)) stayOff(Phase.OFF) else then(outcome)
+        }
+    }
+
+    /** Drops the link and stays off it in [phase], [Phase.DISCONNECTED] or [Phase.OFF], across restarts too. */
+    private fun stayOff(phase: Phase) {
         if (_state.value.node == null) return
         // Before the link closes, so nothing that answers to its closing shows the service again.
-        update { it.copy(phase = Phase.DISCONNECTED, problem = null) }
-        prefs.edit().putBoolean(KEY_DISCONNECTED, true).apply()
+        update { it.copy(phase = phase, problem = null) }
+        prefs.edit().putBoolean(KEY_DISCONNECTED, true).putBoolean(KEY_OFF, phase == Phase.OFF).apply()
         handler.removeCallbacksAndMessages(null)
         link.disconnect()
         connection.close()
@@ -536,7 +564,7 @@ class NodeRepository(private val context: Context) {
      */
     fun locationPermissionChanged() {
         val s = _state.value
-        if (s.node != null && s.phase != Phase.DISCONNECTED) NodeService.start(context)
+        if (s.node != null && !s.phase.stayingOff) NodeService.start(context)
         location.want(wantsLocation(s))
     }
 
@@ -772,7 +800,7 @@ class NodeRepository(private val context: Context) {
     }
 
     private fun connectTo(node: ChosenNode, waitForIt: Boolean) {
-        prefs.edit().remove(KEY_DISCONNECTED).apply()
+        prefs.edit().remove(KEY_DISCONNECTED).remove(KEY_OFF).apply()
         NodeService.start(context)
         connection.close()
         link.connect(node.address, waitForIt)
@@ -809,7 +837,7 @@ class NodeRepository(private val context: Context) {
     private fun reconnect(node: ChosenNode) {
         val s = _state.value
         // By address: a rename since the retry was set changes the label, not the node.
-        if (s.node?.address == node.address && s.phase != Phase.DISCONNECTED) link.connect(node.address, waitForIt = true)
+        if (s.node?.address == node.address && !s.phase.stayingOff) link.connect(node.address, waitForIt = true)
     }
 
     private fun event(e: ConnectionEvent) {
@@ -930,5 +958,8 @@ class NodeRepository(private val context: Context) {
         private const val KEY_ADDRESS = "address"
         private const val KEY_NAME = "name"
         private const val KEY_DISCONNECTED = "disconnected"
+
+        /** With [KEY_DISCONNECTED]: the app stays off the node because the user turned it off. */
+        private const val KEY_OFF = "off"
     }
 }

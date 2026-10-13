@@ -57,6 +57,7 @@ import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Notifier
 import org.ternmesh.app.node.Phase
 import org.ternmesh.app.node.Problem
+import org.ternmesh.app.node.stayingOff
 import org.ternmesh.companion.Address
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.Outcome
@@ -236,8 +237,11 @@ private fun LinkBanner(repository: NodeRepository, state: NodeState) {
                 if (state.phase == Phase.DISCONNECTED) {
                     Text(stringResource(R.string.disconnected_explained), style = MaterialTheme.typography.bodySmall)
                 }
+                if (state.phase == Phase.OFF) {
+                    Text(stringResource(R.string.off_explained), style = MaterialTheme.typography.bodySmall)
+                }
             }
-            if (state.phase == Phase.DISCONNECTED) {
+            if (state.phase.stayingOff) {
                 TextButton(onClick = repository::connect) { Text(stringResource(R.string.connect)) }
             }
             if (state.phase == Phase.STOPPED) {

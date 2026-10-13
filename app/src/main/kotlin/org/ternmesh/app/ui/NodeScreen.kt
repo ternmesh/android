@@ -1,6 +1,6 @@
 // The node itself: its address to give others, as a QR code, a link and the short code; its battery
 // and airtime, the nodes it hears, the four settings a client may change, its presence card, and its
-// firmware and updating it; and disconnecting from it, changing it, or forgetting it.
+// firmware and updating it; and disconnecting from it, turning it off, changing it, or forgetting it.
 package org.ternmesh.app.ui
 
 import android.content.ClipData
@@ -50,6 +50,7 @@ import org.ternmesh.app.node.NodeRepository
 import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
 import org.ternmesh.app.node.percent
+import org.ternmesh.app.node.stayingOff
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Companion
 import org.ternmesh.companion.Conversations
@@ -81,6 +82,7 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
     val self = r.self
     var forgetting by remember { mutableStateOf<ChosenNode?>(null) }
     var renaming by remember { mutableStateOf(false) }
+    var turningOff by remember { mutableStateOf(false) }
 
     Column(
         Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
@@ -195,12 +197,21 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (state.phase == Phase.DISCONNECTED) {
+            if (state.phase.stayingOff) {
                 Button(onClick = repository::connect) { Text(stringResource(R.string.connect)) }
             } else {
                 OutlinedButton(onClick = repository::disconnect) { Text(stringResource(R.string.disconnect)) }
             }
             OutlinedButton(onClick = repository::leave) { Text(stringResource(R.string.change_node)) }
+        }
+        // OFF is version 9's: a node of version 8 or earlier is not asked, and has no button for it.
+        if (canTurnOff(state)) {
+            TextButton(
+                onClick = { turningOff = true },
+                // Not while an image is on its way: the node would stop taking it.
+                enabled = state.phase == Phase.READY && state.update !is FirmwareUpdate.Downloading &&
+                    state.update !is FirmwareUpdate.Sending,
+            ) { Text(stringResource(R.string.turn_off), color = MaterialTheme.colorScheme.error) }
         }
         state.node?.let { node ->
             TextButton(onClick = { forgetting = node }) {
@@ -222,6 +233,31 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
         }
     }
     forgetting?.let { node -> ForgetDialog(node, onDismiss = { forgetting = null }) { repository.forget(node.address) } }
+    state.node?.takeIf { turningOff }?.let { node ->
+        TurnOffDialog(node, onDismiss = { turningOff = false }) { repository.turnOff(report) }
+    }
+}
+
+/** Whether the node can be turned off from the app: `OFF` is version 9's. */
+fun canTurnOff(state: NodeState) = (state.version ?: 0) >= 9
+
+/**
+ * Asks before turning the node off, and says first what the specification has a client say: only
+ * someone at the node can turn it on again.
+ */
+@Composable
+private fun TurnOffDialog(node: ChosenNode, onDismiss: () -> Unit, turnOff: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.turn_off_title, node.shown ?: stringResource(R.string.unnamed_device))) },
+        text = { Text(stringResource(R.string.turn_off_explained)) },
+        confirmButton = {
+            TextButton(onClick = { onDismiss(); turnOff() }) {
+                Text(stringResource(R.string.turn_off), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }
 
 /**
