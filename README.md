@@ -10,7 +10,9 @@ What the app is, and why it is native, is in
 It finds a node, pairs with it, and keeps a link to it in the background; it shows conversations
 with contacts and groups, where each message is and what it waits for, the node's battery, airtime
 and the nodes it hears, and changes its region, role, power and passkey. It updates the node's
-firmware over the same link, with the release ternmesh.org publishes for its board and region.
+firmware over the same link, with the release ternmesh.org publishes for its board and region. It
+turns the node off when the user asks, after saying that only the node's button, reset or power
+turns it on again, and then stays off it, saying the node is off, until the user connects again.
 
 It shows who is about: the presence cards the node has heard from the nodes near it, each with
 the name its sender claims beside its short code, and a contact made from one only when the user
@@ -56,7 +58,7 @@ its tests run on any JVM.
 
 | Path | |
 |---|---|
-| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 8, as Kotlin types, and its numbers. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 9, as Kotlin types, and its numbers. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Codec.kt` | A frame built into bytes, and read back from them. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/ByteStream.kt` | Frames on a byte stream (USB serial, TCP), with the node's console text between them. Bluetooth does not need it. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Connection.kt` | One connection, the client's half: `HELLO` and the version both speak, one request at a time, counted news, syncing again, and the `PING` that keeps a node from taking the app for gone. No I/O and no clock of its own: a link hands it frames and calls `tick()`. |

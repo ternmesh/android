@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 8: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 9: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -9,8 +9,8 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 7 is this without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 8
+    /** The version this client speaks. Version 8 is this without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 9
     const val MAX_FRAME = 180
     const val TEXT_MAX = 128
     const val NAME_MAX = 31
@@ -76,6 +76,7 @@ object Companion {
         0x92, 0x93 -> 6
         0x26, 0x27, 0x47 -> 7
         0x94 -> 8
+        0x06 -> 9
         else -> 0
     }
 
@@ -264,7 +265,7 @@ object MessageState {
     const val RECEIVED = 4
 }
 
-/** What a frame says: every frame of version 8. [since] is the least version that defines it. */
+/** What a frame says: every frame of version 9. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String) {
     /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
     open val since: Int get() = Companion.since(type)
@@ -278,6 +279,13 @@ sealed class Body(val type: Int, val typeName: String) {
         /** The setting's: a node answers one the client's version does not define as it does a request it does not. */
         override val since: Int get() = setting.since
     }
+
+    /**
+     * Turn the node off, which it answers with `OK` before it does: every connection drops, and only
+     * its button, reset or power turns it on again. Only ever what the user asked for.
+     */
+    data object Off : Body(0x06, "OFF")
+
     data class Send(val ref: Long, val to: Address, val text: String) : Body(0x10, "SEND")
     data class Read(val through: Long) : Body(0x11, "READ")
     data class SaveContact(val address: Address, val name: String) : Body(0x18, "SAVE_CONTACT")

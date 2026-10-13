@@ -225,6 +225,17 @@ class CompanionVectorsTest {
         assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, south.copy(satellites = 256))) }
     }
 
+    /** Turning the node off is version 9's, and has no fields: bytes past them are read past. */
+    @Test
+    fun turningTheNodeOffIsVersion9s() {
+        val bytes = Codec.encode(Frame(9, Body.Off))
+        assertEquals("0609", Hex.encode(bytes))
+        assertEquals(9, Body.Off.since)
+        assertEquals(Body.Off, Codec.decode(bytes).body)
+        assertEquals(Body.Off, Codec.decode(bytes + byteArrayOf(0)).body)
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(bytes, 8) }.reason)
+    }
+
     /** A frame of a later version than the one both ends speak is one that version does not define. */
     @Test
     fun aFrameOfALaterVersionIsUndefined() {
@@ -303,6 +314,7 @@ class CompanionVectorsTest {
         "HELLO" -> Body.Hello(f.int("version"))
         "SYNC" -> Body.Sync(f.long("after"))
         "PING" -> Body.Ping
+        "OFF" -> Body.Off
         "SET_TIME" -> Body.SetTime(f.long("time"))
         "SET" -> Body.Set(
             when (f.int("setting")) {

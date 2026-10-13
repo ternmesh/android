@@ -26,6 +26,7 @@
     <string name="phase_ready">Connected</string>
     <string name="phase_stopped">Not connected</string>
     <string name="phase_disconnected">Disconnected</string>
+    <string name="phase_off">Turned off</string>
 
     <string name="problem_bluetooth_off">Bluetooth is off.</string>
     <string name="problem_no_service">That device is not a Tern node, or its firmware is too old.</string>
@@ -89,6 +90,10 @@
     <string name="connect">Connect</string>
     <string name="disconnect">Disconnect</string>
     <string name="disconnected_explained">Tern stays off the node until you connect. Messages wait for you on the node.</string>
+    <string name="turn_off">Turn off node</string>
+    <string name="turn_off_title">Turn off %1$s?</string>
+    <string name="turn_off_explained">The node stops sending and receiving, for you and everyone who relies on it. Tern cannot turn it on again: only its button, its reset or its power can, at the node itself.</string>
+    <string name="off_explained">The node is off. Turn it on at the node, with its button, its reset or its power, then connect.</string>
     <string name="known_nodes">Your nodes</string>
     <string name="known_nearby">Nearby</string>
     <string name="nearby_nodes">Other nodes nearby</string>
