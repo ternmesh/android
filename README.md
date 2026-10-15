@@ -48,6 +48,7 @@ beside the real one and never stands in for it.
 ./gradlew :protocol:test        # the companion protocol and the connection, against the specification's vectors
 ./gradlew :app:assembleDebug    # the app: app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :app:installDebug     # onto a phone over adb
+./gradlew :app:recordRoborazziDebug   # the store's screenshots, drawn from the app's screens
 ```
 
 JDK 17 or later; the app also needs the Android SDK (platform 35), which Android Studio installs,
@@ -131,3 +132,11 @@ build. Any other build, on a laptop or on `main`, is `0.1.0`, code 1, unless giv
 The store listing is in `fastlane/metadata/android/en-US`. A release's notes for F-Droid go
 beside it in `changelogs/` under its versionCode, `changelogs/10203.txt` for `v1.2.3`; F-Droid,
 building from the tag, gives the same version with `gradleprops: [ternVersion=1.2.3]`.
+
+Its phone screenshots, in `images/phoneScreenshots/`, are drawn from the app's own screens rather
+than taken on a phone: `app/src/test/.../screenshots/StoreScreenshots.kt` gives the app a made-up
+node, taps through it as a person would, and Robolectric and Roborazzi draw each screen to a PNG,
+1080 x 2160. After a change to a screen they show, run `./gradlew :app:recordRoborazziDebug` and
+commit the PNGs. CI runs the same test without writing anything (`:app:testDebugUnitTest`), so a
+screen that no longer draws fails the build. The map is not among them: MapLibre needs OpenGL,
+which Robolectric has not got.

@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     kotlin("android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("io.github.takahirom.roborazzi")
 }
 
 // A release's version is its tag's. The Release workflow passes a tag v1.2.3 as TERN_VERSION (a
@@ -74,6 +75,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // The store screenshots (src/test/.../screenshots) draw the real screens on the JVM, under
+    // Robolectric, with the app's own resources.
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 dependencies {
@@ -101,4 +108,14 @@ dependencies {
 
     // The map: MapLibre draws OpenFreeMap's tiles, which need no key and no Google Play services.
     implementation("org.maplibre.gl:android-sdk:11.13.5")
+
+    // The store screenshots: Robolectric runs the screens on the JVM, and Roborazzi draws them to PNG.
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.36.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.36.0")
 }
