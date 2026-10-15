@@ -1,0 +1,1 @@
+Groups hand on and join by a join code, as a link or a QR code. Shows who is about, from the presence cards the node has heard, and turns the node's own card on, with the name it gives. Sets up a node in every region the firmware has, not only EU868 and US915.

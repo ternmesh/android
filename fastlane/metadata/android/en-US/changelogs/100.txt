@@ -1,0 +1,1 @@
+The first release. Pairs with a Tern node over Bluetooth LE and keeps a link to it in the background. Chats with contacts and groups, with where each message is, notifications and a reply from them. Adds contacts by QR code, link or address. Shares the user's position at a chosen precision and shows those shared on a map. Updates the node's firmware over the link.
