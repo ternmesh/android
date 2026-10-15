@@ -92,6 +92,24 @@ fun TernApp(
     joined: () -> Unit,
 ) {
     val state by repository.state.collectAsStateWithLifecycle()
+    TernApp(repository, state, opening, incoming, joining, opened, taken, joined)
+}
+
+/**
+ * The frame for a given [state], which is the repository's as it changes. The store screenshots
+ * (app/src/test) give it one of their own, so that the screens they draw are the app's.
+ */
+@Composable
+internal fun TernApp(
+    repository: NodeRepository,
+    state: NodeState,
+    opening: String? = null,
+    incoming: Address? = null,
+    joining: String? = null,
+    opened: () -> Unit = {},
+    taken: () -> Unit = {},
+    joined: () -> Unit = {},
+) {
     val nav = rememberNavController()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
