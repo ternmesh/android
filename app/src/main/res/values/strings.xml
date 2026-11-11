@@ -249,6 +249,8 @@
     <string name="role_relay_short">Relay</string>
     <string name="power">Transmit power</string>
     <string name="power_value">%1$d dBm</string>
+    <string name="power_value_most">%1$d dBm, the most it may</string>
+    <string name="power_most">Send at the most it may</string>
     <string name="passkey">Bluetooth passkey</string>
     <string name="passkey_hint">6 digits, or empty for a new random one each time</string>
     <string name="set">Set</string>

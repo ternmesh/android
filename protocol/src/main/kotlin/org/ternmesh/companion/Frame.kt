@@ -9,8 +9,10 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 8 is this without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 9
+    /** The version this client speaks. Version 9 is this without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 10
+    /** `SET` 3's power that asks for the most the node may transmit at, which it works out (version 10). */
+    const val POWER_MOST = -128
     const val MAX_FRAME = 180
     const val TEXT_MAX = 128
     const val NAME_MAX = 31
@@ -388,7 +390,9 @@ sealed class Body(val type: Int, val typeName: String) {
 
     /**
      * The node itself. [time] is 0 if it does not know it. [cards] is 1 if it sends cards, and
-     * [cardName] the name they carry; both are null below version 6, from either end.
+     * [cardName] the name they carry; both are null below version 6, from either end. [most] is 1
+     * if [power] is the most the node may transmit at, as it works it out, and 0 if it is a power it
+     * was given; null below version 10.
      */
     data class Self(
         val address: Address,
@@ -398,6 +402,7 @@ sealed class Body(val type: Int, val typeName: String) {
         val time: Long,
         val cards: Int? = null,
         val cardName: String? = null,
+        val most: Int? = null,
     ) : Body(0x80, "SELF")
 
     /** An address the user saved, with a name. [session] is 1 if the node shares one with it. */

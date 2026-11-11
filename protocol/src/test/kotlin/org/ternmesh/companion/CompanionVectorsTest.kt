@@ -160,12 +160,25 @@ class CompanionVectorsTest {
         assertFailsWith<IllegalArgumentException> { Body.UpdateBegin(1, ByteArray(31)) }
     }
 
+    /** `SELF`'s `most` is version 10's: after the cards, and only with them. */
+    @Test
+    fun mostIsVersion10s() {
+        val ada = Address(ByteArray(32) { 0xAD.toByte() })
+        val ten = Codec.encode(Frame(0, Body.Self(ada, 1, "US915", 22, 0, 0, "", 1)))
+        assertEquals(Body.Self(ada, 1, "US915", 22, 0, 0, "", 1), Codec.decode(ten).body)
+        assertEquals(Body.Self(ada, 1, "US915", 22, 0, 0, ""), Codec.decode(ten, 9).body)
+        val nine = Codec.encode(Frame(0, Body.Self(ada, 1, "US915", 22, 0, 0, "")))
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(nine) }.reason)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, Body.Self(ada, 1, "US915", 22, 0, most = 1))) }
+        assertEquals(byteArrayOf(0x05, 0x09, 0x03, 0x80.toByte()).toList(), Codec.encode(Frame(9, Body.Set(Setting.Power(Companion.POWER_MOST)))).toList())
+    }
+
     /** `SELF`'s cards and card name are version 6's, and so are the two settings and the two news types. */
     @Test
     fun cardsAreVersion6s() {
         val ada = Address(ByteArray(32) { 0xAD.toByte() })
         val six = Codec.encode(Frame(0, Body.Self(ada, 1, "EU868", 14, 0, 1, "Ada")))
-        assertEquals(Body.Self(ada, 1, "EU868", 14, 0, 1, "Ada"), Codec.decode(six).body)
+        assertEquals(Body.Self(ada, 1, "EU868", 14, 0, 1, "Ada"), Codec.decode(six, 9).body)
         assertEquals(Body.Self(ada, 1, "EU868", 14, 0), Codec.decode(six, 5).body)
         val five = Codec.encode(Frame(0, Body.Self(ada, 1, "EU868", 14, 0)))
         assertEquals(Body.Self(ada, 1, "EU868", 14, 0), Codec.decode(five, 5).body)
@@ -363,6 +376,7 @@ class CompanionVectorsTest {
             f.addr("address"), f.int("role"), f.str("region"), f.int("power"), f.long("time"),
             if (f.containsKey("cards")) f.int("cards") else null,
             if (f.containsKey("card_name")) f.str("card_name") else null,
+            if (f.containsKey("most")) f.int("most") else null,
         )
         "CONTACT" -> Body.Contact(f.addr("address"), f.int("session"), f.str("name"))
         "CONTACT_GONE" -> Body.ContactGone(f.addr("address"))

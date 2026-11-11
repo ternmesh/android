@@ -171,8 +171,19 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
                     listOf(stringResource(R.string.role_leaf) to 0, stringResource(R.string.role_relay) to 1),
                 ) { repository.submit(Body.Set(Setting.Role(it)), report) }
                 HorizontalDivider()
-                NumberSetting(stringResource(R.string.power), stringResource(R.string.power_value, s.power), "${s.power}") { text ->
+                NumberSetting(
+                    stringResource(R.string.power),
+                    stringResource(if (s.most == 1) R.string.power_value_most else R.string.power_value, s.power),
+                    "${s.power}",
+                ) { text ->
                     text.toIntOrNull()?.let { repository.submit(Body.Set(Setting.Power(it)), report) }
+                }
+                // The most the node may transmit at, which it works out for its board, its antenna and
+                // its region, and works out again when the region changes.
+                if (canSendAtTheMost(state) && s.most != 1) {
+                    TextButton(onClick = { repository.submit(Body.Set(Setting.Power(Companion.POWER_MOST)), report) }) {
+                        Text(stringResource(R.string.power_most))
+                    }
                 }
                 HorizontalDivider()
                 NumberSetting(stringResource(R.string.passkey), stringResource(R.string.passkey_hint), "") { text ->
@@ -237,6 +248,9 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
         TurnOffDialog(node, onDismiss = { turningOff = false }) { repository.turnOff(report) }
     }
 }
+
+/** Whether the node can be asked for the most it may transmit at: `SET` 3's -128 is version 10's. */
+fun canSendAtTheMost(state: NodeState) = (state.version ?: 0) >= 10
 
 /** Whether the node can be turned off from the app: `OFF` is version 9's. */
 fun canTurnOff(state: NodeState) = (state.version ?: 0) >= 9

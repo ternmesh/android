@@ -25,7 +25,7 @@ class ConnectionTest {
         val link = Link(Connection(now = { 0 }, wallTime = { setTime.time }))
         val answers = link.replay(frames)
 
-        assertEquals(27, answers.size)
+        assertEquals(28, answers.size)
         // SHARE_GROUP asks for a precision past 24, SET 5 and SET 7 for a value neither 0 nor 1, and
         // the last JOIN_LINK hands the node a join code whose check fails.
         assertEquals(List(4) { Outcome.Refused(ErrorCode.REFUSED) }, answers.filter { it !is Outcome.Answered })
