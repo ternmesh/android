@@ -1,6 +1,10 @@
 // The first time the app meets a node: the region it is in, without which it does not transmit at
 // all; whether it relays; and the code to give others, with a first contact to add. A node the
 // setup has been done for, but whose region has since been cleared, is asked for the region alone.
+//
+// The region and the role are each a setting the node restarts to apply, which drops the
+// connection: so they are held here as the user chooses, and sent together when the setup ends,
+// for the node to apply with one restart rather than one in the middle of each step.
 package org.ternmesh.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
@@ -57,8 +61,20 @@ fun SetupScreen(repository: NodeRepository, state: NodeState, modifier: Modifier
     val steps = remember(state.setUp) { if (state.setUp) listOf(Step.REGION) else Step.entries.toList() }
     var at by remember { mutableIntStateOf(0) }
     var adding by remember { mutableStateOf(false) }
+    // What the user chose, not yet sent: null for what the node has already.
+    var region by remember { mutableStateOf<String?>(null) }
+    var role by remember { mutableStateOf<Int?>(null) }
+    val chosenRegion = region ?: self.region
+    val chosenRole = role ?: self.role
+    // Sends what was chosen, the region first, each only if it is not what the node has already,
+    // so a setup that changes nothing restarts nothing; and ends the setup.
+    val finish: () -> Unit = {
+        region?.takeIf { it != self.region }?.let { repository.submit(Body.Set(Setting.Region(it)), report) }
+        role?.takeIf { it != self.role }?.let { repository.submit(Body.Set(Setting.Role(it)), report) }
+        repository.finishSetup()
+    }
     val step = steps[at.coerceAtMost(steps.lastIndex)]
-    val next: () -> Unit = { if (at < steps.lastIndex) at++ else repository.finishSetup() }
+    val next: () -> Unit = { if (at < steps.lastIndex) at++ else finish() }
 
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -69,23 +85,23 @@ fun SetupScreen(repository: NodeRepository, state: NodeState, modifier: Modifier
             Step.REGION -> {
                 Text(stringResource(R.string.setup_region_title), style = MaterialTheme.typography.headlineSmall)
                 Text(stringResource(R.string.setup_region_explained))
-                for ((region, detail) in REGIONS) {
+                for ((name, detail) in REGIONS) {
                     Option(
-                        selected = self.region == region,
-                        title = region,
+                        selected = chosenRegion == name,
+                        title = name,
                         detail = stringResource(detail),
-                    ) { repository.submit(Body.Set(Setting.Region(region)), report) }
+                    ) { region = name }
                 }
                 Text(stringResource(R.string.setup_region_law), style = MaterialTheme.typography.bodySmall)
             }
             Step.ROLE -> {
                 Text(stringResource(R.string.setup_role_title), style = MaterialTheme.typography.headlineSmall)
                 Text(stringResource(R.string.setup_role_explained))
-                Option(self.role == 0, stringResource(R.string.role_leaf_short), stringResource(R.string.setup_role_leaf)) {
-                    repository.submit(Body.Set(Setting.Role(0)), report)
+                Option(chosenRole == 0, stringResource(R.string.role_leaf_short), stringResource(R.string.setup_role_leaf)) {
+                    role = 0
                 }
-                Option(self.role == 1, stringResource(R.string.role_relay_short), stringResource(R.string.setup_role_relay)) {
-                    repository.submit(Body.Set(Setting.Role(1)), report)
+                Option(chosenRole == 1, stringResource(R.string.role_relay_short), stringResource(R.string.setup_role_relay)) {
+                    role = 1
                 }
             }
             Step.CONTACT -> {
@@ -109,8 +125,8 @@ fun SetupScreen(repository: NodeRepository, state: NodeState, modifier: Modifier
         Spacer(Modifier.weight(1f, fill = false))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             // The region cannot be skipped: until it is set the node sends nothing at all.
-            if (step != Step.REGION) TextButton(onClick = repository::finishSetup) { Text(stringResource(R.string.setup_skip)) } else Spacer(Modifier)
-            Button(onClick = next, enabled = step != Step.REGION || self.region.isNotEmpty()) {
+            if (step != Step.REGION) TextButton(onClick = finish) { Text(stringResource(R.string.setup_skip)) } else Spacer(Modifier)
+            Button(onClick = next, enabled = step != Step.REGION || chosenRegion.isNotEmpty()) {
                 Text(stringResource(if (at < steps.lastIndex) R.string.setup_next else R.string.setup_done))
             }
         }
