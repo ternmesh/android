@@ -53,8 +53,6 @@ fun CardsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Un
     val now = rememberNow()
     val cards = remember(state.records, state.arrived, now) { state.records.cards.values.sortedBy { heardNow(state, it, now) } }
     var choosing by remember { mutableStateOf<Body.Card?>(null) }
-    var adding by remember { mutableStateOf<Body.Card?>(null) }
-    val report = rememberReport()
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -102,9 +100,21 @@ fun CardsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Un
         }
     }
 
-    choosing?.let { card ->
+    choosing?.let { card -> MakeContactFromCard(repository, card) { choosing = null } }
+}
+
+/**
+ * What tapping the card of someone not yet a contact does, wherever it is shown: the user is asked
+ * first, told what the card's name is and is not, and then asked the name to save them under, with
+ * the card's offered. Nothing is saved or sent until they say so; [done] once they are through.
+ */
+@Composable
+internal fun MakeContactFromCard(repository: NodeRepository, card: Body.Card, done: () -> Unit) {
+    var adding by remember(card.address) { mutableStateOf(false) }
+    val report = rememberReport()
+    if (!adding) {
         AlertDialog(
-            onDismissRequest = { choosing = null },
+            onDismissRequest = done,
             title = { CardName(card) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -119,15 +129,14 @@ fun CardsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Un
                 }
             },
             confirmButton = {
-                TextButton(onClick = { choosing = null; adding = card }) { Text(stringResource(R.string.card_add)) }
+                TextButton(onClick = { adding = true }) { Text(stringResource(R.string.card_add)) }
             },
-            dismissButton = { TextButton(onClick = { choosing = null }) { Text(stringResource(R.string.cancel)) } },
+            dismissButton = { TextButton(onClick = done) { Text(stringResource(R.string.cancel)) } },
         )
-    }
-    adding?.let { card ->
+    } else {
         // The card's name is offered, for the user to keep or change: the contact's name is theirs.
-        AddContactDialog(Sharing.text(card.address), suggested = card.name, onDismiss = { adding = null }) { address, name ->
-            adding = null
+        AddContactDialog(Sharing.text(card.address), suggested = card.name, onDismiss = done) { address, name ->
+            done()
             repository.submit(Body.SaveContact(address, name), report)
         }
     }
@@ -135,7 +144,7 @@ fun CardsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Un
 
 /** The name a card carries, as what its sender claims, or that it carries none. */
 @Composable
-private fun CardName(card: Body.Card) {
+internal fun CardName(card: Body.Card) {
     if (card.name.isEmpty()) {
         Text(stringResource(R.string.card_no_name), color = MaterialTheme.colorScheme.onSurfaceVariant, fontStyle = FontStyle.Italic)
     } else {

@@ -237,6 +237,8 @@
     <string name="airtime_unlimited">No limit in this region</string>
     <string name="neighbours">Nodes heard</string>
     <string name="neighbours_none">None heard yet.</string>
+    <!-- Under a node heard that is no contact's and whose card the node does not hold: why it shows as a number. -->
+    <string name="neighbour_no_card">No presence card heard from this node, so it has no name to show.</string>
     <string name="neighbour_line">%1$s · %2$.1f dB · %3$s</string>
     <string name="heard_ago">heard %1$s ago</string>
     <string name="settings">Settings</string>

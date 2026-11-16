@@ -1,11 +1,13 @@
 // The node itself: its address to give others, as a QR code, a link and the short code; its battery
-// and airtime, the nodes it hears, the four settings a client may change, its presence card, and its
-// firmware and updating it; and disconnecting from it, turning it off, changing it, or forgetting it.
+// and airtime, the nodes it hears, by a contact's name or by what a card held from it claims, the
+// four settings a client may change, its presence card, and its firmware and updating it; and
+// disconnecting from it, turning it off, changing it, or forgetting it.
 package org.ternmesh.app.ui
 
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.text.format.Formatter
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -83,6 +85,7 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
     var forgetting by remember { mutableStateOf<ChosenNode?>(null) }
     var renaming by remember { mutableStateOf(false) }
     var turningOff by remember { mutableStateOf(false) }
+    var choosing by remember { mutableStateOf<Body.Card?>(null) }
 
     Column(
         Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
@@ -147,12 +150,31 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
             if (neighbours.isEmpty()) Text(stringResource(R.string.neighbours_none))
             for (n in neighbours) {
                 val role = stringResource(if (n.role == 1) R.string.role_relay_short else R.string.role_leaf_short)
-                Text(
-                    stringResource(
-                        R.string.neighbour_line, Conversations.nameOf(r, n.routingId) ?: "%08x".format(n.routingId), n.snrQuarterDb / 4.0,
-                        stringResource(R.string.heard_ago, spanText(n.heard.toLong())),
-                    ) + " · " + role,
-                )
+                val name = Conversations.nameOf(r, n.routingId)
+                // Not a contact's: named by the card the node holds from it, as what it claims, if any.
+                val card = if (name == null) Conversations.cardOf(r, n.routingId) else null
+                // A card's name is shown as Who's about shows it, and the line follows it without one.
+                val line = stringResource(
+                    R.string.neighbour_line, if (card != null) "" else name ?: "%08x".format(n.routingId), n.snrQuarterDb / 4.0,
+                    stringResource(R.string.heard_ago, spanText(n.heard.toLong())),
+                ) + " · " + role
+                if (card != null) {
+                    // Tapping it asks about making a contact, as tapping the card there does.
+                    Row(Modifier.fillMaxWidth().clickable { choosing = card }) {
+                        CardName(card)
+                        Text(line)
+                    }
+                } else {
+                    Text(line)
+                    // Neither a contact's, even one without a name, nor a card's: why it is only a number.
+                    if (name == null && r.contacts.values.none { it.address.routingId == n.routingId }) {
+                        Text(
+                            stringResource(R.string.neighbour_no_card),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
 
@@ -243,6 +265,7 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
             repository.rename(node.address, label)
         }
     }
+    choosing?.let { card -> MakeContactFromCard(repository, card) { choosing = null } }
     forgetting?.let { node -> ForgetDialog(node, onDismiss = { forgetting = null }) { repository.forget(node.address) } }
     state.node?.takeIf { turningOff }?.let { node ->
         TurnOffDialog(node, onDismiss = { turningOff = false }) { repository.turnOff(report) }

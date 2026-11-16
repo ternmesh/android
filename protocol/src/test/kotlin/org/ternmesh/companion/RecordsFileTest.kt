@@ -215,4 +215,26 @@ class RecordsFileTest {
         assertNull(Conversations.nameOf(r, bob.routingId), "a contact with no name")
         assertNull(Conversations.nameOf(r, 0x1234), "no contact")
     }
+
+    /** Two addresses whose routing ids are the same, 0x93936ce7: found by trying, for the test below. */
+    private val twin = Address.fromHex("c0".repeat(24) + "0000000000017410")!!
+    private val otherTwin = Address.fromHex("c0".repeat(24) + "000000000001adac")!!
+
+    @Test
+    fun aRoutingIdNoContactHasIsNamedByTheCardWithIt() {
+        val r = Records()
+        val card = Body.Card(alice, 60, "Alice?")
+        r.apply(card)
+        assertEquals(card, Conversations.cardOf(r, alice.routingId))
+        assertNull(Conversations.cardOf(r, 0x1234), "no card")
+
+        r.apply(Body.Contact(alice, 1, ""))
+        assertNull(Conversations.cardOf(r, alice.routingId), "a contact's, even one with no name")
+
+        assertEquals(twin.routingId, otherTwin.routingId)
+        r.apply(Body.Card(twin, 60, "One"))
+        assertEquals("One", Conversations.cardOf(r, twin.routingId)?.name)
+        r.apply(Body.Card(otherTwin, 60, "Two"))
+        assertNull(Conversations.cardOf(r, twin.routingId), "two cards with it name neither")
+    }
 }
