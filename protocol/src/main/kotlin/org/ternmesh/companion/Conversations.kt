@@ -51,6 +51,16 @@ object Conversations {
     fun nameOf(records: Records, routingId: Long): String? =
         records.contacts.values.firstOrNull { it.address.routingId == routingId }?.name?.takeIf { it.isNotEmpty() }
 
+    /**
+     * The card held from the address that has [routingId], to name a neighbour no contact names: null
+     * when a contact has that routing id, whose name is the user's own where a card's is only a claim;
+     * null for no card; and null when two cards held have it, which cannot be told apart by it.
+     */
+    fun cardOf(records: Records, routingId: Long): Body.Card? {
+        if (records.contacts.values.any { it.address.routingId == routingId }) return null
+        return records.cards.values.filter { it.address.routingId == routingId }.singleOrNull()
+    }
+
     /** The first 8 hex digits, to tell addresses apart at a glance. Not a check that one is who it claims. */
     fun short(hex: String) = hex.take(8) + "…"
 
