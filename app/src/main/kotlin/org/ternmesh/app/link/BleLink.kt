@@ -77,6 +77,9 @@ class BleLink(private val context: Context, private val handler: Handler) {
     private var writing = false
     private var bondWatch: BroadcastReceiver? = null
 
+    /** The pairing [bondFirst] is waiting on, so that one superseded by a later connect is ignored. */
+    private var bonding: Any? = null
+
     /**
      * Connects to the node at [address]. With [waitForIt], Android connects whenever the node comes
      * into range, however long that takes; without, it gives up after about half a minute.
@@ -86,12 +89,43 @@ class BleLink(private val context: Context, private val handler: Handler) {
         val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
         if (adapter == null || !adapter.isEnabled) return set(LinkState.Failed(LinkFailure.BLUETOOTH_OFF))
         val device = adapter.getRemoteDevice(address)
+        // A node with no bond yet is paired before GATT opens. The node asks for pairing the moment
+        // a link comes up, and Android shows a pairing the other side began as a notification,
+        // behind a consent dialog, with its 30 seconds already running; one the phone begins, while
+        // the user waits on this screen, goes straight to the passkey prompt. Only for a node the
+        // scan saw as LE: for one Android knows nothing of, createBond() could try classic.
+        if (!waitForIt && device.bondState == BluetoothDevice.BOND_NONE &&
+            device.type == BluetoothDevice.DEVICE_TYPE_LE
+        ) {
+            return bondFirst(device)
+        }
+        open(device, waitForIt)
+    }
+
+    private fun open(device: BluetoothDevice, waitForIt: Boolean) {
         set(LinkState.Connecting)
         gatt = device.connectGatt(context, waitForIt, callback, BluetoothDevice.TRANSPORT_LE)
     }
 
+    /** Pairs with [device], then opens the link; a pairing that fails or is cancelled ends it. */
+    private fun bondFirst(device: BluetoothDevice) {
+        set(LinkState.Pairing)
+        val attempt = Any().also { bonding = it }
+        watchBond(device.address) { bonded ->
+            if (bonding !== attempt) return@watchBond
+            bonding = null
+            if (bonded) open(device, waitForIt = false) else set(LinkState.Failed(LinkFailure.PAIRING))
+        }
+        if (!device.createBond()) {
+            stopWatchingBond()
+            bonding = null
+            set(LinkState.Failed(LinkFailure.PAIRING))
+        }
+    }
+
     fun disconnect() {
         stopWatchingBond()
+        bonding = null
         gatt?.let {
             it.disconnect()
             it.close()
@@ -236,8 +270,20 @@ class BleLink(private val context: Context, private val handler: Handler) {
     /** Waits for Android's pairing, which shows the user its own passkey prompt. */
     private fun awaitBond(g: BluetoothGatt) {
         set(LinkState.Pairing)
+        watchBond(g.device.address) { bonded ->
+            if (g !== gatt) return@watchBond
+            if (bonded) subscribe(g) else fail(LinkFailure.PAIRING)
+        }
+    }
+
+    /**
+     * Calls [done] on the link's thread once, when the bond with [address] is made (true) or
+     * fails (false), and stops watching.
+     */
+    private fun watchBond(address: String, done: (Boolean) -> Unit) {
         stopWatchingBond()
-        val receiver = object : BroadcastReceiver() {
+        lateinit var receiver: BroadcastReceiver
+        receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context, intent: Intent) {
                 val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
@@ -245,13 +291,16 @@ class BleLink(private val context: Context, private val handler: Handler) {
                     @Suppress("DEPRECATION")
                     intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
                 }
-                if (device?.address != g.device.address) return
-                when (intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)) {
-                    BluetoothDevice.BOND_BONDED -> on(g) {
-                        stopWatchingBond()
-                        subscribe(g)
-                    }
-                    BluetoothDevice.BOND_NONE -> on(g) { fail(LinkFailure.PAIRING) }
+                if (device?.address != address) return
+                val bonded = when (intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)) {
+                    BluetoothDevice.BOND_BONDED -> true
+                    BluetoothDevice.BOND_NONE -> false
+                    else -> return
+                }
+                handler.post {
+                    if (bondWatch !== receiver) return@post
+                    stopWatchingBond()
+                    done(bonded)
                 }
             }
         }
