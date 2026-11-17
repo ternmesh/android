@@ -1,4 +1,4 @@
-// The app's frame: the four tabs, the conversation over them, and a line saying where the link to
+// The app's frame: the four tabs (chats, people, the map and the node), the conversation over them, and a line saying where the link to
 // the node is whenever it is not simply connected.
 package org.ternmesh.app.ui
 
@@ -9,17 +9,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -75,10 +71,10 @@ fun rememberReport(): (Outcome) -> Unit {
 }
 
 private enum class Tab(val route: String, val label: Int, val icon: ImageVector) {
-    CHATS("chats", R.string.tab_chats, Icons.Filled.Email),
-    CONTACTS("contacts", R.string.tab_contacts, Icons.Filled.AccountCircle),
-    MAP("map", R.string.tab_map, Icons.Filled.LocationOn),
-    NODE("node", R.string.tab_node, Icons.Filled.Settings),
+    CHATS("chats", R.string.tab_chats, TernIcons.Chats),
+    PEOPLE("people", R.string.tab_people, TernIcons.People),
+    MAP("map", R.string.tab_map, TernIcons.Map),
+    NODE("node", R.string.tab_node, TernIcons.Node),
 }
 
 @Composable
@@ -111,6 +107,13 @@ internal fun TernApp(
     joined: () -> Unit = {},
 ) {
     val nav = rememberNavController()
+    val goTab: (Tab) -> Unit = { tab ->
+        nav.navigate(tab.route) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val say: (String) -> Unit = remember { { text -> scope.launch { snackbar.showSnackbar(text) } } }
@@ -133,7 +136,7 @@ internal fun TernApp(
     // A link to add: to the contacts, where the dialog takes it.
     LaunchedEffect(incoming, state.node, permitted) {
         if (incoming != null && state.node != null && permitted) {
-            nav.navigate(Tab.CONTACTS.route) {
+            nav.navigate(Tab.PEOPLE.route) {
                 popUpTo(nav.graph.findStartDestination().id) { saveState = true }
                 launchSingleTop = true
             }
@@ -171,20 +174,14 @@ internal fun TernApp(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
                 if (onTab) {
-                    NavigationBar {
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                         for (tab in Tab.entries) {
                             NavigationBarItem(
                                 selected = route == tab.route,
-                                onClick = {
-                                    nav.navigate(tab.route) {
-                                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
+                                onClick = { goTab(tab) },
                                 icon = {
                                     if (tab == Tab.CHATS && unread > 0) {
-                                        BadgedBox(badge = { Badge { Text(if (unread > 99) "99+" else "$unread") } }) {
+                                        BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) { Text(if (unread > 99) "99+" else "$unread") } }) {
                                             Icon(tab.icon, contentDescription = null)
                                         }
                                     } else {
@@ -192,6 +189,10 @@ internal fun TernApp(
                                     }
                                 },
                                 label = { Text(stringResource(tab.label)) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
+                                ),
                             )
                         }
                     }
@@ -214,20 +215,20 @@ internal fun TernApp(
                 LinkBanner(repository, state)
                 DefaultPasskeyBanner(repository, state)
                 NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.weight(1f)) {
-                    composable(Tab.CHATS.route) { ChatsScreen(repository, state) { nav.navigate(chatRoute(it)) } }
-                    composable(Tab.CONTACTS.route) {
-                        ContactsScreen(repository, state, incoming, taken, about = { nav.navigate(CARDS_ROUTE) }) { nav.navigate(chatRoute(it)) }
+                    val toNode = { goTab(Tab.NODE) }
+                    val back: () -> Unit = { nav.popBackStack() }
+                    composable(Tab.CHATS.route) { ChatsScreen(repository, state, toNode) { nav.navigate(chatRoute(it)) } }
+                    composable(Tab.PEOPLE.route) {
+                        PeopleScreen(repository, state, incoming, taken, toNode) { nav.navigate(chatRoute(it)) }
                     }
-                    composable(Tab.MAP.route) { MapScreen(repository, state) }
-                    composable(Tab.NODE.route) { NodeScreen(repository, state) }
-                    composable(CARDS_ROUTE) {
-                        // A node of version 5 or earlier holds no cards: back to the contacts, should it change under the screen.
-                        if (hasCards(state)) {
-                            CardsScreen(repository, state, open = { nav.navigate(chatRoute(it)) }) { nav.popBackStack() }
-                        } else {
-                            LaunchedEffect(Unit) { nav.popBackStack() }
-                        }
-                    }
+                    composable(Tab.MAP.route) { MapScreen(repository, state, toNode) }
+                    composable(Tab.NODE.route) { NodeScreen(repository, state) { nav.navigate(it.route) } }
+                    composable(NodePage.ADDRESS.route) { AddressScreen(state, back) }
+                    composable(NodePage.NEIGHBOURS.route) { NeighboursScreen(repository, state, back) }
+                    composable(NodePage.RADIO.route) { RadioScreen(repository, state, back) }
+                    composable(NodePage.PRIVACY.route) { PrivacyScreen(repository, state, back) }
+                    composable(NodePage.PIN.route) { PinScreen(repository, state, back) }
+                    composable(NodePage.ABOUT.route) { AboutScreen(repository, state, back) }
                     composable("chat/{peer}") { entry ->
                         val peer = entry.arguments?.getString("peer")?.let(Notifier::peer)
                         if (peer != null) ChatScreen(repository, state, peer) { nav.popBackStack() }
@@ -239,9 +240,6 @@ internal fun TernApp(
 }
 
 fun chatRoute(peer: Peer) = "chat/${Notifier.key(peer)}"
-
-/** Who is about: the cards the node holds, reached from the contacts. */
-private const val CARDS_ROUTE = "cards"
 
 /** Where the link is, unless it is simply up. */
 @Composable

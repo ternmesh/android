@@ -73,7 +73,7 @@ its tests run on any JVM.
 | `protocol/src/test/` | The conformance section of the specification, as a client: the codec against every vector, the connection as the client in `exchange`, `older` and `unknown_to_older`, and the updater as the client in `update`. |
 | `app/src/main/kotlin/org/ternmesh/app/link/` | Bluetooth LE: scanning for the node's service, and the GATT link (an MTU of at least 183, passkey pairing, one frame per write and per notification). |
 | `app/src/main/kotlin/org/ternmesh/app/node/` | The node the app drives: the link, the connection over it and the records on disk (`NodeRepository`), the foreground service that keeps it while the app is closed, message notifications, downloading firmware and checking it before it is sent (`Firmware.kt`), and the phone's location given to the node while it shares (`LocationFeed.kt`). |
-| `app/src/main/kotlin/org/ternmesh/app/ui/` | The screens, in Jetpack Compose: choosing a node, chats, one conversation, contacts, the map, sharing a position, and the node. Every word they show is in `res/values/strings.xml`. |
+| `app/src/main/kotlin/org/ternmesh/app/ui/` | The screens, in Jetpack Compose: choosing a node, then four tabs: chats (and one conversation), people (contacts, and who is near), the map (and sharing a position), and the node, a dashboard with a screen for each thing about it. `Theme`, `TernIcons` and `Components` are what they share. Every word they show is in `res/values/strings.xml`. |
 
 The vectors' `group_ids` are run against the join code reader, which works out the id of the
 group a code is for, so that the app can say whether the node holds it already.

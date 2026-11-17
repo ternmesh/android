@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
@@ -137,12 +138,27 @@ fun SharingLine(state: NodeState, peer: Peer, open: () -> Unit) {
     val now = rememberNow()
     val s = sharedWith(state, peer, now) ?: return
     val context = LocalContext.current
-    Surface(color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth().clickable(onClick = open)) {
-        Text(
-            stringResource(R.string.sharing_line, precisionText(context, s.precision), leftText(context, state, s, now)),
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-        )
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = MaterialTheme.shapes.small,
+        onClick = open,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+    ) {
+        androidx.compose.foundation.layout.Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            androidx.compose.material3.Icon(
+                TernIcons.Pin, contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(end = 8.dp).size(16.dp),
+            )
+            Text(
+                stringResource(R.string.sharing_line, precisionText(context, s.precision), leftText(context, state, s, now)),
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
     }
 }
 

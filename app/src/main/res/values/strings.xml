@@ -14,6 +14,7 @@
     <!-- Tabs -->
     <string name="tab_chats">Chats</string>
     <string name="tab_contacts">Contacts</string>
+    <string name="tab_people">People</string>
     <string name="tab_node">Node</string>
     <string name="tab_map">Map</string>
 
@@ -88,7 +89,8 @@
     <string name="unnamed_device">Unnamed node</string>
     <string name="signal_dbm">%1$d dBm</string>
     <string name="retry">Try again</string>
-    <string name="change_node">Change node</string>
+    <string name="change_node">Switch node</string>
+    <string name="change_node_explained">Connect to a different node, or this one again</string>
     <string name="connect">Connect</string>
     <string name="disconnect">Disconnect</string>
     <string name="disconnected_explained">Tern stays off the node until you connect. Messages wait for you on the node.</string>
@@ -176,8 +178,8 @@
     <string name="remove_title">Remove %1$s?</string>
     <string name="remove_explained">Your node forgets the name, stops sharing your location with this contact and forgets theirs. Your messages and any secure session with them are kept, but once that ends your node may turn away a new one they start.</string>
     <string name="message">Message</string>
-    <string name="session_yes">Secure session</string>
-    <string name="session_no">No session yet</string>
+    <string name="session_yes">Secure</string>
+    <string name="session_no">Not talked yet</string>
     <string name="asked_title">Someone tried to reach you</string>
     <string name="asked_not_contact">Your node turned away a message from %1$s because it is not a contact.</string>
     <string name="asked_no_room">Your node turned away a message from %1$s because it has no room for another session.</string>
@@ -207,7 +209,7 @@
     <string name="card_on">Show this node to others nearby</string>
     <string name="card_on_yes">On: your node sends its card</string>
     <string name="card_on_no">Off: your node sends no card</string>
-    <string name="card_on_explained">Anyone near can see this node\'s address and the name below, every couple of hours, and can tell it is the same node each time. Off, your node puts neither on the air. Either way it shows you the cards of others.</string>
+    <string name="card_on_explained">Anyone near can see this node\'s address and the name on its card, every couple of hours, and can tell it is the same node each time. Off, your node puts neither on the air. Either way it shows you the cards of others.</string>
     <string name="card_name">Name on the card</string>
     <string name="card_name_explained">The one name your node puts on the air, in clear, while its card is on. Empty for none.</string>
     <string name="card_name_too_long">At most %1$d bytes</string>
@@ -231,8 +233,8 @@
     <string name="battery">Battery</string>
     <string name="battery_value">%1$s, %2$.2f V</string>
     <string name="unknown">Unknown</string>
-    <string name="charging">charging</string>
-    <string name="external_power">on external power</string>
+    <string name="charging">Charging</string>
+    <string name="external_power">On external power</string>
     <string name="airtime">Airtime</string>
     <string name="airtime_value">%1$.1f of %2$.1f s used, every %3$s</string>
     <string name="airtime_wait">Next send in about %1$.1f s</string>
@@ -395,4 +397,63 @@
     <string name="share_update">Update</string>
     <string name="share_stop">Stop sharing</string>
     <string name="share_no_permission">Without location access, your node shares only what its own receiver finds, if it has one.</string>
+    <!-- The redesign: People, the node's dashboard and its screens. -->
+    <string name="people_contacts">Contacts</string>
+    <string name="people_nearby">Nearby</string>
+    <string name="people_nearby_count">Nearby · %1$d</string>
+    <string name="search_messages">Search messages</string>
+    <string name="chats_empty_title">No chats yet</string>
+    <string name="contacts_empty_title">No contacts yet</string>
+    <string name="preview_you">You: %1$s</string>
+    <string name="preview_writer">%1$s: %2$s</string>
+    <string name="nearby_empty_title">No one nearby yet</string>
+    <string name="nearby_cards">Showing a card</string>
+    <string name="nearby_heard">Heard by your node</string>
+    <string name="nearby_heard_no_card">Heard, no card</string>
+    <string name="nearby_contact_tag">Contact</string>
+    <string name="seen_ago">seen %1$s ago</string>
+    <string name="signal_bars">Signal: %1$d of 4 bars</string>
+    <string name="signal_explained">Bars show how clearly your node hears each one: four is strong, one is at the edge of range. The number is the signal-to-noise ratio in dB.</string>
+    <string name="snr_db">%1$.1f dB</string>
+    <string name="node_my_address">My address</string>
+    <string name="node_address_full">Full address</string>
+    <string name="share_link">Share link</string>
+    <string name="node_nearby_nodes">Nearby nodes</string>
+    <string name="node_heard_none">None heard</string>
+    <plurals name="node_heard_count">
+        <item quantity="one">%1$d heard</item>
+        <item quantity="other">%1$d heard</item>
+    </plurals>
+    <string name="node_radio">Radio</string>
+    <string name="node_privacy">Privacy &amp; location</string>
+    <string name="node_privacy_card_on">Card on</string>
+    <string name="node_privacy_card_off">Card off</string>
+    <string name="node_about">Firmware</string>
+    <string name="node_updating">Updating…</string>
+    <string name="node_update_ready">Update ready</string>
+    <string name="node_details">This node</string>
+    <string name="about_release">Release</string>
+    <string name="about_board">Board</string>
+    <string name="about_protocol">Companion protocol</string>
+    <string name="about_bluetooth">Bluetooth name</string>
+    <string name="battery_volts">%1$.2f V</string>
+    <string name="airtime_label">Airtime</string>
+    <string name="airtime_no_limit_short">No limit</string>
+    <string name="airtime_plenty">Plenty left to send</string>
+    <string name="airtime_half">Over half used</string>
+    <string name="airtime_nearly_out">Nearly used up</string>
+    <string name="region_choose">Choose the region you are in</string>
+    <string name="region_explained">Use the region you are in. It sets the frequencies your node uses and how long it may transmit.</string>
+    <string name="role_leaf_title">Just me</string>
+    <string name="role_leaf_explained">Sends and receives your own messages, and uses the least battery. Best for a node you carry.</string>
+    <string name="role_relay_title">Help the mesh</string>
+    <string name="role_relay_explained">Also passes on other people\'s messages, so the mesh reaches further. Best for a node left on a hill, at a hut or in a window.</string>
+    <string name="settings_restart">Your node may restart to apply a change. The app connects again on its own.</string>
+    <string name="passkey_now">Pairs with</string>
+    <string name="passkey_new">Set a new PIN</string>
+    <string name="passkey_takes_effect">A new PIN takes effect the next time a phone pairs. This phone stays paired.</string>
+    <string name="passkey_screen_short">On its screen</string>
+    <string name="passkey_default_short">Default</string>
+    <string name="power_at_most">The most it may</string>
+    <string name="chat_not_contact">Not a contact</string>
 </resources>

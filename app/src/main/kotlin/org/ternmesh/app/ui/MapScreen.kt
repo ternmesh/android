@@ -144,10 +144,13 @@ private fun marks(state: NodeState, now: Long): List<Mark> {
 }
 
 @Composable
-fun MapScreen(repository: NodeRepository, state: NodeState) {
+fun MapScreen(repository: NodeRepository, state: NodeState, toNode: () -> Unit) {
     val context = LocalContext.current
     if (!hasPositions(state)) {
-        Text(stringResource(R.string.map_old_node), Modifier.padding(24.dp))
+        Column {
+            TabTitle(stringResource(R.string.tab_map), state, toNode)
+            EmptyState(stringResource(R.string.tab_map), stringResource(R.string.map_old_node))
+        }
         return
     }
     val now = rememberNow()
@@ -163,6 +166,7 @@ fun MapScreen(repository: NodeRepository, state: NodeState) {
     }
 
     Column(Modifier.fillMaxSize()) {
+        TabTitle(stringResource(R.string.tab_map), state, toNode)
         Box(Modifier.fillMaxWidth().weight(1f)) {
             // Read at each composition: the user may allow it from the sharing dialog while the map is open.
             PositionMap(listOfNotNull(own) + marks, selected, LocationFeed.permitted(context)) { selected = it }

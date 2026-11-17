@@ -2,6 +2,18 @@
 // waits, what for; and a box to write in that counts what the protocol counts, UTF-8 bytes.
 package org.ternmesh.app.ui
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,6 +79,10 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
     var menu by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<ChatDialog?>(null) }
     val report = rememberReport()
+    val canShare = hasPositions(state) && when (peer) {
+        is Peer.Contact -> state.records.contacts[peer.address] != null
+        is Peer.Group -> state.records.groups[peer.group] != null
+    }
 
     // While this is on screen its new messages are read as they come, and need no notification.
     // Only while the chat is resumed: covered by a dialog or another app, it is not being read.
@@ -84,18 +100,14 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
 
     Column(Modifier.fillMaxSize().imePadding()) {
         TopAppBar(
-            title = { Text(conversation.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            title = { ChatTitle(state, peer, conversation.name) },
             navigationIcon = {
                 IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) }
             },
             actions = {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, stringResource(R.string.more)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    if (hasPositions(state) && when (peer) {
-                            is Peer.Contact -> state.records.contacts[peer.address] != null
-                            is Peer.Group -> state.records.groups[peer.group] != null
-                        }
-                    ) {
+                    if (canShare) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.share_location)) }, onClick = { menu = false; dialog = ChatDialog.SHARE })
                     }
                     when (peer) {
@@ -127,6 +139,7 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
             state = list,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(6.dp),
+            contentPadding = PaddingValues(vertical = 8.dp),
         ) {
             items(conversation.items, key = { it.id }) { item -> Bubble(repository, state, item) }
             items(state.unanswered.filter { it.peer == peer }, key = { "u${it.ref}" }) { u ->
@@ -144,7 +157,7 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
         }
         val say = LocalSay.current
         val still = stringResource(R.string.still_sending)
-        Composer(enabled = state.phase == Phase.READY) { text ->
+        Composer(enabled = state.phase == Phase.READY, share = if (canShare) ({ dialog = ChatDialog.SHARE }) else null) { text ->
             repository.write(peer, text, report).also { taken -> if (!taken) say(still) }
         }
     }
@@ -204,33 +217,53 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
 
 private enum class ChatDialog { RENAME, INVITE, END_SESSION, LEAVE, SHARE, JOIN_CODE }
 
+/** Who the conversation is with, and in a word how: secure, not yet talked to, or a group. */
+@Composable
+private fun ChatTitle(state: NodeState, peer: Peer, name: String) {
+    val extra = LocalTernColors.current
+    val (line, color) = when (peer) {
+        is Peer.Group -> stringResource(R.string.group_label) to MaterialTheme.colorScheme.onSurfaceVariant
+        is Peer.Contact -> when (state.records.contacts[peer.address]?.session) {
+            1 -> stringResource(R.string.session_yes) to extra.good
+            0 -> stringResource(R.string.session_no) to MaterialTheme.colorScheme.onSurfaceVariant
+            else -> stringResource(R.string.chat_not_contact) to MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Avatar(name, group = peer is Peer.Group, size = 36.dp, key = avatarKey(peer))
+        Column(Modifier.padding(start = 12.dp)) {
+            Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(line, style = MaterialTheme.typography.labelMedium, color = color, maxLines = 1)
+        }
+    }
+}
+
 @Composable
 private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {
     val context = LocalContext.current
     val mine = item.state != MessageState.RECEIVED
     val report = rememberReport()
+    // The corner nearest the sender is tighter, so that a bubble points at who said it.
+    val shape = if (mine) RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp) else RoundedCornerShape(20.dp, 20.dp, 20.dp, 6.dp)
+    val container = if (mine) LocalTernColors.current.mine else MaterialTheme.colorScheme.surfaceContainerHigh
+    val content = if (mine) LocalTernColors.current.onMine else MaterialTheme.colorScheme.onSurface
     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = if (mine) Alignment.CenterEnd else Alignment.CenterStart) {
-        Card(
-            colors = if (mine) {
-                CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-            } else {
-                CardDefaults.cardColors()
-            },
-            modifier = Modifier.widthIn(max = 320.dp),
-        ) {
-            Column(Modifier.padding(10.dp)) {
+        Surface(shape = shape, color = container, contentColor = content, modifier = Modifier.widthIn(max = 300.dp)) {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
                 if (item is Body.GroupMessage && !mine) {
                     // The writer's routing id is what it claimed, not a proof: a contact's name it
                     // matches is said to be claimed.
                     val name = Conversations.nameOf(state.records, item.from)
                     Text(
                         name?.let { stringResource(R.string.writer_claimed, it) } ?: "%08x".format(item.from),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 2.dp),
                     )
                 }
                 when (item) {
-                    is Body.Message -> Text(item.text)
-                    is Body.GroupMessage -> Text(item.text)
+                    is Body.Message -> Text(item.text, style = MaterialTheme.typography.bodyLarge)
+                    is Body.GroupMessage -> Text(item.text, style = MaterialTheme.typography.bodyLarge)
                     is Body.Invite -> {
                         Text(stringResource(R.string.invite_to, item.name), style = MaterialTheme.typography.titleSmall)
                         if (!mine && item.group !in state.records.groups) {
@@ -239,30 +272,57 @@ private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {
                     }
                 }
                 val status = listOfNotNull(timeText(context, timeOf(item)).ifEmpty { null }, stateText(context, item))
-                if (status.isNotEmpty()) Text(status.joinToString(" · "), style = MaterialTheme.typography.labelSmall)
+                if (status.isNotEmpty()) {
+                    Text(
+                        status.joinToString(" · "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = LocalContentColor.current.copy(alpha = 0.72f),
+                        modifier = Modifier.align(Alignment.End).padding(top = 2.dp),
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun Composer(enabled: Boolean, send: (String) -> Boolean) {
+private fun Composer(enabled: Boolean, share: (() -> Unit)?, send: (String) -> Boolean) {
     var text by rememberSaveable { mutableStateOf("") }
     val left = Companion.TEXT_MAX - utf8Length(text)
-    Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = text,
-            onValueChange = { if (utf8Length(it) <= Companion.TEXT_MAX) text = it },
-            placeholder = { Text(stringResource(R.string.message_hint)) },
-            supportingText = if (left < 32) ({ Text(pluralStringResource(R.plurals.bytes_left, left, left)) }) else null,
-            modifier = Modifier.weight(1f),
-            maxLines = 5,
-        )
-        IconButton(
-            onClick = {
-                if (send(text.trim())) text = ""
-            },
-            enabled = enabled && text.isNotBlank(),
-        ) { Icon(Icons.AutoMirrored.Filled.Send, stringResource(R.string.send)) }
+    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+        Column {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (share != null) {
+                    IconButton(onClick = share) {
+                        Icon(TernIcons.Pin, stringResource(R.string.share_location), tint = MaterialTheme.colorScheme.primary)
+                    }
+                } else {
+                    Spacer(Modifier.width(8.dp))
+                }
+                TextField(
+                    value = text,
+                    onValueChange = { if (utf8Length(it) <= Companion.TEXT_MAX) text = it },
+                    placeholder = { Text(stringResource(R.string.message_hint)) },
+                    supportingText = if (left < 32) ({ Text(pluralStringResource(R.plurals.bytes_left, left, left)) }) else null,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ),
+                    modifier = Modifier.weight(1f),
+                    maxLines = 5,
+                )
+                val can = enabled && text.isNotBlank()
+                FilledIconButton(
+                    onClick = { if (send(text.trim())) text = "" },
+                    enabled = can,
+                    modifier = Modifier.padding(start = 8.dp).size(44.dp),
+                ) { Icon(TernIcons.Send, stringResource(R.string.send)) }
+            }
+        }
     }
 }
