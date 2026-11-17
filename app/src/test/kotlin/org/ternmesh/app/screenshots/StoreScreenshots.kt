@@ -14,7 +14,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -100,7 +99,7 @@ class StoreScreenshots {
     @Test
     fun contacts() {
         show()
-        compose.onNodeWithText("Contacts").performClick()
+        compose.onNodeWithText("People").performClick()
         compose.waitForIdle()
         capture("4_contacts")
     }
@@ -108,8 +107,8 @@ class StoreScreenshots {
     @Test
     fun whoIsAbout() {
         show()
-        compose.onNodeWithText("Contacts").performClick()
-        compose.onNodeWithText("Who's about", substring = true).performClick()
+        compose.onNodeWithText("People").performClick()
+        compose.onNodeWithText("Nearby", substring = true).performClick()
         compose.waitForIdle()
         capture("5_who_is_about")
     }
@@ -118,8 +117,6 @@ class StoreScreenshots {
     fun node() {
         show()
         compose.onNodeWithText("Node").performClick()
-        // Past the address's QR code, to the battery, the airtime, the nodes heard and the settings.
-        compose.onNodeWithText("Region").performScrollTo()
         compose.waitForIdle()
         capture("6_node")
     }

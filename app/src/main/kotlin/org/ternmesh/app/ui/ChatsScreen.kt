@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,6 +43,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.ternmesh.app.R
@@ -57,7 +60,7 @@ import org.ternmesh.companion.Peer
 import org.ternmesh.companion.Sharing
 
 @Composable
-fun ChatsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Unit) {
+fun ChatsScreen(repository: NodeRepository, state: NodeState, toNode: () -> Unit, open: (Peer) -> Unit) {
     val context = LocalContext.current
     val conversations = remember(state.records) { Conversations.of(state.records) }
     var menu by remember { mutableStateOf(false) }
@@ -68,48 +71,27 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Un
     val shown = remember(conversations, query) { conversations.filter { matches(it, query.trim()) } }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
+            item(key = "title") { TabTitle(stringResource(R.string.tab_chats), state, toNode) }
             if (conversations.isNotEmpty()) {
                 item(key = "search") {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        placeholder = { Text(stringResource(R.string.search)) },
-                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                        trailingIcon = if (query.isNotEmpty()) ({
-                            IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Clear, stringResource(R.string.cancel)) }
-                        }) else null,
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                    )
+                    SearchField(query, { query = it }, stringResource(R.string.search_messages), Modifier.padding(bottom = 6.dp))
                 }
             }
             if (query.isBlank()) items(state.asked, key = { "asked:${it.address}" }) { a -> AskedCard(repository, state, a) }
             if (conversations.isEmpty()) {
-                item { Text(stringResource(R.string.chats_empty), Modifier.padding(24.dp)) }
+                item { EmptyState(stringResource(R.string.chats_empty_title), stringResource(R.string.chats_empty)) }
             } else if (shown.isEmpty()) {
-                item { Text(stringResource(R.string.search_none), Modifier.padding(24.dp)) }
+                item { Text(stringResource(R.string.search_none), Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            items(shown, key = { org.ternmesh.app.node.Notifier.key(it.peer) }) { c ->
-                ListItem(
-                    headlineContent = { Text(c.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    overlineContent = if (c.peer is Peer.Group) ({ Text(stringResource(R.string.group_label)) }) else null,
-                    supportingContent = c.last?.let { last ->
-                        { Text(preview(context, last), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                    },
-                    trailingContent = {
-                        Column(horizontalAlignment = Alignment.End) {
-                            c.last?.let { Text(timeText(context, timeOf(it)), style = MaterialTheme.typography.labelSmall) }
-                            if (c.unread > 0) Badge { Text("${c.unread}") }
-                        }
-                    },
-                    modifier = Modifier.clickable { open(c.peer) },
-                )
-                HorizontalDivider()
-            }
+            items(shown, key = { org.ternmesh.app.node.Notifier.key(it.peer) }) { c -> ConversationRow(state, c) { open(c.peer) } }
         }
         Box(Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
-            FloatingActionButton(onClick = { menu = true }) { Icon(Icons.Filled.Add, stringResource(R.string.new_chat)) }
+            FloatingActionButton(
+                onClick = { menu = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) { Icon(Icons.Filled.Add, stringResource(R.string.new_chat)) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 DropdownMenuItem(text = { Text(stringResource(R.string.new_chat)) }, onClick = { menu = false; picking = true })
                 DropdownMenuItem(text = { Text(stringResource(R.string.new_group)) }, onClick = { menu = false; naming = true })
@@ -136,6 +118,71 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Un
                 if (made != null) open(Peer.Group(made.group)) else report(o)
             }
         }
+    }
+}
+
+/** One conversation in the list: who, what was said last and by whom, when, and how much is unread. */
+@Composable
+private fun ConversationRow(state: NodeState, c: Conversation, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val group = c.peer is Peer.Group
+    val unread = c.unread > 0
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Avatar(c.name, group = group, size = 50.dp, key = avatarKey(c.peer))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    c.name,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = if (unread) FontWeight.Bold else FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (group) Tag(stringResource(R.string.group_label))
+            }
+            c.last?.let { last ->
+                Text(
+                    previewWithWriter(context, state, last),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (unread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            c.last?.let {
+                Text(
+                    timeText(context, timeOf(it)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (unread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (unread) {
+                Badge(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
+                    Text("${c.unread}")
+                }
+            }
+        }
+    }
+}
+
+/** A list with nothing in it yet: what will be here, and how to start. */
+@Composable
+internal fun EmptyState(title: String, text: String) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }
 
@@ -294,6 +341,19 @@ private fun matches(c: Conversation, query: String): Boolean {
             else -> false
         }
     }
+}
+
+/**
+ * The last thing said, with who said it in a group: "You:" for the user, or the writer's name as
+ * claimed, as the conversation shows it.
+ */
+private fun previewWithWriter(context: android.content.Context, state: NodeState, item: Item): String {
+    val text = preview(context, item)
+    if (item is Body.Message && item.state != org.ternmesh.companion.MessageState.RECEIVED) return context.getString(R.string.preview_you, text)
+    if (item !is Body.GroupMessage) return text
+    if (item.state != org.ternmesh.companion.MessageState.RECEIVED) return context.getString(R.string.preview_you, text)
+    val name = Conversations.nameOf(state.records, item.from) ?: "%08x".format(item.from)
+    return context.getString(R.string.preview_writer, name, text)
 }
 
 private fun preview(context: android.content.Context, item: Item): String = when (item) {

@@ -1,20 +1,26 @@
-// The addresses the user has saved, with their names: the only ones the node lets make first
-// contact. A contact is added from the QR code on its owner's Node tab, from their link, or by its
-// address typed in; each shows the short code its owner can check against their own. At their head,
-// on a node that speaks cards, is the way to who is about.
+// The People tab: the addresses the user has saved, with their names, the only ones the node lets
+// make first contact; and, beside them, who is near. A contact is added from the QR code on its
+// owner's Node tab, from their link, or by its address typed in; its menu shows the short code its
+// owner can check against their own.
 package org.ternmesh.app.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import org.ternmesh.companion.Sharing
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -51,13 +58,52 @@ import org.ternmesh.companion.Companion
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.Peer
 
+/** Contacts or who is near, under one tab: the two ways of answering "who can I talk to?" */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactsScreen(
+fun PeopleScreen(
     repository: NodeRepository,
     state: NodeState,
     incoming: Address?,
     taken: () -> Unit,
-    about: () -> Unit,
+    toNode: () -> Unit,
+    open: (Peer) -> Unit,
+) {
+    var nearby by rememberSaveable { mutableStateOf(false) }
+    // A link to add is taken by the contacts' dialog.
+    LaunchedEffect(incoming) { if (incoming != null) nearby = false }
+    val near = remember(state.records) {
+        val cards = if (hasCards(state)) state.records.cards.keys.map { it.routingId }.toSet() else emptySet()
+        cards.size + state.records.neighbours.keys.count { it !in cards }
+    }
+    Column(Modifier.fillMaxSize()) {
+        TabTitle(stringResource(R.string.tab_people), state, toNode)
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+            SegmentedButton(
+                selected = !nearby,
+                onClick = { nearby = false },
+                shape = SegmentedButtonDefaults.itemShape(0, 2),
+                icon = {},
+            ) { Text(stringResource(R.string.people_contacts)) }
+            SegmentedButton(
+                selected = nearby,
+                onClick = { nearby = true },
+                shape = SegmentedButtonDefaults.itemShape(1, 2),
+                icon = {},
+            ) { Text(if (near > 0) stringResource(R.string.people_nearby_count, near) else stringResource(R.string.people_nearby)) }
+        }
+        Box(Modifier.weight(1f).padding(top = 6.dp)) {
+            if (nearby) NearbyList(repository, state, open) else ContactsList(repository, state, incoming, taken, open)
+        }
+    }
+}
+
+@Composable
+private fun ContactsList(
+    repository: NodeRepository,
+    state: NodeState,
+    incoming: Address?,
+    taken: () -> Unit,
     open: (Peer) -> Unit,
 ) {
     val contacts = remember(state.records) { state.records.contacts.values.sortedBy { it.name.lowercase() } }
@@ -78,20 +124,18 @@ fun ContactsScreen(
     val report = rememberReport()
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize()) {
-            if (hasCards(state)) item(key = "cards") { CardsEntry(state, about) }
-            if (contacts.isEmpty()) item { Text(stringResource(R.string.contacts_empty), Modifier.padding(24.dp)) }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
+            if (contacts.isEmpty()) item { EmptyState(stringResource(R.string.contacts_empty_title), stringResource(R.string.contacts_empty)) }
             items(contacts, key = { it.address.toString() }) { c ->
                 var menu by remember { mutableStateOf(false) }
-                ListItem(
-                    headlineContent = { Text(c.name.ifEmpty { Conversations.short(c.address.toString()) }) },
-                    supportingContent = {
-                        Column {
-                            Text(Sharing.shortCode(c.address), fontFamily = FontFamily.Monospace)
-                            Text(stringResource(if (c.session == 1) R.string.session_yes else R.string.session_no))
-                        }
-                    },
-                    trailingContent = {
+                val name = c.name.ifEmpty { Conversations.short(c.address.toString()) }
+                val neighbour = state.records.neighbours[c.address.routingId]
+                PersonRow(
+                    avatar = { Avatar(name, key = c.address.toString()) },
+                    title = { Text(name, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)) },
+                    subtitle = stringResource(if (c.session == 1) R.string.session_yes else R.string.session_no),
+                    signal = neighbour?.snrQuarterDb,
+                    trailing = {
                         Box {
                             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, stringResource(R.string.more)) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -103,12 +147,15 @@ fun ContactsScreen(
                             }
                         }
                     },
-                    modifier = Modifier.clickable { open(Peer.Contact(c.address)) },
-                )
-                HorizontalDivider()
+                ) { open(Peer.Contact(c.address)) }
             }
         }
-        FloatingActionButton(onClick = { given = ""; adding = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
+        FloatingActionButton(
+            onClick = { given = ""; adding = true },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+        ) {
             Icon(Icons.Filled.Add, stringResource(R.string.add_contact))
         }
     }

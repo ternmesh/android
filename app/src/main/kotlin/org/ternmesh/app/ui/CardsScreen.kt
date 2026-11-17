@@ -1,37 +1,35 @@
-// Who is about: the cards the node holds from other nodes near it, each with the name its sender
-// claims beside its address's short code, how long ago it was heard, and whether it is a contact.
-// A card's sender becomes a contact only when the user says so, under the name they choose.
+// Who is near: the cards the node holds from other nodes near it, each with the name its sender
+// claims, how long ago it was heard, and whether it is a contact; and the neighbours it hears with
+// no card. A card's sender becomes a contact only when the user says so, under the name they choose.
 package org.ternmesh.app.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.ternmesh.app.R
 import org.ternmesh.app.node.NodeRepository
@@ -47,60 +45,111 @@ fun hasCards(state: NodeState) = (state.version ?: 0) >= 6
 /** How many seconds ago the node heard [card], now: its `heard` counts on from when the record came. */
 fun heardNow(state: NodeState, card: Body.Card, now: Long): Long = card.heard + (now - (state.arrived[card] ?: now)) / 1000
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Who is near: the people whose cards the node holds, first, each by the name it claims and how
+ * well the node hears it when it is a neighbour too; then the neighbours with no card, by a
+ * contact's name or their routing id. Tapping a contact opens the conversation; tapping a card
+ * asks about making a contact of it.
+ */
 @Composable
-fun CardsScreen(repository: NodeRepository, state: NodeState, open: (Peer) -> Unit, back: () -> Unit) {
+fun NearbyList(repository: NodeRepository, state: NodeState, open: (Peer) -> Unit) {
+    val context = LocalContext.current
     val now = rememberNow()
-    val cards = remember(state.records, state.arrived, now) { state.records.cards.values.sortedBy { heardNow(state, it, now) } }
+    val r = state.records
+    val cards = remember(r, state.arrived, now) {
+        if (hasCards(state)) r.cards.values.sortedBy { heardNow(state, it, now) } else emptyList()
+    }
+    val byRouting = remember(r) { r.neighbours.values.associateBy { it.routingId } }
+    val carded = remember(cards) { cards.map { it.address.routingId }.toSet() }
+    val bare = remember(r, carded) { r.neighbours.values.filter { it.routingId !in carded }.sortedBy { it.heard } }
     var choosing by remember { mutableStateOf<Body.Card?>(null) }
 
-    Column(Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text(stringResource(R.string.cards_title)) },
-            navigationIcon = {
-                IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) }
-            },
-        )
-        LazyColumn(Modifier.fillMaxSize()) {
-            if (cards.isEmpty()) {
-                item { Text(stringResource(R.string.cards_empty), Modifier.padding(24.dp)) }
-            } else {
-                item {
-                    Text(
-                        stringResource(R.string.cards_explained),
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        if (cards.isEmpty() && bare.isEmpty()) {
+            item { EmptyState(stringResource(R.string.nearby_empty_title), stringResource(if (hasCards(state)) R.string.cards_empty else R.string.neighbours_none)) }
+        }
+        if (cards.isNotEmpty()) {
+            item { SectionHeader(stringResource(R.string.nearby_cards)) }
+            items(cards, key = { it.address.toString() }) { card ->
+                val contact = r.contacts[card.address]
+                val heard = byRouting[card.address.routingId]
+                PersonRow(
+                    avatar = { Avatar(card.name, key = card.address.toString(), unknown = card.name.isEmpty()) },
+                    title = { CardName(card) },
+                    tag = if (contact != null) stringResource(R.string.nearby_contact_tag) else null,
+                    subtitle = buildList {
+                        heard?.let { add(stringResource(if (it.role == 1) R.string.role_relay_short else R.string.role_leaf_short)) }
+                        add(stringResource(R.string.seen_ago, spanText(heardNow(state, card, now))))
+                    }.joinToString(" · "),
+                    signal = heard?.snrQuarterDb,
+                ) {
+                    // A contact already: its conversation. Otherwise the user is asked; nothing is saved or sent yet.
+                    if (contact != null) open(Peer.Contact(card.address)) else choosing = card
                 }
             }
-            items(cards, key = { it.address.toString() }) { card ->
-                val contact = state.records.contacts[card.address]
-                ListItem(
-                    headlineContent = { CardName(card) },
-                    supportingContent = {
-                        Column {
-                            Text(Sharing.shortCode(card.address), fontFamily = FontFamily.Monospace)
-                            Text(stringResource(R.string.heard_ago, spanText(heardNow(state, card, now))))
-                            Text(
-                                if (contact != null) {
-                                    stringResource(R.string.card_contact, contactName(contact))
-                                } else {
-                                    stringResource(R.string.card_not_contact)
-                                },
-                            )
+        }
+        if (bare.isNotEmpty()) {
+            item { SectionHeader(stringResource(if (cards.isEmpty()) R.string.nearby_heard else R.string.nearby_heard_no_card)) }
+            items(bare, key = { "n${it.routingId}" }) { n ->
+                val name = Conversations.nameOf(r, n.routingId)
+                val contact = r.contacts.values.firstOrNull { it.address.routingId == n.routingId }
+                PersonRow(
+                    avatar = { Avatar(name ?: "", key = contact?.address?.toString() ?: "%08x".format(n.routingId), unknown = name == null) },
+                    title = {
+                        if (name != null) {
+                            Text(name, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
+                        } else {
+                            Text(routingText(n.routingId), style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Monospace)
                         }
                     },
-                    modifier = Modifier.clickable {
-                        // A contact already: its conversation. Otherwise the user is asked; nothing is saved or sent yet.
-                        if (contact != null) open(Peer.Contact(card.address)) else choosing = card
-                    },
+                    tag = if (contact != null) stringResource(R.string.nearby_contact_tag) else null,
+                    subtitle = stringResource(if (n.role == 1) R.string.role_relay_short else R.string.role_leaf_short) + " · " +
+                        stringResource(R.string.heard_ago, spanText(n.heard.toLong())),
+                    signal = n.snrQuarterDb,
+                    onClick = contact?.let { c -> { open(Peer.Contact(c.address)) } },
                 )
-                HorizontalDivider()
             }
         }
+        if (cards.isNotEmpty()) item { Footnote(stringResource(R.string.cards_explained), Modifier.padding(top = 12.dp)) }
+        else if (bare.isNotEmpty() && hasCards(state)) item { Footnote(stringResource(R.string.neighbour_no_card), Modifier.padding(top = 12.dp)) }
     }
-
     choosing?.let { card -> MakeContactFromCard(repository, card) { choosing = null } }
+}
+
+/** A routing id as two groups of four hex digits, as a person reads one out. */
+internal fun routingText(id: Long): String = "%08x".format(id).let { "${it.substring(0, 4)} ${it.substring(4)}" }
+
+/** One person or node in a list: avatar, name and a tag, a line under it, and its signal. */
+@Composable
+internal fun PersonRow(
+    avatar: @Composable () -> Unit,
+    title: @Composable () -> Unit,
+    subtitle: String?,
+    tag: String? = null,
+    signal: Int? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)?,
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        avatar()
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.weight(1f, fill = false)) { title() }
+                tag?.let {
+                    Tag(it, color = LocalTernColors.current.good, background = LocalTernColors.current.good.copy(alpha = 0.14f))
+                }
+            }
+            subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        signal?.let { SignalBars(it, Modifier.padding(end = 8.dp)) }
+        trailing?.invoke()
+    }
 }
 
 /**
@@ -148,28 +197,6 @@ internal fun CardName(card: Body.Card) {
     if (card.name.isEmpty()) {
         Text(stringResource(R.string.card_no_name), color = MaterialTheme.colorScheme.onSurfaceVariant, fontStyle = FontStyle.Italic)
     } else {
-        Text(stringResource(R.string.card_claim, card.name))
+        Text(stringResource(R.string.card_claim, card.name), style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
     }
 }
-
-/** The entry to who is about, at the head of the contacts: how many cards the node holds. */
-@Composable
-fun CardsEntry(state: NodeState, onClick: () -> Unit) {
-    val count = state.records.cards.size
-    ListItem(
-        headlineContent = { Text(stringResource(R.string.cards_title)) },
-        supportingContent = {
-            Text(
-                if (count == 0) {
-                    stringResource(R.string.cards_entry_none)
-                } else {
-                    pluralStringResource(R.plurals.cards_count, count, count)
-                },
-            )
-        },
-        modifier = Modifier.clickable(onClick = onClick),
-    )
-    HorizontalDivider()
-}
-
-private fun contactName(c: Body.Contact) = c.name.ifEmpty { Conversations.short(c.address.toString()) }
