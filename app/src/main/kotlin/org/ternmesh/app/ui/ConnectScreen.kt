@@ -109,6 +109,12 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
                         }
                     }
                 }
+                // Android asks for the PIN on first connecting; a node without a screen has nowhere to show it.
+                Text(
+                    stringResource(R.string.connect_pin_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 val known = state.known.map { it.address }.toSet()
                 val nearby = if (canScan) found.filter { it.address !in known } else emptyList()
                 LazyColumn(Modifier.fillMaxWidth()) {

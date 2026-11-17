@@ -20,7 +20,7 @@
     <!-- Where the link is -->
     <string name="phase_none">No node chosen</string>
     <string name="phase_connecting">Connecting…</string>
-    <string name="phase_pairing">Pairing: enter the passkey your node shows</string>
+    <string name="phase_pairing">Pairing: enter the PIN your node shows, or 123456 if it has no screen</string>
     <string name="phase_greeting">Saying hello…</string>
     <string name="phase_syncing">Catching up…</string>
     <string name="phase_ready">Connected</string>
@@ -31,7 +31,7 @@
     <string name="problem_bluetooth_off">Bluetooth is off.</string>
     <string name="problem_no_service">That device is not a Tern node, or its firmware is too old.</string>
     <string name="problem_mtu">The phone and node could not agree a large enough packet size (MTU).</string>
-    <string name="problem_pairing">Pairing failed. Check the passkey and try again. If the node was reset, remove it from Android\'s Bluetooth settings first.</string>
+    <string name="problem_pairing">Pairing failed. Check the PIN and try again. If the node was reset, remove it from Android\'s Bluetooth settings first.</string>
     <string name="problem_lost">The link dropped. Waiting for the node to come back.</string>
     <string name="problem_gone">The node stopped answering. Reconnecting.</string>
     <string name="problem_refused">The node refused the connection: %1$s</string>
@@ -76,6 +76,8 @@
     <string name="connect_scan">Scan</string>
     <string name="connect_stop">Stop</string>
     <string name="connect_none">No Tern nodes found yet. Make sure yours is on and nearby.</string>
+    <!-- Under the list: the PIN Android will ask for, for a node with nothing to show it on. -->
+    <string name="connect_pin_hint">Android asks for a PIN the first time. A node with a screen shows it; one without uses 123456 unless you changed it.</string>
     <string name="connect_permissions">Tern needs Bluetooth permission to find and talk to your node.</string>
     <string name="connect_grant">Allow</string>
     <string name="connect_permissions_settings">If Android no longer asks, give Tern the permission in its settings.</string>
@@ -253,8 +255,22 @@
     <string name="power_value">%1$d dBm</string>
     <string name="power_value_most">%1$d dBm, the most it may</string>
     <string name="power_most">Send at the most it may</string>
-    <string name="passkey">Bluetooth passkey</string>
-    <string name="passkey_hint">6 digits, or empty for a new random one each time</string>
+    <string name="passkey">Bluetooth PIN</string>
+    <string name="passkey_hint">6 digits, or empty for the node\'s default</string>
+    <!-- What the node pairs with now, from its SELF. -->
+    <string name="passkey_screen">Shown on the node\'s screen, new each time</string>
+    <string name="passkey_default">Default (123456)</string>
+    <string name="passkey_set">Your own PIN</string>
+    <string name="passkey_use_default">Go back to the default</string>
+    <!-- Asked once each connection while a node without a screen still pairs with 123456. -->
+    <string name="passkey_choose_title">Choose your own PIN</string>
+    <string name="passkey_choose_banner">This node still pairs with the default PIN, 123456.</string>
+    <string name="passkey_choose_explained">This node has no screen, so it pairs with the default PIN, 123456. Until you choose your own, anyone nearby who knows the default can connect to it, read its messages and change its settings. This phone stays paired; you will need the new PIN to pair another.</string>
+    <string name="passkey_choose_field">6 digits</string>
+    <string name="passkey_choose_not_default">Choose a PIN other than 123456.</string>
+    <string name="passkey_choose">Choose PIN</string>
+    <string name="passkey_choose_save">Set PIN</string>
+    <string name="passkey_choose_later">Not now</string>
     <string name="set">Set</string>
 
     <!-- Firmware -->

@@ -212,6 +212,7 @@ internal fun TernApp(
             }
             Column(Modifier.fillMaxSize().padding(padding)) {
                 LinkBanner(repository, state)
+                DefaultPasskeyBanner(repository, state)
                 NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.weight(1f)) {
                     composable(Tab.CHATS.route) { ChatsScreen(repository, state) { nav.navigate(chatRoute(it)) } }
                     composable(Tab.CONTACTS.route) {

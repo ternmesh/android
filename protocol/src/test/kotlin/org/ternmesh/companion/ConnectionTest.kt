@@ -25,7 +25,7 @@ class ConnectionTest {
         val link = Link(Connection(now = { 0 }, wallTime = { setTime.time }))
         val answers = link.replay(frames)
 
-        assertEquals(28, answers.size)
+        assertEquals(29, answers.size)
         // SHARE_GROUP asks for a precision past 24, SET 5 and SET 7 for a value neither 0 nor 1, and
         // the last JOIN_LINK hands the node a join code whose check fails.
         assertEquals(List(4) { Outcome.Refused(ErrorCode.REFUSED) }, answers.filter { it !is Outcome.Answered })
@@ -34,6 +34,7 @@ class ConnectionTest {
         assertEquals(JoinCode(GroupId.fromHex("c8eafadc0857a696")!!, "Ridge walkers"), JoinCode.read(shown.link))
         val r = link.connection.records
         assertEquals("EU868", r.self?.region)
+        assertEquals(Pairing.SET, r.self?.pairing, "the node paired with the default passkey until the user set their own")
         assertEquals(Companion.VERSION, r.syncedVersion)
         assertEquals(listOf("Bob", "Carol", "Dave (trail crew)"), r.contacts.values.map { it.name }.sorted())
         assertEquals(listOf(0, 0, 0), r.contacts.values.map { it.session }, "Bob's session ended; Carol and Dave never had one")

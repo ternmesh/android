@@ -97,6 +97,11 @@ class RecordsFileTest {
             syncedVersion = 10
         }
         assertEquals(ten, RecordsFile.decode(RecordsFile.encode(ten)))
+        val eleven = Records().apply {
+            apply(Body.Self(alice, 1, "US915", 22, 1_790_000_000, 1, "Alice · hut warden", 1, Pairing.DEFAULT))
+            syncedVersion = 11
+        }
+        assertEquals(eleven, RecordsFile.decode(RecordsFile.encode(eleven)))
     }
 
     /** What cannot be read whole starts again from nothing, and a sync from 0 refills it. */
