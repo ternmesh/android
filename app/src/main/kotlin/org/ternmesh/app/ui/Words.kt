@@ -5,11 +5,13 @@ import android.content.Context
 import android.text.format.DateUtils
 import org.ternmesh.app.R
 import org.ternmesh.app.link.LinkFailure
+import org.ternmesh.app.node.BootloaderStep
 import org.ternmesh.app.node.FirmwareUpdate
 import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
 import org.ternmesh.app.node.Problem
 import org.ternmesh.app.node.percent
+import org.ternmesh.companion.DfuFailure
 import org.ternmesh.companion.Item
 import org.ternmesh.companion.MessageState
 import org.ternmesh.companion.Outcome
@@ -25,6 +27,7 @@ fun phaseText(context: Context, state: NodeState): String = context.getString(
         Phase.STOPPED -> R.string.phase_stopped
         Phase.DISCONNECTED -> R.string.phase_disconnected
         Phase.OFF -> R.string.phase_off
+        Phase.BOOTLOADER -> R.string.phase_bootloader
     },
 )
 
@@ -110,5 +113,28 @@ fun updateNotificationText(context: Context, state: NodeState): String? = when (
     is FirmwareUpdate.Sending ->
         if (u.waiting) context.getString(R.string.update_waiting) else context.getString(R.string.update_notification_sending, percent(u))
     is FirmwareUpdate.Restarting -> context.getString(R.string.update_restarting)
+    is FirmwareUpdate.Bootloader -> when (u.step) {
+        BootloaderStep.ERASING -> context.getString(R.string.update_notification_erasing)
+        BootloaderStep.SENDING -> context.getString(R.string.update_notification_sending, percent(u) ?: 0)
+        else -> context.getString(R.string.update_notification_bootloader)
+    }
     else -> null
+}
+
+/** How a transfer to the bootloader stopped. */
+fun dfuText(context: Context, why: DfuFailure?): String = when (why) {
+    is DfuFailure.Refused -> context.getString(
+        R.string.dfu_refused,
+        when (why.status) {
+            2 -> context.getString(R.string.dfu_status_2)
+            3 -> context.getString(R.string.dfu_status_3)
+            4 -> context.getString(R.string.dfu_status_4)
+            5 -> context.getString(R.string.dfu_status_5)
+            6 -> context.getString(R.string.dfu_status_6)
+            else -> context.getString(R.string.dfu_status_other, why.status)
+        },
+    )
+    DfuFailure.NoAnswer -> context.getString(R.string.dfu_no_answer)
+    DfuFailure.Cancelled -> context.getString(R.string.dfu_cancelled)
+    DfuFailure.Lost, null -> context.getString(R.string.dfu_lost)
 }

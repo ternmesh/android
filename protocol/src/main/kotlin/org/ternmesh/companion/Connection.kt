@@ -36,13 +36,15 @@ sealed interface Outcome {
 sealed interface ConnectionEvent {
     /**
      * The node answered `HELLO`. [version] is the node's; the connection speaks the lesser of it and
-     * its own. [board] and [release] are null unless both speak version 4.
+     * its own. [board] and [release] are null unless both speak version 4, [update] unless both
+     * speak version 12.
      */
     data class Ready(
         val version: Int,
         val firmware: String,
         val board: String? = null,
         val release: String? = null,
+        val update: Int? = null,
     ) : ConnectionEvent
 
     /** A news frame, already applied to the records. `ASKED` is one, and is applied to nothing. */
@@ -94,6 +96,10 @@ class Connection(
     var release: String? = null
         private set
 
+    /** How a client updates the node, an [UpdateBy]: null unless both speak version 12. */
+    var update: Int? = null
+        private set
+
     /** The version both ends speak, once the node has said its own. */
     val agreed: Int? get() = nodeVersion?.let { minOf(it, version) }
 
@@ -140,6 +146,7 @@ class Connection(
         firmware = null
         board = null
         release = null
+        update = null
         hello()
         for (p in old) p.then(Outcome.Closed)
     }
@@ -193,7 +200,10 @@ class Connection(
         val frameSeq = bytes[1].toInt() and 0xFF
         var malformed = false
         val frame = try {
-            Codec.decode(bytes, agreed ?: version)
+            // INFO says the node's version, and is read by the lesser of it and this client's: the
+            // fields a later version added are there only if both speak it.
+            val speaking = if (type == 0x42 && bytes.size > 2) minOf(version, bytes[2].toInt() and 0xFF) else agreed ?: version
+            Codec.decode(bytes, speaking)
         } catch (e: DecodeException) {
             malformed = e.reason == Unreadable.MALFORMED
             null
@@ -260,6 +270,7 @@ class Connection(
                 firmware = body.firmware
                 board = body.board
                 release = body.release
+                update = body.update
                 phase = Phase.OPEN
                 expectedNews = 0
                 // A connection that starts has missed whatever changed while there was none.
@@ -268,7 +279,7 @@ class Connection(
                 syncOwed = false
                 queue.addFirst(Pending(Kind.Sync))
                 if (wallTime != null) queue.addFirst(Pending(Kind.SetTime))
-                onEvent(ConnectionEvent.Ready(body.version, body.firmware, body.board, body.release))
+                onEvent(ConnectionEvent.Ready(body.version, body.firmware, body.board, body.release, body.update))
             }
             kind == Kind.Hello -> {
                 shutDown(if (body is Body.Error) ConnectionEvent.Refused(body.code) else ConnectionEvent.Gone)

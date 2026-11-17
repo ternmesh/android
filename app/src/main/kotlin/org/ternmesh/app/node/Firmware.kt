@@ -1,11 +1,13 @@
 // New firmware for the node: the project's manifest and images, fetched from ternmesh.org, and where
 // an update of the node is, for the screens. Giving the image to the node is the protocol module's
-// Updater, which NodeRepository drives over its connection.
+// Updater, which NodeRepository drives over its connection; or, for a node whose bootloader takes
+// it, its BootloaderUpdater, over the link to the bootloader (link/BootloaderLink.kt).
 package org.ternmesh.app.node
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import org.ternmesh.companion.DfuState
 import org.ternmesh.companion.Manifest
 import org.ternmesh.companion.Offer
 import java.io.ByteArrayOutputStream
@@ -50,13 +52,55 @@ sealed interface FirmwareUpdate {
     /** The node refused the update with this code. */
     data class Refused(val code: Int) : FirmwareUpdate
 
+    /**
+     * An update by the node's bootloader, at [step]; [sent] of [size] bytes of the image while
+     * sending. The node is off the air and the app off its link until the bootloader starts the
+     * image: then [Restarting].
+     */
+    data class Bootloader(val release: String, val step: BootloaderStep, val sent: Long = 0, val size: Long = 0) : FirmwareUpdate
+
+    /**
+     * An update by the bootloader that stopped. The node may be waiting in its bootloader, which
+     * takes the image from a try again; nothing it holds is lost. [dfu] is how the transfer stopped,
+     * if one was under way.
+     */
+    data class BootloaderStopped(val release: String, val why: BootloaderFailure, val dfu: DfuState.Failed? = null) : FirmwareUpdate
+
     data class Failed(val why: FirmwareFailure) : FirmwareUpdate
+}
+
+enum class BootloaderStep {
+    /** `UPDATE_BOOTLOADER` sent. */
+    ASKING,
+
+    /** The node is restarting into its bootloader: looking for it. */
+    FINDING,
+    CONNECTING,
+
+    /** The bootloader erases the old firmware: tens of seconds. */
+    ERASING,
+    SENDING,
+
+    /** The bootloader checks the image. */
+    CHECKING,
+}
+
+enum class BootloaderFailure {
+    /** No bootloader was heard advertising. */
+    NOT_FOUND,
+
+    /** One was heard, but no link to it could be made. */
+    NO_LINK,
+
+    /** The transfer stopped: [FirmwareUpdate.BootloaderStopped.dfu] says how. */
+    STOPPED,
 }
 
 /** How far a download or a send has gone, in percent; null for an update doing neither. */
 fun percent(u: FirmwareUpdate): Int? = when (u) {
     is FirmwareUpdate.Downloading -> (u.received * 100 / u.size).toInt()
     is FirmwareUpdate.Sending -> (u.sent * 100 / u.size).toInt()
+    is FirmwareUpdate.Bootloader -> if (u.step == BootloaderStep.SENDING && u.size > 0) (u.sent * 100 / u.size).toInt() else null
     else -> null
 }
 
@@ -64,7 +108,7 @@ enum class FirmwareFailure {
     /** The image could not be downloaded. */
     DOWNLOAD,
 
-    /** What was downloaded is not the image the manifest names: its size or SHA-256 is wrong. */
+    /** What was downloaded is not the image the manifest names: its size or SHA-256 is wrong, or it is no DFU package. */
     CORRUPT,
 
     /** The node's firmware does not speak a version of the protocol that has updates. */

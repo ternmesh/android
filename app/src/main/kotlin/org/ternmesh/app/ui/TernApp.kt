@@ -257,6 +257,9 @@ private fun LinkBanner(repository: NodeRepository, state: NodeState) {
                 if (state.phase == Phase.OFF) {
                     Text(stringResource(R.string.off_explained), style = MaterialTheme.typography.bodySmall)
                 }
+                if (state.phase == Phase.BOOTLOADER) {
+                    Text(stringResource(R.string.bootloader_explained), style = MaterialTheme.typography.bodySmall)
+                }
             }
             if (state.phase.stayingOff) {
                 TextButton(onClick = repository::connect) { Text(stringResource(R.string.connect)) }

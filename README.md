@@ -11,7 +11,9 @@ It finds a node, pairs with it, and keeps a link to it in the background; it sho
 with contacts and groups, where each message is and what it waits for, the node's battery, airtime
 and the nodes it hears, and changes its region, role, power and passkey, with the power set to a number or to the most the node
 works out it may send at. It updates the node's
-firmware over the same link, with the release ternmesh.org publishes for its board and region. It
+firmware with the release ternmesh.org publishes for its board and region: over the same link for
+an ESP32 board, and through its bootloader for an nRF52840 board (Heltec T114, Seeed T1000-E), as
+below. It
 turns the node off when the user asks, after saying that only the node's button, reset or power
 turns it on again, and then stays off it, saying the node is off, until the user connects again.
 
@@ -56,22 +58,47 @@ JDK 17 or later; the app also needs the Android SDK (platform 35), which Android
 or `sdk.dir` in `local.properties`. The `protocol` module is plain Kotlin with no Android in it, so
 its tests run on any JVM.
 
+## Updating an nRF52840 node
+
+An nRF52840 board has room for one image of its firmware, not two, so it cannot take an update
+over the link as an ESP32 board does. Its bootloader takes it instead (companion protocol version
+12, "By the bootloader"). The node's `INFO` says which way it is updated, and the manifest at
+`ternmesh.org/firmware/latest.json` lists, for each nRF52840 board and region, a DFU package
+(`tern-<board>-<region>-<version>.zip`) marked `"update": "bootloader"`. The app:
+
+1. downloads the package and checks its size and SHA-256 against the manifest;
+2. sends `UPDATE_BOOTLOADER`; the node answers, and restarts into its bootloader, which drops the link;
+3. scans for the bootloader's service (Nordic's legacy DFU, `00001530-1212-efde-1523-785feabcd123`),
+   preferring one at the node's address or the next one up, as Adafruit's bootloader advertises;
+4. gives it the package, as `tools/ble_dfu.py` in the firmware repository does: the bootloader
+   erases the old firmware (tens of seconds), then takes the new in 20-byte packets, about 10 ms
+   apart, waiting for a receipt every 10;
+5. connects to the node again, and says it is updated only if its `INFO` gives the new release.
+
+It takes about 5 minutes, during which the node is off the air; the phone should stay near it. If
+the transfer stops part of the way, the node waits in its bootloader, advertising again, and
+**Try again** finishes it; nothing the node holds is lost. A node whose `INFO` says it cannot be
+updated by a client (an nRF52840 board without that bootloader) is flashed over USB, at
+`ternmesh.org/flash`. A node of version 11 or earlier is updated as before: over the link if it
+says a board.
+
 ## Where things are
 
 | Path | |
 |---|---|
-| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 10, as Kotlin types, and its numbers. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 12, as Kotlin types, and its numbers. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Codec.kt` | A frame built into bytes, and read back from them. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/ByteStream.kt` | Frames on a byte stream (USB serial, TCP), with the node's console text between them. Bluetooth does not need it. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Connection.kt` | One connection, the client's half: `HELLO` and the version both speak, one request at a time, counted news, syncing again, and the `PING` that keeps a node from taking the app for gone. No I/O and no clock of its own: a link hands it frames and calls `tick()`. |
-| `protocol/src/main/kotlin/org/ternmesh/companion/Updater.kt` | One firmware image given to a node over a connection: `UPDATE_BEGIN`, the image in chunks from wherever the node says, `UPDATE_END`, and going on after the link drops. No I/O, as with the connection. |
-| `protocol/src/main/kotlin/org/ternmesh/companion/Release.kt` | The firmware manifest at `ternmesh.org/firmware/latest.json`: the image for a board and region, and whether its release is newer than a node's, by Semantic Versioning. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Updater.kt` | One firmware image given to a node over a connection: `UPDATE_BEGIN`, the image in chunks from wherever the node says, `UPDATE_END`, and going on after the link drops. No I/O, as with the connection. `BootloaderUpdater`: `UPDATE_BOOTLOADER`, then the package to the bootloader, as many times as it takes. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Dfu.kt` | An nRF52840 node's bootloader given a DFU package (`manifest.json`, `.dat`, `.bin`) by Nordic's legacy DFU: its steps, waits, receipts and pace, behind `DfuLink`, a control point and a packet characteristic, so that its tests play the bootloader on any JVM. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Release.kt` | The firmware manifest at `ternmesh.org/firmware/latest.json`: the image for a board, a region and the way the node is updated (its `update`, absent for over the link), and whether its release is newer than a node's, by Semantic Versioning. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Records.kt` | What the node has said it holds, as news leaves it, positions received, sharing, the cards of who is about and the node's own fix included, and the `after` the next sync asks from. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/RecordsFile.kt` | The records on disk, each as the frame that carried it, so the next run syncs only what is new; not positions, sharing, cards or the node's fix, which every sync sends whole. The Apple app keeps the same format. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Sharing.kt`, `JoinCode.kt` | An address's text, link and short code (draft/sharing.md); and a group's join code read, to name the group before the user joins it (draft/groups.md). |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Conversations.kt` | The records as conversations, and how far a `READ` may reach without marking another conversation's messages read. |
-| `protocol/src/test/` | The conformance section of the specification, as a client: the codec against every vector, the connection as the client in `exchange`, `older` and `unknown_to_older`, and the updater as the client in `update`. |
-| `app/src/main/kotlin/org/ternmesh/app/link/` | Bluetooth LE: scanning for the node's service, and the GATT link (an MTU of at least 183, passkey pairing, one frame per write and per notification). |
+| `protocol/src/test/` | The conformance section of the specification, as a client: the codec against every vector, the connection as the client in `exchange`, `older`, `unknown_to_older` and `bootloader`, and the updater as the client in `update`; and the DFU client against a bootloader played by hand. |
+| `app/src/main/kotlin/org/ternmesh/app/link/` | Bluetooth LE: scanning for the node's service, and the GATT link (an MTU of at least 183, passkey pairing, one frame per write and per notification); and `BootloaderLink.kt`, finding an nRF52840 node's bootloader and the link the DFU client writes over. |
 | `app/src/main/kotlin/org/ternmesh/app/node/` | The node the app drives: the link, the connection over it and the records on disk (`NodeRepository`), the foreground service that keeps it while the app is closed, message notifications, downloading firmware and checking it before it is sent (`Firmware.kt`), and the phone's location given to the node while it shares (`LocationFeed.kt`). |
 | `app/src/main/kotlin/org/ternmesh/app/ui/` | The screens, in Jetpack Compose: choosing a node, then four tabs: chats (and one conversation), people (contacts, and who is near), the map (and sharing a position), and the node, a dashboard with a screen for each thing about it. `Theme`, `TernIcons` and `Components` are what they share. Every word they show is in `res/values/strings.xml`. |
 

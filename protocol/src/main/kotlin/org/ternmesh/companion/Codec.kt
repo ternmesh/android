@@ -89,7 +89,7 @@ object Codec {
                 w.u32(b.offset)
                 w.bytes(b.data, Companion.UPDATE_CHUNK)
             }
-            Body.UpdateEnd -> {}
+            Body.UpdateEnd, Body.UpdateBootloader -> {}
             is Body.SetPosition -> {
                 w.i32(b.lat)
                 w.i32(b.lon)
@@ -114,7 +114,11 @@ object Codec {
                 if (b.board != null && b.release != null) {
                     w.str(b.board, Companion.BOARD_MAX)
                     w.str(b.release, Companion.RELEASE_MAX)
+                } else {
+                    require(b.update == null) { "INFO has update only after board and release" }
                 }
+                // Version 12's, after them.
+                if (b.update != null) w.u8(b.update)
             }
             is Body.Queued -> w.u32(b.id)
             is Body.Made -> w.gid(b.group)
@@ -296,6 +300,7 @@ object Codec {
             0x30 -> Body.UpdateBegin(r.u32(), r.raw(Companion.DIGEST))
             0x31 -> Body.UpdateData(r.u32(), r.bytes(Companion.UPDATE_CHUNK))
             0x32 -> Body.UpdateEnd
+            0x36 -> Body.UpdateBootloader
             0x33 -> Body.SetPosition(r.i32(), r.i32(), r.i16(), r.u16(), r.u16())
             0x34 -> Body.Share(r.addr(), r.u8(), r.u8(), r.u16(), r.u16())
             0x35 -> Body.ShareGroup(r.gid(), r.u8(), r.u8(), r.u16(), r.u16())
@@ -304,10 +309,13 @@ object Codec {
             0x42 -> {
                 val v = r.u8()
                 val firmware = r.str(Companion.FIRMWARE_MAX)
-                // Before the node has said its version the client's is all a reader has; INFO says
-                // the node's, and the two fields are there only if both speak 4.
-                if (minOf(v, version) >= 4) {
-                    Body.Info(v, firmware, r.str(Companion.BOARD_MAX), r.str(Companion.RELEASE_MAX))
+                // By the version spoken, as every frame: a connection reads its INFO by the lesser
+                // of its own version and the one the INFO carries (Connection.receive).
+                if (version >= 4) {
+                    Body.Info(
+                        v, firmware, r.str(Companion.BOARD_MAX), r.str(Companion.RELEASE_MAX),
+                        if (version >= 12) r.u8() else null,
+                    )
                 } else {
                     Body.Info(v, firmware)
                 }

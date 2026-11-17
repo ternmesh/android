@@ -144,14 +144,15 @@ class CompanionVectorsTest {
         }
     }
 
-    /** `INFO`'s board and release are version 4's: a client of 4 reads a node of 3's without them, and a client of 3 a node of 4's. */
+    /** `INFO`'s board and release are version 4's: read by 3, a node of 4's are read past, and a node of 3's has none to read by 4. */
     @Test
     fun infoHasBoardAndReleaseOnlyWhenBothSpeak4() {
         val four = Codec.encode(Frame(1, Body.Info(4, "tern", "heltec-v3", "0.2.0")))
-        assertEquals(Body.Info(4, "tern", "heltec-v3", "0.2.0"), Codec.decode(four).body)
+        assertEquals(Body.Info(4, "tern", "heltec-v3", "0.2.0"), Codec.decode(four, 4).body)
         assertEquals(Body.Info(4, "tern"), Codec.decode(four, 3).body)
         val three = Codec.encode(Frame(1, Body.Info(3, "tern")))
-        assertEquals(Body.Info(3, "tern"), Codec.decode(three).body)
+        assertEquals(Body.Info(3, "tern"), Codec.decode(three, 3).body)
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(three, 4) }.reason)
         assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Info(4, "tern", "heltec-v3", null))) }
         // Version 3 does not define updates.
         val begin = Codec.encode(Frame(1, Body.UpdateBegin(1, ByteArray(32))))
@@ -184,6 +185,55 @@ class CompanionVectorsTest {
         assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(ten) }.reason)
         assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, Body.Self(ada, 1, "US915", 22, 0, 0, "", pairing = Pairing.SET))) }
         assertEquals("050904ffffffff", Hex.encode(Codec.encode(Frame(9, Body.Set(Setting.Passkey(Setting.Passkey.DEFAULT))))))
+    }
+
+    /** `INFO`'s `update` is version 12's, after the release and only with it, and so is `UPDATE_BOOTLOADER`. */
+    @Test
+    fun updateByTheBootloaderIsVersion12s() {
+        val twelve = Codec.encode(Frame(1, Body.Info(12, "tern", "heltec-t114", "0.2.0", UpdateBy.BOOTLOADER)))
+        assertEquals(Body.Info(12, "tern", "heltec-t114", "0.2.0", UpdateBy.BOOTLOADER), Codec.decode(twelve).body)
+        assertEquals(Body.Info(12, "tern", "heltec-t114", "0.2.0"), Codec.decode(twelve, 11).body)
+        val eleven = Codec.encode(Frame(1, Body.Info(11, "tern", "heltec-v3", "0.2.0")))
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(eleven) }.reason)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Info(12, "tern", update = UpdateBy.LINK))) }
+
+        val ask = Codec.encode(Frame(5, Body.UpdateBootloader))
+        assertEquals("3605", Hex.encode(ask))
+        assertEquals(12, Body.UpdateBootloader.since)
+        assertEquals(Body.UpdateBootloader, Codec.decode(ask + byteArrayOf(0)).body)
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(ask, 11) }.reason)
+    }
+
+    /**
+     * The bootloader's two connections, each frame read by the version its client speaks and built
+     * back: the client of version 12 is told the node is updated by its bootloader, and the client
+     * of version 11 is told nothing of it, and given no board.
+     */
+    @Test
+    fun bootloaderEveryFrameReadsByItsVersionAndBuildsBack() {
+        val connections = v.getValue("bootloader").jsonArray.map { c -> c.jsonArray.map { it.jsonObject } }
+        assertEquals(2, connections.size)
+        val infos = connections.map { frames ->
+            val version = (Codec.decode(frames.first().bytes("frame")).body as Body.Hello).version
+            var info: Body.Info? = null
+            for (f in frames) {
+                val name = f.str("type")
+                val bytes = f.bytes("frame")
+                // A client reads INFO by the lesser of its version and the node's, which INFO says.
+                val frame = Codec.decode(bytes, if (name == "INFO") minOf(version, bytes[2].toInt()) else version)
+                assertEquals(name, frame.body.typeName)
+                assertEquals(f.int("seq"), frame.seq, name)
+                assertEquals(f.str("from") == "client", Companion.isRequest(frame.body.type), name)
+                assertEquals(f.str("frame"), Hex.encode(Codec.encode(frame)), "$version $name")
+                (frame.body as? Body.Info)?.let { info = it }
+            }
+            info
+        }
+        assertEquals(UpdateBy.BOOTLOADER, infos[0]?.update)
+        assertEquals("heltec-t114", infos[0]?.board)
+        assertEquals(null, infos[1]?.update)
+        assertEquals("", infos[1]?.board)
+        assertEquals(UpdateBy.NONE, updateBy(infos[1]?.board, infos[1]?.update), "an app of version 11 offers it nothing")
     }
 
     /** `SELF`'s cards and card name are version 6's, and so are the two settings and the two news types. */
@@ -370,6 +420,7 @@ class CompanionVectorsTest {
         "UPDATE_BEGIN" -> Body.UpdateBegin(f.long("size"), f.bytes("digest"))
         "UPDATE_DATA" -> Body.UpdateData(f.long("offset"), f.bytes("data"))
         "UPDATE_END" -> Body.UpdateEnd
+        "UPDATE_BOOTLOADER" -> Body.UpdateBootloader
         "SET_POSITION" -> Body.SetPosition(f.int("lat"), f.int("lon"), f.int("altitude"), f.int("accuracy"), f.int("age"))
         "SHARE" -> Body.Share(f.addr("contact"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"))
         "SHARE_GROUP" -> Body.ShareGroup(f.gid("group"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"))
@@ -379,6 +430,7 @@ class CompanionVectorsTest {
             f.int("version"), f.str("firmware"),
             if (f.containsKey("board")) f.str("board") else null,
             if (f.containsKey("release")) f.str("release") else null,
+            if (f.containsKey("update")) f.int("update") else null,
         )
         "SYNCED" -> Body.Synced(if (f.containsKey("news")) f.int("news") else null)
         "QUEUED" -> Body.Queued(f.long("id"))
