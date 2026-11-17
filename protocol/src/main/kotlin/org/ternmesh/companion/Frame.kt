@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 9: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 11: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -9,8 +9,8 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 9 is this without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 10
+    /** The version this client speaks. Version 10 is this without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 11
     /** `SET` 3's power that asks for the most the node may transmit at, which it works out (version 10). */
     const val POWER_MOST = -128
     const val MAX_FRAME = 180
@@ -222,12 +222,18 @@ sealed interface Setting {
     /** The most the node transmits at, in dBm. */
     data class Power(val dbm: Int) : Setting { override val number get() = 3 }
 
-    /** 0 to 999999, or [RANDOM] for a random one each time. */
+    /**
+     * 0 to 999999, or [DEFAULT] for the node's default: a new one on its screen for each pairing on
+     * a node with a screen, 123456 on one without.
+     */
     data class Passkey(val passkey: Long) : Setting {
         override val number get() = 4
 
         companion object {
-            const val RANDOM = 0xFFFF_FFFFL
+            const val DEFAULT = 0xFFFF_FFFFL
+
+            /** The passkey a node without a screen pairs with until one is set. */
+            const val SCREENLESS_DEFAULT = 123_456L
         }
     }
 
@@ -258,6 +264,18 @@ object FixSource {
     const val CLIENT = 2
 }
 
+/** `SELF`'s `pairing`: how the node is paired. */
+object Pairing {
+    /** It shows a new passkey on its screen for each pairing. */
+    const val SCREEN = 0
+
+    /** It has no screen and pairs with the default passkey, 123456, until the user sets one. */
+    const val DEFAULT = 1
+
+    /** It pairs with a passkey set with `SET` 4. */
+    const val SET = 2
+}
+
 /** A message's state. */
 object MessageState {
     const val WAITING = 0
@@ -267,7 +285,7 @@ object MessageState {
     const val RECEIVED = 4
 }
 
-/** What a frame says: every frame of version 9. [since] is the least version that defines it. */
+/** What a frame says: every frame of version 11. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String) {
     /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
     open val since: Int get() = Companion.since(type)
@@ -392,7 +410,8 @@ sealed class Body(val type: Int, val typeName: String) {
      * The node itself. [time] is 0 if it does not know it. [cards] is 1 if it sends cards, and
      * [cardName] the name they carry; both are null below version 6, from either end. [most] is 1
      * if [power] is the most the node may transmit at, as it works it out, and 0 if it is a power it
-     * was given; null below version 10.
+     * was given; null below version 10. [pairing] is how the node pairs: [Pairing.SCREEN],
+     * [Pairing.DEFAULT] or [Pairing.SET]; null below version 11.
      */
     data class Self(
         val address: Address,
@@ -403,6 +422,7 @@ sealed class Body(val type: Int, val typeName: String) {
         val cards: Int? = null,
         val cardName: String? = null,
         val most: Int? = null,
+        val pairing: Int? = null,
     ) : Body(0x80, "SELF")
 
     /** An address the user saved, with a name. [session] is 1 if the node shares one with it. */

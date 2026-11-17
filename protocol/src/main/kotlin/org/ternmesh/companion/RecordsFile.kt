@@ -77,17 +77,15 @@ object RecordsFile {
 
     /**
      * One record's frame, read as this client's version reads it; a `SELF` that is not one of
-     * version 10 as version 9's, keeping its cards, and one that is not that either as version 5's.
-     * `SELF` is all that differs between the versions' records.
+     * version 11 as version 10's, keeping its most, one that is not that as version 9's, keeping its
+     * cards, and one that is not that either as version 5's. `SELF` is all that differs between the
+     * versions' records.
      */
     private fun record(frame: ByteArray): Body = try {
         Codec.decode(frame).body
     } catch (e: DecodeException) {
         if (frame.firstOrNull() != 0x80.toByte()) throw e
-        try {
-            Codec.decode(frame, 9).body
-        } catch (_: DecodeException) {
-            Codec.decode(frame, 5).body
-        }
+        listOf(10, 9).firstNotNullOfOrNull { v -> runCatching { Codec.decode(frame, v).body }.getOrNull() }
+            ?: Codec.decode(frame, 5).body
     }
 }

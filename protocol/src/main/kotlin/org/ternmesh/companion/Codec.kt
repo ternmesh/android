@@ -134,8 +134,9 @@ object Codec {
                 } else {
                     require(b.most == null) { "SELF has most only after cards and card_name" }
                 }
-                // Version 10's, after them.
-                if (b.most != null) w.u8(b.most)
+                // Version 10's, after them, and version 11's after that.
+                if (b.most != null) w.u8(b.most) else require(b.pairing == null) { "SELF has pairing only after most" }
+                if (b.pairing != null) w.u8(b.pairing)
             }
             is Body.Contact -> {
                 w.addr(b.address)
@@ -325,7 +326,8 @@ object Codec {
                 if (version >= 6) {
                     val cards = r.u8()
                     val cardName = r.str(Companion.CARD_NAME_MAX)
-                    Body.Self(address, role, region, power, time, cards, cardName, if (version >= 10) r.u8() else null)
+                    val most = if (version >= 10) r.u8() else null
+                    Body.Self(address, role, region, power, time, cards, cardName, most, if (version >= 11) r.u8() else null)
                 } else {
                     Body.Self(address, role, region, power, time)
                 }

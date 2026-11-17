@@ -28,10 +28,12 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,6 +60,7 @@ import org.ternmesh.companion.Companion
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.ErrorCode
 import org.ternmesh.companion.Offer
+import org.ternmesh.companion.Pairing
 import org.ternmesh.companion.ReceiverState
 import org.ternmesh.companion.Setting
 import org.ternmesh.companion.Sharing
@@ -208,9 +211,21 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
                     }
                 }
                 HorizontalDivider()
-                NumberSetting(stringResource(R.string.passkey), stringResource(R.string.passkey_hint), "") { text ->
-                    val passkey = if (text.isEmpty()) Setting.Passkey.RANDOM else text.toLongOrNull()?.takeIf { it in 0..999_999 }
+                // What the node pairs with is in SELF from a node of version 11; below it, only how to set one.
+                val pairing = passkeyText(s.pairing)
+                NumberSetting(
+                    stringResource(R.string.passkey),
+                    pairing ?: stringResource(R.string.passkey_hint),
+                    "",
+                    explained = if (pairing != null) stringResource(R.string.passkey_hint) else null,
+                ) { text ->
+                    val passkey = if (text.isEmpty()) Setting.Passkey.DEFAULT else text.toLongOrNull()?.takeIf { it in 0..999_999 }
                     passkey?.let { repository.submit(Body.Set(Setting.Passkey(it)), report) }
+                }
+                if (s.pairing == Pairing.SET) {
+                    TextButton(onClick = { repository.submit(Body.Set(Setting.Passkey(Setting.Passkey.DEFAULT)), report) }) {
+                        Text(stringResource(R.string.passkey_use_default))
+                    }
                 }
             }
         }
@@ -270,6 +285,76 @@ fun NodeScreen(repository: NodeRepository, state: NodeState) {
     state.node?.takeIf { turningOff }?.let { node ->
         TurnOffDialog(node, onDismiss = { turningOff = false }) { repository.turnOff(report) }
     }
+}
+
+/** What the node pairs with, as `SELF`'s `pairing` says; null from a node of version 10 or earlier. */
+@Composable
+private fun passkeyText(pairing: Int?): String? = when (pairing) {
+    Pairing.SCREEN -> stringResource(R.string.passkey_screen)
+    Pairing.DEFAULT -> stringResource(R.string.passkey_default)
+    Pairing.SET -> stringResource(R.string.passkey_set)
+    else -> null
+}
+
+/**
+ * While a node without a screen still pairs with the default passkey, anyone in range who knows
+ * 123456 can pair with it, as the specification warns. Once each connection this says so, above
+ * every tab, and offers to choose another; dismissed, it stays away until the node connects again.
+ */
+@Composable
+internal fun DefaultPasskeyBanner(repository: NodeRepository, state: NodeState) {
+    var dismissed by remember(state.node?.address) { mutableStateOf(false) }
+    var choosing by remember { mutableStateOf(false) }
+    LaunchedEffect(state.phase) { if (state.phase != Phase.READY) dismissed = false }
+    if (state.phase != Phase.READY || state.records.self?.pairing != Pairing.DEFAULT) return
+    if (!dismissed) {
+        Surface(color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.passkey_choose_banner), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = { dismissed = true }) { Text(stringResource(R.string.passkey_choose_later)) }
+                TextButton(onClick = { choosing = true }) { Text(stringResource(R.string.passkey_choose)) }
+            }
+        }
+    }
+    if (choosing) {
+        val report = rememberReport()
+        PasskeyDialog(onDismiss = { choosing = false }) { passkey ->
+            choosing = false
+            repository.submit(Body.Set(Setting.Passkey(passkey)), report)
+        }
+    }
+}
+
+/** Asks for six digits, and says why: anyone who knows the default can pair until they are set. */
+@Composable
+private fun PasskeyDialog(onDismiss: () -> Unit, set: (Long) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    // The default again would leave the node as open as it was.
+    val isDefault = text == "%06d".format(Setting.Passkey.SCREENLESS_DEFAULT)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.passkey_choose_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.passkey_choose_explained))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { v -> if (v.length <= 6 && v.all { it.isDigit() }) text = v },
+                    label = { Text(stringResource(R.string.passkey_choose_field)) },
+                    singleLine = true,
+                    isError = isDefault,
+                    supportingText = { if (isDefault) Text(stringResource(R.string.passkey_choose_not_default)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { set(text.toLong()) }, enabled = text.length == 6 && !isDefault) {
+                Text(stringResource(R.string.passkey_choose_save))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }
 
 /** Whether the node can be asked for the most it may transmit at: `SET` 3's -128 is version 10's. */
@@ -532,7 +617,7 @@ private fun <T> Choice(label: String, current: String, options: List<Pair<String
 }
 
 @Composable
-private fun NumberSetting(label: String, current: String, initial: String, done: (String) -> Unit) {
+private fun NumberSetting(label: String, current: String, initial: String, explained: String? = null, done: (String) -> Unit) {
     var text by remember(initial) { mutableStateOf(initial) }
     Column {
         Text(label, style = MaterialTheme.typography.labelLarge)
@@ -547,5 +632,6 @@ private fun NumberSetting(label: String, current: String, initial: String, done:
             )
             TextButton(onClick = { done(text) }) { Text(stringResource(R.string.set)) }
         }
+        explained?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     }
 }

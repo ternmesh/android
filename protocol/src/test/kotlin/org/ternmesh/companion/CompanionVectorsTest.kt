@@ -165,12 +165,25 @@ class CompanionVectorsTest {
     fun mostIsVersion10s() {
         val ada = Address(ByteArray(32) { 0xAD.toByte() })
         val ten = Codec.encode(Frame(0, Body.Self(ada, 1, "US915", 22, 0, 0, "", 1)))
-        assertEquals(Body.Self(ada, 1, "US915", 22, 0, 0, "", 1), Codec.decode(ten).body)
+        assertEquals(Body.Self(ada, 1, "US915", 22, 0, 0, "", 1), Codec.decode(ten, 10).body)
         assertEquals(Body.Self(ada, 1, "US915", 22, 0, 0, ""), Codec.decode(ten, 9).body)
         val nine = Codec.encode(Frame(0, Body.Self(ada, 1, "US915", 22, 0, 0, "")))
-        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(nine) }.reason)
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(nine, 10) }.reason)
         assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, Body.Self(ada, 1, "US915", 22, 0, most = 1))) }
         assertEquals(byteArrayOf(0x05, 0x09, 0x03, 0x80.toByte()).toList(), Codec.encode(Frame(9, Body.Set(Setting.Power(Companion.POWER_MOST)))).toList())
+    }
+
+    /** `SELF`'s `pairing` is version 11's: after the most, and only with it. */
+    @Test
+    fun pairingIsVersion11s() {
+        val ada = Address(ByteArray(32) { 0xAD.toByte() })
+        val eleven = Codec.encode(Frame(0, Body.Self(ada, 1, "US915", 22, 0, 0, "", 1, Pairing.DEFAULT)))
+        assertEquals(Body.Self(ada, 1, "US915", 22, 0, 0, "", 1, Pairing.DEFAULT), Codec.decode(eleven).body)
+        assertEquals(Body.Self(ada, 1, "US915", 22, 0, 0, "", 1), Codec.decode(eleven, 10).body)
+        val ten = Codec.encode(Frame(0, Body.Self(ada, 1, "US915", 22, 0, 0, "", 1)))
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(ten) }.reason)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, Body.Self(ada, 1, "US915", 22, 0, 0, "", pairing = Pairing.SET))) }
+        assertEquals("050904ffffffff", Hex.encode(Codec.encode(Frame(9, Body.Set(Setting.Passkey(Setting.Passkey.DEFAULT))))))
     }
 
     /** `SELF`'s cards and card name are version 6's, and so are the two settings and the two news types. */
@@ -377,6 +390,7 @@ class CompanionVectorsTest {
             if (f.containsKey("cards")) f.int("cards") else null,
             if (f.containsKey("card_name")) f.str("card_name") else null,
             if (f.containsKey("most")) f.int("most") else null,
+            if (f.containsKey("pairing")) f.int("pairing") else null,
         )
         "CONTACT" -> Body.Contact(f.addr("address"), f.int("session"), f.str("name"))
         "CONTACT_GONE" -> Body.ContactGone(f.addr("address"))
