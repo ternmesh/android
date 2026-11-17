@@ -203,6 +203,89 @@ class UpdaterTest {
     }
 }
 
+class BootloaderUpdaterTest {
+    private val pkg = DfuPackage(ByteArray(14) { 1 }, ByteArray(500) { it.toByte() })
+
+    /** Answered, the node restarts into its bootloader; the bootloader takes the package and starts it. */
+    @Test
+    fun askedThenSent() {
+        val node = HandNode()
+        node.greet()
+        val updater = BootloaderUpdater(pkg)
+        val states = mutableListOf<BootloaderState>()
+        updater.onChange = { states += it.state }
+        updater.ask(node.connection)
+        assertEquals(Body.UpdateBootloader, node.serve())
+        assertEquals(BootloaderState.Restarting(confirmed = true), updater.state)
+        updater.ask(node.connection)
+        assertEquals(0, node.sent.size, "asked once")
+
+        val boot = FakeBootloader()
+        val dfu = updater.send(boot.link) { boot.time }
+        boot.run(dfu)
+        assertEquals(BootloaderState.Started, updater.state)
+        assertContentEquals(pkg.image, boot.image.toByteArray())
+        assertEquals(BootloaderState.Sending(DfuState.Erasing), states[2])
+        assertTrue(states.any { it == BootloaderState.Sending(DfuState.Sending(500, 500)) })
+    }
+
+    /** Unanswered, the node may be restarting into its bootloader: the request is not sent again, and the bootloader is looked for. */
+    @Test
+    fun unansweredItIsLookedForAll() {
+        val node = HandNode()
+        node.greet()
+        val updater = BootloaderUpdater(pkg)
+        updater.ask(node.connection)
+        node.take()
+        node.time += Companion.ANSWER_WAIT_MS
+        node.connection.tick()
+        assertEquals(BootloaderState.Restarting(confirmed = false), updater.state)
+    }
+
+    /** A node that is not updated by its bootloader refuses with `ERROR` 5, as the refusals' last request has it. */
+    @Test
+    fun refused() {
+        val node = HandNode()
+        node.greet()
+        val updater = BootloaderUpdater(pkg)
+        updater.ask(node.connection)
+        node.reply(Body.Error(ErrorCode.NO_ROOM))
+        assertEquals(BootloaderState.Refused(ErrorCode.NO_ROOM), updater.state)
+        val last = vectors.list("refusals").takeLast(2).map { Codec.decode(it.bytes("frame")).body }
+        assertEquals(listOf(Body.UpdateBootloader, Body.Error(ErrorCode.NO_ROOM)), last)
+    }
+
+    /** A transfer that stops leaves the bootloader waiting: sent again on a new link, it goes through. */
+    @Test
+    fun stoppedThenSentAgain() {
+        val node = HandNode()
+        node.greet()
+        val updater = BootloaderUpdater(pkg)
+        updater.ask(node.connection)
+        node.serve()
+
+        val first = FakeBootloader(holdReceipts = true)
+        first.run(updater.send(first.link) { first.time })
+        assertEquals(BootloaderState.Stopped(DfuState.Failed(DfuFailure.NoAnswer, LegacyDfu.RECEIVE)), updater.state)
+
+        val again = FakeBootloader()
+        again.run(updater.send(again.link) { again.time })
+        assertEquals(BootloaderState.Started, updater.state)
+        assertContentEquals(pkg.image, again.image.toByteArray())
+    }
+
+    /** A node of version 11 is not asked: its version does not define the request. */
+    @Test
+    fun aNodeOfVersion11IsNotAsked() {
+        val node = HandNode(version = 11)
+        node.greet()
+        val updater = BootloaderUpdater(pkg)
+        updater.ask(node.connection)
+        assertEquals(BootloaderState.Failed(Outcome.Unsupported), updater.state)
+        assertEquals(0, node.sent.size)
+    }
+}
+
 /** A connection playing the client's half of the specification's frames, with [updater] handed it once the node answers `HELLO`. */
 private class Played(val connection: Connection, updater: Updater) {
     val out = ArrayDeque<ByteArray>()
@@ -238,6 +321,13 @@ private class HandNode(val version: Int = Companion.VERSION) {
     private var lastSeq = 0
 
     private fun connect() = Connection(now = { time }, wallTime = null).also { it.send = { b -> sent.addLast(b) } }
+
+    /** Opens, and answers `HELLO` and `SYNC`. */
+    fun greet() {
+        connection.open()
+        serve() // HELLO
+        serve() // SYNC
+    }
 
     /** Opens, greets, and hands [image]'s updater the connection once it is ready. */
     fun start(image: ByteArray): Updater {
@@ -275,7 +365,7 @@ private class HandNode(val version: Int = Companion.VERSION) {
     fun serve(): Body {
         val request = take()
         val answer = when (request) {
-            is Body.Hello -> if (minOf(version, request.version) >= 4) Body.Info(version, "test", "test-board", "0.1.0") else Body.Info(version, "test")
+            is Body.Hello -> info(version, request.version)
             is Body.Sync -> Body.Synced(if (minOf(version, connection.version) >= 3) 0 else null)
             is Body.UpdateBegin -> {
                 if (request.size != size || !request.digest.contentEquals(digest)) {

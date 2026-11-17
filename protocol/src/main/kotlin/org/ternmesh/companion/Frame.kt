@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 11: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 12: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -9,8 +9,8 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 10 is this without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 11
+    /** The version this client speaks. Version 11 is this without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 12
     /** `SET` 3's power that asks for the most the node may transmit at, which it works out (version 10). */
     const val POWER_MOST = -128
     const val MAX_FRAME = 180
@@ -79,6 +79,7 @@ object Companion {
         0x26, 0x27, 0x47 -> 7
         0x94 -> 8
         0x06 -> 9
+        0x36 -> 12
         else -> 0
     }
 
@@ -276,6 +277,18 @@ object Pairing {
     const val SET = 2
 }
 
+/** `INFO`'s `update`: how a client gives the node new firmware (version 12). */
+object UpdateBy {
+    /** A client cannot: the node is flashed by cable. */
+    const val NONE = 0
+
+    /** Over this protocol: `UPDATE_BEGIN`, `UPDATE_DATA` and `UPDATE_END`. */
+    const val LINK = 1
+
+    /** By the node's bootloader, which `UPDATE_BOOTLOADER` restarts it into. */
+    const val BOOTLOADER = 2
+}
+
 /** A message's state. */
 object MessageState {
     const val WAITING = 0
@@ -285,7 +298,7 @@ object MessageState {
     const val RECEIVED = 4
 }
 
-/** What a frame says: every frame of version 11. [since] is the least version that defines it. */
+/** What a frame says: every frame of version 12. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String) {
     /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
     open val since: Int get() = Companion.since(type)
@@ -360,6 +373,13 @@ sealed class Body(val type: Int, val typeName: String) {
     data object UpdateEnd : Body(0x32, "UPDATE_END")
 
     /**
+     * Restart into the bootloader's update, which the node answers with `OK` before it does: every
+     * connection drops, and the bootloader advertises its own service and speaks its own protocol
+     * (version 12). Only for a node whose `INFO` says [UpdateBy.BOOTLOADER].
+     */
+    data object UpdateBootloader : Body(0x36, "UPDATE_BOOTLOADER")
+
+    /**
      * The client's own position: [lat] and [lon] in 10⁻⁷ degree, north and east positive;
      * [altitude] in metres, [Companion.NO_ALTITUDE] for none; [accuracy] in metres, 0 for none;
      * [age] how many seconds old the fix is.
@@ -380,14 +400,16 @@ sealed class Body(val type: Int, val typeName: String) {
     data class Error(val code: Int) : Body(0x41, "ERROR")
     /**
      * The node's version and software. [board] and [release] are null below version 4, from either
-     * end; [board] is empty for a node that cannot be updated over the protocol, [release] for
-     * firmware without a version.
+     * end; [board] is empty for a node a client cannot update (below version 12, for one it cannot
+     * update over the protocol), [release] for firmware without a version. [update] is how a client
+     * updates it, an [UpdateBy]; null below version 12.
      */
     data class Info(
         val version: Int,
         val firmware: String,
         val board: String? = null,
         val release: String? = null,
+        val update: Int? = null,
     ) : Body(0x42, "INFO")
     /** The sync is done. [news] is the node's count as it answers, the `seq` of its next news frame; null from a node of version 2 or earlier, whose `SYNCED` has no fields. */
     data class Synced(val news: Int? = null) : Body(0x43, "SYNCED")

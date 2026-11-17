@@ -3,6 +3,8 @@
 package org.ternmesh.companion
 
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -117,17 +119,18 @@ class ConnectionTest {
     /**
      * Clients of versions 3 and 4 are sent no position and no sharing, one of version 5 no card and
      * a `SELF` without the cards' fields, one of version 6 its card, one of version 7 no fix, and one
-     * of version 8 its fix. None sends the request, or the setting, its version does not define: it
-     * fails here, with nothing on the link.
+     * of version 8 its fix, and one of version 11 no `update`. None sends the request, or the
+     * setting, its version does not define: it fails here, with nothing on the link.
      */
     @Test
-    fun olderVersions3To8AndTheRequestEachMustNotSend() {
-        for (version in 3..8) {
+    fun olderVersions3To8And11AndTheRequestEachMustNotSend() {
+        for (version in (3..8) + 11) {
             val frames = vectors.list("older").first { it.int("version") == version }.list("frames")
             val link = Link(Connection(version = version, now = { 0 }, wallTime = null))
             link.replay(frames.dropLast(2))
             assertEquals(version, link.connection.agreed)
             assertEquals(if (version >= 4) "heltec-v3" else null, link.connection.board)
+            assertEquals(null, link.connection.update)
             assertEquals(1, link.events.count { it == ConnectionEvent.Synced })
             assertEquals(version, link.connection.records.syncedVersion)
             assertEquals(emptyMap(), link.connection.records.positions)
@@ -181,6 +184,58 @@ class ConnectionTest {
                 assertEquals(Outcome.Answered(Body.Ok), result, "$version $name")
             }
         }
+    }
+
+    /**
+     * The client of version 12 in the bootloader's first connection: told the node is updated by its
+     * bootloader, it asks it to restart into it. The sync between, which the vectors leave out, is
+     * answered as a node that holds only itself answers it.
+     */
+    @Test
+    fun bootloaderTheClientOfVersion12AsksForTheBootloader() {
+        val frames = vectors.getValue("bootloader").jsonArray[0].jsonArray.map { it.jsonObject }
+        val node = Node(version = Companion.VERSION)
+        val events = mutableListOf<ConnectionEvent>()
+        node.connection.onEvent = { events += it }
+        node.connection.open()
+        assertEquals(frames[0].str("frame"), Hex.encode(node.sent.removeFirst()))
+        node.connection.receive(frames[1].bytes("frame"))
+        assertEquals(UpdateBy.BOOTLOADER, node.connection.update)
+        assertEquals(ConnectionEvent.Ready(12, "tern 0.2.0 heltec-t114", "heltec-t114", "0.2.0", UpdateBy.BOOTLOADER), events.first())
+        node.answerAll() // SET_TIME and SYNC
+
+        val outcomes = mutableListOf<Outcome>()
+        node.connection.submit(Codec.decode(frames[2].bytes("frame")).body) { outcomes += it }
+        val updater = BootloaderUpdater(DfuPackage(byteArrayOf(1), byteArrayOf(2)))
+        updater.ask(node.connection)
+        for (f in frames.drop(2)) {
+            if (f.str("from") == "client") {
+                assertEquals(f.str("frame"), Hex.encode(node.sent.removeFirst()), f.str("type"))
+            } else {
+                node.connection.receive(f.bytes("frame"))
+            }
+        }
+        assertEquals(listOf<Outcome>(Outcome.Refused(ErrorCode.NO_ROOM)), outcomes, "no room for an image beside the one it runs")
+        assertEquals(BootloaderState.Restarting(confirmed = true), updater.state)
+    }
+
+    /** The client of version 11 in the bootloader's second connection is told no `update`, and no board: to it, the node cannot be updated. */
+    @Test
+    fun bootloaderTheClientOfVersion11IsGivenNoBoard() {
+        val frames = vectors.getValue("bootloader").jsonArray[1].jsonArray.map { it.jsonObject }
+        val node = Node(version = Companion.VERSION, clientVersion = 11)
+        node.connection.open()
+        assertEquals(frames[0].str("frame"), Hex.encode(node.sent.removeFirst()))
+        node.connection.receive(frames[1].bytes("frame"))
+        assertEquals(11, node.connection.agreed)
+        assertEquals("", node.connection.board)
+        assertEquals(null, node.connection.update)
+        assertEquals(UpdateBy.NONE, updateBy(node.connection.board, node.connection.update))
+        node.answerAll()
+        val updater = BootloaderUpdater(DfuPackage(byteArrayOf(1), byteArrayOf(2)))
+        updater.ask(node.connection)
+        assertEquals(BootloaderState.Failed(Outcome.Unsupported), updater.state, "version 11 does not define UPDATE_BOOTLOADER")
+        assertEquals(0, node.sent.size)
     }
 
     /** A client of version 4 talking to a node of version 1 does the same. */
@@ -784,6 +839,16 @@ private fun synced(vararg messages: Body.Message): Node {
     return node
 }
 
+/** `INFO` as a node of [version] answers a client of [client]: board and release from version 4, and update from 12. */
+internal fun info(version: Int, client: Int): Body.Info {
+    val both = minOf(version, client)
+    return when {
+        both >= 12 -> Body.Info(version, "test", "test-board", "0.1.0", UpdateBy.LINK)
+        both >= 4 -> Body.Info(version, "test", "test-board", "0.1.0")
+        else -> Body.Info(version, "test")
+    }
+}
+
 /** A connection with its frames caught, and a replay of the specification's. */
 private class Link(val connection: Connection) {
     val out = ArrayDeque<ByteArray>()
@@ -859,7 +924,7 @@ private class Node(val version: Int = LATEST, records: Records = Records(), clie
         val answer = when (request.body) {
             is Body.Hello -> {
                 newsCount = 0
-                if (minOf(version, connection.version) >= 4) Body.Info(version, "test", "test-board", "0.1.0") else Body.Info(version, "test")
+                info(version, connection.version)
             }
             is Body.Sync -> syncedAnswer()
             is Body.Send, is Body.SendGroup, is Body.SendInvite -> Body.Queued(1)

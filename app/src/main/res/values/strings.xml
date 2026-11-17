@@ -28,6 +28,7 @@
     <string name="phase_stopped">Not connected</string>
     <string name="phase_disconnected">Disconnected</string>
     <string name="phase_off">Turned off</string>
+    <string name="phase_bootloader">Updating through its bootloader</string>
 
     <string name="problem_bluetooth_off">Bluetooth is off.</string>
     <string name="problem_no_service">That device is not a Tern node, or its firmware is too old.</string>
@@ -97,6 +98,7 @@
     <string name="turn_off">Turn off node</string>
     <string name="turn_off_title">Turn off %1$s?</string>
     <string name="turn_off_explained">The node stops sending and receiving, for you and everyone who relies on it. Tern cannot turn it on again: only its button, its reset or its power can, at the node itself.</string>
+    <string name="bootloader_explained">The node restarted into its bootloader, which takes the new firmware over Bluetooth. It is off the air until it is done. Keep the phone near it.</string>
     <string name="off_explained">The node is off. Turn it on at the node, with its button, its reset or its power, then connect.</string>
     <string name="known_nodes">Your nodes</string>
     <string name="known_nearby">Nearby</string>
@@ -309,6 +311,31 @@
     <string name="update_unsupported">Your node\'s firmware cannot take updates over Bluetooth.</string>
     <string name="update_notification_downloading">Downloading firmware: %1$d%%</string>
     <string name="update_notification_sending">Updating the node\'s firmware: %1$d%%</string>
+    <string name="update_notification_bootloader">Updating the node\'s firmware through its bootloader…</string>
+    <string name="update_notification_erasing">Updating the node\'s firmware: erasing the old one…</string>
+    <string name="firmware_bootloader_usb_only">This node\'s bootloader cannot take firmware over Bluetooth. Update it over USB, at ternmesh.org/flash.</string>
+    <string name="update_confirm_text_bootloader">Tern downloads the firmware and checks it. The node then restarts into its bootloader, which takes the firmware over Bluetooth: about 5 minutes, while the node is off the air. Keep the phone near the node until it is done. If it stops part of the way, the node waits in its bootloader and trying again finishes it. Its messages, contacts and settings stay.</string>
+    <string name="update_boot_asking">Asking the node to restart into its bootloader…</string>
+    <string name="update_boot_finding">The node is restarting into its bootloader. Looking for it…</string>
+    <string name="update_boot_connecting">Connecting to the node\'s bootloader…</string>
+    <string name="update_boot_erasing">The bootloader is erasing the old firmware. This takes up to a minute or two. Keep the phone near the node.</string>
+    <string name="update_boot_sending">Sending %1$s to the bootloader: %2$d%% (%3$s of %4$s). This takes about 5 minutes: keep the phone near the node.</string>
+    <string name="update_boot_checking">The bootloader is checking the firmware…</string>
+    <string name="update_boot_not_found">Tern could not find the node\'s bootloader. If the node restarted into it, it is waiting there for the firmware: keep the phone near it and try again. If it did not, connect to the node. Its messages, contacts and settings are safe either way.</string>
+    <string name="update_boot_no_link">Tern found the node\'s bootloader but could not connect to it. The node is waiting in its bootloader for the firmware: keep the phone near it and try again. Its messages, contacts and settings are safe.</string>
+    <string name="update_boot_stopped">The update stopped part of the way: %1$s. The node is waiting in its bootloader for the firmware, and trying again will finish it. Its messages, contacts and settings are safe.</string>
+    <string name="update_boot_try_again">Try again</string>
+    <string name="update_boot_leave">Connect to the node</string>
+    <string name="dfu_lost">the Bluetooth link dropped</string>
+    <string name="dfu_no_answer">the bootloader stopped answering</string>
+    <string name="dfu_cancelled">it was stopped</string>
+    <string name="dfu_refused">the bootloader said \"%1$s\"</string>
+    <string name="dfu_status_2">invalid state</string>
+    <string name="dfu_status_3">not supported</string>
+    <string name="dfu_status_4">the firmware is too large</string>
+    <string name="dfu_status_5">the firmware is damaged (CRC error)</string>
+    <string name="dfu_status_6">operation failed</string>
+    <string name="dfu_status_other">status %1$d</string>
     <string name="no_release">none</string>
     <string name="ok">OK</string>
 

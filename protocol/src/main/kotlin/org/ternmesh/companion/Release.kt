@@ -7,9 +7,14 @@
 //
 //   {"release": "0.2.0",
 //    "images": [{"board": "heltec-v3", "region": "EU868", "file": "tern-heltec-v3-eu868-0.2.0-app.bin",
-//                "size": 1048576, "sha256": "<64 hex digits>"}]}
+//                "size": 1048576, "sha256": "<64 hex digits>"},
+//               {"board": "heltec-t114", "region": "US915", "file": "tern-heltec-t114-us915-0.2.0.zip",
+//                "size": 262144, "sha256": "<64 hex digits>", "update": "bootloader"}]}
 //
-// A file is named relative to the manifest. Keys this client does not know are ignored, and so is an
+// An image's `update` says how it reaches a node: "link", over the companion protocol, or
+// "bootloader", a DFU package for the node's bootloader (Dfu.kt). Absent, it is "link", so a client
+// that never heard of bootloaders, and never sees a board from a node updated by one, is not
+// offered one. A file is named relative to the manifest. Keys this client does not know are ignored, and so is an
 // image it cannot read, so the manifest can grow without leaving this client behind.
 package org.ternmesh.companion
 
@@ -18,8 +23,15 @@ import java.util.regex.Pattern
 
 /** One release's manifest. */
 data class Manifest(val release: String, val images: List<Image>) {
-    /** One image: for one board, built for one region. */
-    data class Image(val board: String, val region: String, val file: String, val size: Long, val sha256: String) {
+    /** One image: for one board, built for one region, given to a node as [update], an [UpdateBy], says. */
+    data class Image(
+        val board: String,
+        val region: String,
+        val file: String,
+        val size: Long,
+        val sha256: String,
+        val update: Int = UpdateBy.LINK,
+    ) {
         /** Where it is published. */
         val url: String get() = BASE + file
 
@@ -27,9 +39,13 @@ data class Manifest(val release: String, val images: List<Image>) {
         val digest: ByteArray get() = Hex.decode(sha256)!!
     }
 
-    /** The image for a node of [board] whose region is [region], ignoring case; null if there is none. */
-    fun imageFor(board: String, region: String): Image? =
-        images.firstOrNull { it.board.equals(board, ignoreCase = true) && it.region.equals(region, ignoreCase = true) }
+    /**
+     * The image for a node of [board] whose region is [region], ignoring case, and that is updated
+     * as [update] says, an [UpdateBy]; null if there is none.
+     */
+    fun imageFor(board: String, region: String, update: Int = UpdateBy.LINK): Image? = images.firstOrNull {
+        it.board.equals(board, ignoreCase = true) && it.region.equals(region, ignoreCase = true) && it.update == update
+    }
 
     /** What this release is to a node running [running], its `INFO`'s `release`. */
     fun offerTo(running: String?): Offer {
@@ -60,12 +76,24 @@ data class Manifest(val release: String, val images: List<Image>) {
                 val file = (o["file"] as? String)?.takeIf(FILE::matches) ?: return@mapNotNull null
                 val size = (o["size"] as? Long)?.takeIf { it in 1..IMAGE_MAX } ?: return@mapNotNull null
                 val sha256 = (o["sha256"] as? String)?.takeIf(SHA256::matches)?.lowercase() ?: return@mapNotNull null
-                Image(board, region, file, size, sha256)
+                val update = when (o["update"] ?: "link") {
+                    "link" -> UpdateBy.LINK
+                    "bootloader" -> UpdateBy.BOOTLOADER
+                    else -> return@mapNotNull null // a way this client does not know
+                }
+                Image(board, region, file, size, sha256, update)
             }
             return Manifest(release, images)
         }
     }
 }
+
+/**
+ * How a node is updated, an [UpdateBy], from its `INFO`'s [board] and [update]. A node of version 11
+ * or earlier says no `update`: it is updated over the link if it says a board, as before version 12,
+ * and not at all if its board is empty, or it says none.
+ */
+fun updateBy(board: String?, update: Int?): Int = update ?: if (board.isNullOrEmpty()) UpdateBy.NONE else UpdateBy.LINK
 
 /** What a published release is to the firmware a node runs. */
 enum class Offer {

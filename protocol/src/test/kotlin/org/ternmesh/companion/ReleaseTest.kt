@@ -38,6 +38,43 @@ class ReleaseTest {
         assertNull(m.imageFor("rak4631", "EU868"), "a file outside the firmware's folder is no image")
     }
 
+    /**
+     * An nRF52840 board's image is a package for its bootloader, which the manifest says; one
+     * without `update` is given over the link, and one given a way this client does not know is
+     * passed over.
+     */
+    @Test
+    fun theImageForTheWayTheNodeIsUpdated() {
+        val m = Manifest.parse(
+            """
+            {"release": "0.2.0", "images": [
+              {"board": "heltec-v3", "region": "US915", "file": "a.bin", "size": 10, "sha256": "$digest"},
+              {"board": "heltec-t114", "region": "US915", "file": "t.zip", "size": 20, "sha256": "$digest", "update": "bootloader"},
+              {"board": "seeed-t1000-e", "region": "US915", "file": "s.zip", "size": 20, "sha256": "$digest", "update": "link"},
+              {"board": "rak4631", "region": "US915", "file": "r.zip", "size": 20, "sha256": "$digest", "update": "by pigeon"},
+              {"board": "t-echo", "region": "US915", "file": "e.zip", "size": 20, "sha256": "$digest", "update": 2}
+            ]}
+            """.trimIndent(),
+        )
+        assertEquals(3, m.images.size)
+        assertEquals(UpdateBy.LINK, m.imageFor("heltec-v3", "US915")?.update)
+        assertNull(m.imageFor("heltec-v3", "US915", UpdateBy.BOOTLOADER))
+        assertEquals("t.zip", m.imageFor("heltec-t114", "us915", UpdateBy.BOOTLOADER)?.file)
+        assertNull(m.imageFor("heltec-t114", "US915"), "not offered to a node updated over the link")
+        assertEquals(UpdateBy.LINK, m.imageFor("seeed-t1000-e", "US915")?.update)
+        assertNull(m.imageFor("rak4631", "US915", UpdateBy.BOOTLOADER))
+    }
+
+    /** A node of version 12 says how it is updated; one of 11 or earlier is updated over the link if it says a board. */
+    @Test
+    fun howANodeIsUpdated() {
+        assertEquals(UpdateBy.BOOTLOADER, updateBy("heltec-t114", UpdateBy.BOOTLOADER))
+        assertEquals(UpdateBy.NONE, updateBy("heltec-t114", UpdateBy.NONE))
+        assertEquals(UpdateBy.LINK, updateBy("heltec-v3", null))
+        assertEquals(UpdateBy.NONE, updateBy("", null))
+        assertEquals(UpdateBy.NONE, updateBy(null, null))
+    }
+
     @Test
     fun newerUpToDateOrUnknown() {
         val m = Manifest.parse(manifest)

@@ -67,6 +67,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.selection.selectable
 import org.ternmesh.app.R
+import org.ternmesh.app.node.BootloaderFailure
+import org.ternmesh.app.node.BootloaderStep
 import org.ternmesh.app.node.ChosenNode
 import org.ternmesh.app.node.FirmwareFailure
 import org.ternmesh.app.node.FirmwareUpdate
@@ -83,6 +85,8 @@ import org.ternmesh.companion.Offer
 import org.ternmesh.companion.Pairing
 import org.ternmesh.companion.ReceiverState
 import org.ternmesh.companion.Setting
+import org.ternmesh.companion.UpdateBy
+import org.ternmesh.companion.updateBy
 import org.ternmesh.companion.Sharing
 
 /** The regions the specification's profiles define, each with where it is for. */
@@ -179,7 +183,8 @@ fun NodeScreen(repository: NodeRepository, state: NodeState, go: (NodePage) -> U
             Spacer(Modifier.height(14.dp))
             SettingsGroup {
                 val ready = (state.update as? FirmwareUpdate.Checked)?.let { it.image != null && it.offer != Offer.CURRENT } == true
-                val busy = state.update is FirmwareUpdate.Downloading || state.update is FirmwareUpdate.Sending
+                val busy = state.update is FirmwareUpdate.Downloading || state.update is FirmwareUpdate.Sending ||
+                    state.update is FirmwareUpdate.Bootloader || state.update is FirmwareUpdate.BootloaderStopped
                 SettingsRow(
                     stringResource(R.string.node_about),
                     icon = TernIcons.Chip, tint = RowTint.about,
@@ -213,7 +218,7 @@ fun NodeScreen(repository: NodeRepository, state: NodeState, go: (NodePage) -> U
                     chevron = false,
                     // Not while an image is on its way: the node would stop taking it.
                     enabled = state.phase == Phase.READY && state.update !is FirmwareUpdate.Downloading &&
-                        state.update !is FirmwareUpdate.Sending,
+                        state.update !is FirmwareUpdate.Sending && state.update !is FirmwareUpdate.Bootloader,
                     onClick = { turningOff = true },
                 )
             }
@@ -501,7 +506,8 @@ fun RadioScreen(repository: NodeRepository, state: NodeState, back: () -> Unit) 
             val description = REGIONS.firstOrNull { it.first == s.region }?.second
             var open by remember { mutableStateOf(false) }
             // An image is for one region, and a new region restarts the node: not while one is on its way.
-            val enabled = state.update !is FirmwareUpdate.Downloading && state.update !is FirmwareUpdate.Sending
+            val enabled = state.update !is FirmwareUpdate.Downloading && state.update !is FirmwareUpdate.Sending &&
+                state.update !is FirmwareUpdate.Bootloader
             Box {
                 SettingsRow(
                     s.region.ifEmpty { stringResource(R.string.region_none) },
@@ -842,6 +848,12 @@ private fun FirmwareUpdates(repository: NodeRepository, state: NodeState) {
         Text(stringResource(if (board == null) R.string.firmware_too_old else R.string.firmware_usb_only))
         return
     }
+    if (updateBy(board, state.updatedBy) == UpdateBy.NONE) {
+        // A node of version 12 says its board whether or not a client can update it: an nRF52840
+        // board whose bootloader cannot take an image over Bluetooth is flashed over USB.
+        Text(stringResource(R.string.firmware_bootloader_usb_only))
+        return
+    }
     val release = state.release.orEmpty()
     Text(
         if (release.isEmpty()) stringResource(R.string.firmware_no_release, board) else stringResource(R.string.firmware_release, release, board),
@@ -910,6 +922,44 @@ private fun FirmwareUpdates(repository: NodeRepository, state: NodeState) {
             },
             repository::dismissUpdate,
         )
+        is FirmwareUpdate.Bootloader -> when (u.step) {
+            BootloaderStep.SENDING -> Progress(
+                stringResource(
+                    R.string.update_boot_sending, u.release, percent(u) ?: 0,
+                    Formatter.formatFileSize(context, u.sent), Formatter.formatFileSize(context, u.size),
+                ),
+                if (u.size > 0) u.sent.toFloat() / u.size else 0f,
+                // Stopped part of the way, the node would wait in its bootloader: it is not offered.
+                cancel = null,
+            )
+            else -> {
+                Text(
+                    stringResource(
+                        when (u.step) {
+                            BootloaderStep.ASKING -> R.string.update_boot_asking
+                            BootloaderStep.FINDING -> R.string.update_boot_finding
+                            BootloaderStep.CONNECTING -> R.string.update_boot_connecting
+                            BootloaderStep.ERASING -> R.string.update_boot_erasing
+                            else -> R.string.update_boot_checking
+                        },
+                    ),
+                )
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        }
+        is FirmwareUpdate.BootloaderStopped -> {
+            Text(
+                when (u.why) {
+                    BootloaderFailure.NOT_FOUND -> stringResource(R.string.update_boot_not_found)
+                    BootloaderFailure.NO_LINK -> stringResource(R.string.update_boot_no_link)
+                    BootloaderFailure.STOPPED -> stringResource(R.string.update_boot_stopped, dfuText(context, u.dfu?.why))
+                },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = repository::retryBootloader) { Text(stringResource(R.string.update_boot_try_again)) }
+                TextButton(onClick = repository::dismissUpdate) { Text(stringResource(R.string.update_boot_leave)) }
+            }
+        }
         is FirmwareUpdate.Failed -> Ended(
             stringResource(
                 when (u.why) {
@@ -927,7 +977,13 @@ private fun FirmwareUpdates(repository: NodeRepository, state: NodeState) {
         AlertDialog(
             onDismissRequest = { confirming = null },
             title = { Text(stringResource(R.string.update_confirm_title, c.release)) },
-            text = { Text(stringResource(R.string.update_confirm_text)) },
+            text = {
+                Text(
+                    stringResource(
+                        if (c.image?.update == UpdateBy.BOOTLOADER) R.string.update_confirm_text_bootloader else R.string.update_confirm_text,
+                    ),
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     confirming = null

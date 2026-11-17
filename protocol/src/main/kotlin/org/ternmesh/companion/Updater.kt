@@ -7,6 +7,10 @@
 // of the image the node holds, and the chunk whose answer was lost goes again from there if the node
 // does not hold it. That is safe either way, since a node takes the same bytes twice without holding
 // them twice. UPDATE_END is never sent again: the node may be restarting into the image.
+//
+// A node whose INFO says its bootloader takes updates (version 12's `update`, 2) is given one by
+// BootloaderUpdater instead: UPDATE_BOOTLOADER on the connection, and the package to the bootloader
+// over its own link (Dfu.kt).
 package org.ternmesh.companion
 
 import java.security.MessageDigest
@@ -177,3 +181,101 @@ class Updater(image: ByteArray) {
 
 /** How many `ERROR` 10s in a row, with no bytes taken between them, before an update is given up on. */
 private const val SENT_BACK = 3
+
+/** Where an update by the node's bootloader is. */
+sealed interface BootloaderState {
+    /** Not yet asked. */
+    data object Waiting : BootloaderState
+
+    /** `UPDATE_BOOTLOADER` sent. */
+    data object Asking : BootloaderState
+
+    /**
+     * The node is restarting into its bootloader: look for the bootloader's service. [confirmed] if
+     * it answered; if not, it may be restarting, or may never have had the request, and the
+     * request is not sent again.
+     */
+    data class Restarting(val confirmed: Boolean) : BootloaderState
+
+    /** Giving the bootloader the package: where that is. */
+    data class Sending(val dfu: DfuState) : BootloaderState
+
+    /** The bootloader took the image and starts it. The node's next `INFO`'s `release` says whether it runs it. */
+    data object Started : BootloaderState
+
+    /**
+     * The bootloader stopped, or the link to it did: it waits, advertising again, so send() on a new
+     * link to it tries again. Nothing the node holds is lost.
+     */
+    data class Stopped(val dfu: DfuState.Failed) : BootloaderState
+
+    /** The node refused `UPDATE_BOOTLOADER` with this code: 5 if it is not updated by its bootloader. */
+    data class Refused(val code: Int) : BootloaderState
+
+    /** It could not be asked: the node's version, or this client's, does not define it. */
+    data class Failed(val outcome: Outcome) : BootloaderState
+}
+
+/**
+ * Gives [pkg] to a node whose `INFO` says its bootloader takes updates: ask() asks the node, on a
+ * connection, to restart into the bootloader, and send() gives the bootloader the package, once the
+ * caller has found it and linked to it, as many times as it takes. Everything happens on one thread.
+ */
+class BootloaderUpdater(val pkg: DfuPackage) {
+    var state: BootloaderState = BootloaderState.Waiting
+        private set
+
+    var onChange: (BootloaderUpdater) -> Unit = {}
+
+    /** The transfer under way, if one is: its nextDeadline and tick() are the caller's to run. */
+    var dfu: LegacyDfu? = null
+        private set
+
+    /**
+     * Sends `UPDATE_BOOTLOADER` once. It is not sent again: a node that did not answer may be
+     * restarting into its bootloader, and the bootloader is looked for either way.
+     */
+    fun ask(connection: Connection) {
+        if (state != BootloaderState.Waiting) return
+        set(BootloaderState.Asking)
+        connection.submit(Body.UpdateBootloader) { outcome ->
+            if (state != BootloaderState.Asking) return@submit
+            set(
+                when (outcome) {
+                    is Outcome.Answered -> BootloaderState.Restarting(confirmed = true)
+                    Outcome.NoAnswer, Outcome.Closed -> BootloaderState.Restarting(confirmed = false)
+                    is Outcome.Refused -> BootloaderState.Refused(outcome.code)
+                    else -> BootloaderState.Failed(outcome)
+                },
+            )
+        }
+    }
+
+    /** Gives the bootloader the package over [link], after the node restarted into it, or after a transfer stopped. */
+    fun send(link: DfuLink, now: () -> Long): LegacyDfu {
+        check(state is BootloaderState.Restarting || state is BootloaderState.Stopped) { "not at the bootloader: $state" }
+        val d = LegacyDfu(pkg, link, now)
+        dfu = d
+        d.onChange = {
+            if (dfu === d) {
+                when (val s = d.state) {
+                    DfuState.Done -> set(BootloaderState.Started)
+                    is DfuState.Failed -> set(BootloaderState.Stopped(s))
+                    else -> set(BootloaderState.Sending(s))
+                }
+            }
+        }
+        d.start()
+        return d
+    }
+
+    /** Stops a transfer under way, which leaves the bootloader waiting. */
+    fun cancel() {
+        dfu?.cancel()
+    }
+
+    private fun set(s: BootloaderState) {
+        state = s
+        onChange(this)
+    }
+}

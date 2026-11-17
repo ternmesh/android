@@ -23,15 +23,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.ternmesh.app.R
 import org.ternmesh.app.link.BleLink
+import org.ternmesh.app.link.BootloaderLink
+import org.ternmesh.app.link.BootloaderScan
 import org.ternmesh.app.link.LinkFailure
 import org.ternmesh.app.link.LinkState
 import org.ternmesh.app.ui.outcomeText
 import org.ternmesh.companion.Body
+import org.ternmesh.companion.BootloaderState
+import org.ternmesh.companion.BootloaderUpdater
 // This class's own companion object would take the bare name.
 import org.ternmesh.companion.Companion as CompanionProtocol
 import org.ternmesh.companion.Connection
 import org.ternmesh.companion.ConnectionEvent
 import org.ternmesh.companion.Conversations
+import org.ternmesh.companion.DfuPackage
+import org.ternmesh.companion.DfuState
 import org.ternmesh.companion.Item
 import org.ternmesh.companion.Manifest
 import org.ternmesh.companion.MessageState
@@ -39,8 +45,10 @@ import org.ternmesh.companion.Outcome
 import org.ternmesh.companion.Peer
 import org.ternmesh.companion.Records
 import org.ternmesh.companion.RecordsFile
+import org.ternmesh.companion.UpdateBy
 import org.ternmesh.companion.UpdateState
 import org.ternmesh.companion.Updater
+import org.ternmesh.companion.updateBy
 import java.io.File
 import java.io.IOException
 import kotlin.random.Random
@@ -77,6 +85,13 @@ enum class Phase {
 
     /** The user disconnected: the node stays chosen, and nothing connects until they say so. */
     DISCONNECTED,
+
+    /**
+     * The node restarted into its bootloader for an update: the app is off its link, and gives the
+     * bootloader the image over a link of its own, until the bootloader starts it, or the user gives
+     * up on it.
+     */
+    BOOTLOADER,
 
     /**
      * The user turned the node off, and it said it would: it is on again only once someone turns it
@@ -117,6 +132,8 @@ data class NodeState(
     val board: String? = null,
     /** The node's firmware release, empty if it has none; null from a node of version 3 or earlier. */
     val release: String? = null,
+    /** How the node is updated, `INFO`'s `update` (an [UpdateBy]); null from a node of version 11 or earlier. */
+    val updatedBy: Int? = null,
     val update: FirmwareUpdate = FirmwareUpdate.Idle,
     /** First contacts the node refused, newest last, until the user deals with them. */
     val asked: List<Body.Asked> = emptyList(),
@@ -175,6 +192,11 @@ class NodeRepository(private val context: Context) {
     /** The image the update under way sends, and whether it waits for the node to sync before it goes on. */
     private var updateImage: Manifest.Image? = null
     private var resumeWhenSynced = false
+
+    /** An update by the node's bootloader, under way or stopped, and how the app finds and links to the bootloader. */
+    private var bootUpdater: BootloaderUpdater? = null
+    private val bootScan = BootloaderScan(context, handler)
+    private val bootLink = BootloaderLink(context, handler)
 
     /** The last check's answer, which a cancelled update goes back to. */
     private var checked: FirmwareUpdate.Checked? = null
@@ -581,6 +603,9 @@ class NodeRepository(private val context: Context) {
         val s = _state.value
         val board = s.board?.takeIf { it.isNotEmpty() } ?: return
         if (busyUpdating(s.update)) return
+        // Over the link or by the bootloader, as INFO says; a node of version 11 or earlier with a board, over the link.
+        val way = updateBy(board, s.updatedBy)
+        if (way == UpdateBy.NONE) return
         setUpdate(FirmwareUpdate.Checking)
         checkedAgainst = s.release
         // What the check is for, taken now: the node may change before the manifest arrives.
@@ -590,7 +615,7 @@ class NodeRepository(private val context: Context) {
         checking = scope.launch {
             val next = try {
                 val manifest = FirmwareDownload.manifest()
-                FirmwareUpdate.Checked(manifest.release, manifest.imageFor(board, region), manifest.offerTo(release))
+                FirmwareUpdate.Checked(manifest.release, manifest.imageFor(board, region, way), manifest.offerTo(release))
             } catch (e: IOException) {
                 FirmwareUpdate.CheckFailed
             }
@@ -616,7 +641,8 @@ class NodeRepository(private val context: Context) {
     private fun stillFor(image: Manifest.Image): Boolean {
         val s = _state.value
         if (image.board.equals(s.board, ignoreCase = true) &&
-            image.region.equals(connection.records.self?.region, ignoreCase = true) && s.release == checkedAgainst
+            image.region.equals(connection.records.self?.region, ignoreCase = true) && s.release == checkedAgainst &&
+            image.update == updateBy(s.board, s.updatedBy)
         ) {
             return true
         }
@@ -655,6 +681,21 @@ class NodeRepository(private val context: Context) {
             // Cancelled while its last read was under way: it sends nothing.
             coroutineContext.ensureActive()
             if (!stillFor(image)) return@launch
+            if (image.update == UpdateBy.BOOTLOADER) {
+                val pkg = try {
+                    DfuPackage.read(bytes)
+                } catch (e: IllegalArgumentException) {
+                    return@launch setUpdate(FirmwareUpdate.Failed(FirmwareFailure.CORRUPT))
+                }
+                val b = BootloaderUpdater(pkg)
+                bootUpdater = b
+                updatingTo = release
+                updateImage = image
+                b.onChange = ::bootloaderChanged
+                resumeWhenSynced = true
+                if (_state.value.phase == Phase.READY) resumeIfStillFor()
+                return@launch
+            }
             val u = Updater(bytes)
             updater = u
             updatingTo = release
@@ -680,13 +721,15 @@ class NodeRepository(private val context: Context) {
 
     /** Puts away what an update ended with, back to the last check. */
     fun dismissUpdate() {
-        if (busyUpdating(_state.value.update)) return
         val u = _state.value.update
+        if (u is FirmwareUpdate.BootloaderStopped) return leaveBootloader()
+        if (busyUpdating(u)) return
         setUpdate(if (u is FirmwareUpdate.Done || u is FirmwareUpdate.NotRunning) FirmwareUpdate.Idle else checked ?: FirmwareUpdate.Idle)
     }
 
     private fun busyUpdating(u: FirmwareUpdate) = u is FirmwareUpdate.Downloading || u is FirmwareUpdate.Sending ||
-        u is FirmwareUpdate.Restarting || u == FirmwareUpdate.Checking
+        u is FirmwareUpdate.Restarting || u == FirmwareUpdate.Checking || u is FirmwareUpdate.Bootloader ||
+        u is FirmwareUpdate.BootloaderStopped
 
     /** Drops any update: another node is chosen. */
     private fun stopUpdate() {
@@ -699,6 +742,7 @@ class NodeRepository(private val context: Context) {
             it.cancel()
         }
         updater = null
+        dropBootloader()
         updatingTo = null
         updateImage = null
         checked = null
@@ -728,6 +772,23 @@ class NodeRepository(private val context: Context) {
 
     /** The node answered HELLO: an update goes on, or one that ended is judged by the release the node now runs. */
     private fun updateOnReady(e: ConnectionEvent.Ready) {
+        bootUpdater?.let { b ->
+            // Not yet asked: it is, once the node has synced, if the node is still what the image is for.
+            if (b.state == BootloaderState.Waiting) {
+                resumeWhenSynced = true
+                return
+            }
+            if (b.state == BootloaderState.Asking) return
+            // Back from its bootloader: the image started, or the node went back to its firmware.
+            val wanted = updatingTo.orEmpty()
+            val started = b.state == BootloaderState.Started
+            dropBootloader()
+            updatingTo = null
+            updateImage = null
+            checked = null
+            setUpdate(if (e.release == wanted) FirmwareUpdate.Done(wanted) else FirmwareUpdate.NotRunning(e.release.orEmpty(), wanted, started))
+            return
+        }
         val u = updater ?: return
         if (u.state == UpdateState.Restarting || u.state == UpdateState.Unknown) {
             val wanted = updatingTo.orEmpty()
@@ -755,6 +816,21 @@ class NodeRepository(private val context: Context) {
      * or its firmware. If not, it stops.
      */
     private fun resumeIfStillFor() {
+        val b = bootUpdater
+        if (b != null && b.state == BootloaderState.Waiting) {
+            val image = updateImage ?: return
+            if (!resumeWhenSynced) return
+            resumeWhenSynced = false
+            if (stillFor(image)) {
+                b.ask(connection)
+                scheduleTick()
+            } else {
+                dropBootloader()
+                updatingTo = null
+                updateImage = null
+            }
+            return
+        }
         val u = updater ?: return
         val image = updateImage ?: return
         if (!resumeWhenSynced || u.isFinished) return
@@ -769,6 +845,136 @@ class NodeRepository(private val context: Context) {
             updatingTo = null
             updateImage = null
         }
+    }
+
+    private fun bootloaderChanged(b: BootloaderUpdater) {
+        if (b !== bootUpdater) return
+        val release = updatingTo ?: return
+        when (val s = b.state) {
+            BootloaderState.Waiting -> {}
+            BootloaderState.Asking -> setUpdate(FirmwareUpdate.Bootloader(release, BootloaderStep.ASKING))
+            // Off the connection's callback before its link is let go of.
+            is BootloaderState.Restarting -> handler.post(::enterBootloader)
+            is BootloaderState.Sending -> {
+                val size = b.pkg.imageSize.toLong()
+                val next = when (val d = s.dfu) {
+                    DfuState.Idle -> FirmwareUpdate.Bootloader(release, BootloaderStep.CONNECTING)
+                    DfuState.Erasing -> FirmwareUpdate.Bootloader(release, BootloaderStep.ERASING)
+                    DfuState.Initialising -> FirmwareUpdate.Bootloader(release, BootloaderStep.SENDING, 0, size)
+                    is DfuState.Sending -> FirmwareUpdate.Bootloader(release, BootloaderStep.SENDING, d.sent, d.size)
+                    else -> FirmwareUpdate.Bootloader(release, BootloaderStep.CHECKING, size, size)
+                }
+                // Each packet is a change; the screens are told of each percent.
+                val shown = _state.value.update
+                if (shown !is FirmwareUpdate.Bootloader || shown.step != next.step || percent(shown) != percent(next)) setUpdate(next)
+                scheduleDfuTick()
+            }
+            BootloaderState.Started -> {
+                // The bootloader starts the image, and the node comes back as itself: its INFO says which it runs.
+                handler.removeCallbacks(dfuTick)
+                bootLink.close()
+                setUpdate(FirmwareUpdate.Restarting(release, confirmed = true))
+                val node = _state.value.node ?: return
+                update { it.copy(phase = Phase.CONNECTING, problem = null) }
+                link.connect(node.address, waitForIt = true)
+            }
+            is BootloaderState.Stopped -> {
+                handler.removeCallbacks(dfuTick)
+                bootLink.close()
+                setUpdate(FirmwareUpdate.BootloaderStopped(release, BootloaderFailure.STOPPED, s.dfu))
+            }
+            is BootloaderState.Refused -> {
+                dropBootloader()
+                updatingTo = null
+                updateImage = null
+                setUpdate(FirmwareUpdate.Refused(s.code))
+            }
+            is BootloaderState.Failed -> {
+                dropBootloader()
+                updatingTo = null
+                updateImage = null
+                setUpdate(FirmwareUpdate.Failed(FirmwareFailure.UNSUPPORTED))
+            }
+        }
+    }
+
+    /**
+     * The node said it restarts into its bootloader, or did not answer and may be: the app lets go
+     * of the node's link, which is going anyway, and looks for the bootloader.
+     */
+    private fun enterBootloader() {
+        if (bootUpdater == null) return
+        update { it.copy(phase = Phase.BOOTLOADER, problem = null) }
+        handler.removeCallbacks(tick)
+        link.disconnect()
+        connection.close()
+        save()
+        findBootloader()
+    }
+
+    /** Looks for the bootloader, links to it, and gives it the image: after the node restarted into it, or to try again. */
+    private fun findBootloader() {
+        val b = bootUpdater ?: return
+        val release = updatingTo ?: return
+        val node = _state.value.node ?: return
+        setUpdate(FirmwareUpdate.Bootloader(release, BootloaderStep.FINDING))
+        bootScan.find(node.address) { address ->
+            if (bootUpdater !== b) return@find
+            if (address == null) return@find setUpdate(FirmwareUpdate.BootloaderStopped(release, BootloaderFailure.NOT_FOUND))
+            setUpdate(FirmwareUpdate.Bootloader(release, BootloaderStep.CONNECTING))
+            bootLink.connect(address) { ready ->
+                if (bootUpdater !== b) return@connect
+                if (!ready) return@connect setUpdate(FirmwareUpdate.BootloaderStopped(release, BootloaderFailure.NO_LINK))
+                b.send(bootLink, SystemClock::elapsedRealtime)
+                scheduleDfuTick()
+            }
+        }
+    }
+
+    /** Tries the bootloader again, after an update by it stopped: it waits for the image, and takes it afresh. */
+    fun retryBootloader() {
+        if (_state.value.update !is FirmwareUpdate.BootloaderStopped || _state.value.phase != Phase.BOOTLOADER) return
+        NodeService.start(context)
+        findBootloader()
+    }
+
+    /**
+     * Gives up on an update by the bootloader that stopped, and connects to the node again. A node
+     * still in its bootloader does not answer until the bootloader is given an image; one that went
+     * back to its firmware answers, and its release says it was not updated.
+     */
+    private fun leaveBootloader() {
+        dropBootloader()
+        updatingTo = null
+        updateImage = null
+        setUpdate(checked ?: FirmwareUpdate.Idle)
+        val node = _state.value.node ?: return
+        if (_state.value.phase == Phase.BOOTLOADER) connectTo(node, waitForIt = true)
+    }
+
+    private fun dropBootloader() {
+        bootUpdater?.let {
+            it.onChange = {}
+            it.cancel()
+        }
+        bootUpdater = null
+        bootScan.stop()
+        bootLink.close()
+        handler.removeCallbacks(dfuTick)
+    }
+
+    /** The transfer's timers: at its next deadline, and at least every second, since a step's deadline is set without a change to say so. */
+    private val dfuTick = Runnable {
+        bootUpdater?.dfu?.tick()
+        scheduleDfuTick()
+    }
+
+    private fun scheduleDfuTick() {
+        handler.removeCallbacks(dfuTick)
+        val dfu = bootUpdater?.dfu ?: return
+        if (dfu.isFinished) return
+        val wait = dfu.nextDeadline?.let { it - SystemClock.elapsedRealtime() } ?: 1_000L
+        handler.postDelayed(dfuTick, wait.coerceIn(0L, 1_000L))
     }
 
     /** Says where the update is, and in the service's notification, each time its percentage changes. */
@@ -818,6 +1024,8 @@ class NodeRepository(private val context: Context) {
             }
             LinkState.Closed -> {}
             is LinkState.Failed -> {
+                // The node restarting into its bootloader drops the link: the app is at the bootloader now.
+                if (_state.value.phase == Phase.BOOTLOADER) return
                 connection.close()
                 handler.removeCallbacks(tick)
                 save()
@@ -837,7 +1045,9 @@ class NodeRepository(private val context: Context) {
     private fun reconnect(node: ChosenNode) {
         val s = _state.value
         // By address: a rename since the retry was set changes the label, not the node.
-        if (s.node?.address == node.address && !s.phase.stayingOff) link.connect(node.address, waitForIt = true)
+        if (s.node?.address == node.address && !s.phase.stayingOff && s.phase != Phase.BOOTLOADER) {
+            link.connect(node.address, waitForIt = true)
+        }
     }
 
     private fun event(e: ConnectionEvent) {
@@ -846,7 +1056,7 @@ class NodeRepository(private val context: Context) {
                 update {
                     it.copy(
                         phase = Phase.SYNCING, version = e.version, firmware = e.firmware, board = e.board,
-                        release = e.release, problem = null,
+                        release = e.release, updatedBy = e.update, problem = null,
                     )
                 }
                 updateOnReady(e)
@@ -865,6 +1075,7 @@ class NodeRepository(private val context: Context) {
             }
             ConnectionEvent.Gone -> {
                 link.disconnect()
+                if (_state.value.phase == Phase.BOOTLOADER) return
                 val node = _state.value.node ?: return
                 update { it.copy(phase = Phase.CONNECTING, problem = Problem.Gone) }
                 handler.postDelayed({ reconnect(node) }, 1_000)
