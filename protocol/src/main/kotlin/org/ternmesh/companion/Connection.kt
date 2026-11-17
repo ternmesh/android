@@ -200,10 +200,7 @@ class Connection(
         val frameSeq = bytes[1].toInt() and 0xFF
         var malformed = false
         val frame = try {
-            // INFO says the node's version, and is read by the lesser of it and this client's: the
-            // fields a later version added are there only if both speak it.
-            val speaking = if (type == 0x42 && bytes.size > 2) minOf(version, bytes[2].toInt() and 0xFF) else agreed ?: version
-            Codec.decode(bytes, speaking)
+            Codec.decode(bytes, agreed ?: version)
         } catch (e: DecodeException) {
             malformed = e.reason == Unreadable.MALFORMED
             null

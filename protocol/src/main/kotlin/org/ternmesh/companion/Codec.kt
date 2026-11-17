@@ -309,12 +309,13 @@ object Codec {
             0x42 -> {
                 val v = r.u8()
                 val firmware = r.str(Companion.FIRMWARE_MAX)
-                // By the version spoken, as every frame: a connection reads its INFO by the lesser
-                // of its own version and the one the INFO carries (Connection.receive).
-                if (version >= 4) {
+                // Before the node has said its version the client's is all a reader has; INFO says
+                // the node's, and each later field is there only if both speak its version.
+                val both = minOf(v, version)
+                if (both >= 4) {
                     Body.Info(
                         v, firmware, r.str(Companion.BOARD_MAX), r.str(Companion.RELEASE_MAX),
-                        if (version >= 12) r.u8() else null,
+                        if (both >= 12) r.u8() else null,
                     )
                 } else {
                     Body.Info(v, firmware)

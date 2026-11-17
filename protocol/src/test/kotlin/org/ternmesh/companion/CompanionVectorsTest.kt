@@ -144,15 +144,14 @@ class CompanionVectorsTest {
         }
     }
 
-    /** `INFO`'s board and release are version 4's: read by 3, a node of 4's are read past, and a node of 3's has none to read by 4. */
+    /** `INFO`'s board and release are version 4's: a client of 4 reads a node of 3's without them, and a client of 3 a node of 4's. */
     @Test
     fun infoHasBoardAndReleaseOnlyWhenBothSpeak4() {
         val four = Codec.encode(Frame(1, Body.Info(4, "tern", "heltec-v3", "0.2.0")))
-        assertEquals(Body.Info(4, "tern", "heltec-v3", "0.2.0"), Codec.decode(four, 4).body)
+        assertEquals(Body.Info(4, "tern", "heltec-v3", "0.2.0"), Codec.decode(four).body)
         assertEquals(Body.Info(4, "tern"), Codec.decode(four, 3).body)
         val three = Codec.encode(Frame(1, Body.Info(3, "tern")))
-        assertEquals(Body.Info(3, "tern"), Codec.decode(three, 3).body)
-        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(three, 4) }.reason)
+        assertEquals(Body.Info(3, "tern"), Codec.decode(three).body)
         assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Info(4, "tern", "heltec-v3", null))) }
         // Version 3 does not define updates.
         val begin = Codec.encode(Frame(1, Body.UpdateBegin(1, ByteArray(32))))
@@ -193,8 +192,11 @@ class CompanionVectorsTest {
         val twelve = Codec.encode(Frame(1, Body.Info(12, "tern", "heltec-t114", "0.2.0", UpdateBy.BOOTLOADER)))
         assertEquals(Body.Info(12, "tern", "heltec-t114", "0.2.0", UpdateBy.BOOTLOADER), Codec.decode(twelve).body)
         assertEquals(Body.Info(12, "tern", "heltec-t114", "0.2.0"), Codec.decode(twelve, 11).body)
+        // A node of version 11 says none, read by the lesser version; one of 12 without it is cut short.
         val eleven = Codec.encode(Frame(1, Body.Info(11, "tern", "heltec-v3", "0.2.0")))
-        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(eleven) }.reason)
+        assertEquals(Body.Info(11, "tern", "heltec-v3", "0.2.0"), Codec.decode(eleven).body)
+        val short = Codec.encode(Frame(1, Body.Info(12, "tern", "heltec-v3", "0.2.0")))
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(short) }.reason)
         assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Info(12, "tern", update = UpdateBy.LINK))) }
 
         val ask = Codec.encode(Frame(5, Body.UpdateBootloader))
@@ -219,8 +221,7 @@ class CompanionVectorsTest {
             for (f in frames) {
                 val name = f.str("type")
                 val bytes = f.bytes("frame")
-                // A client reads INFO by the lesser of its version and the node's, which INFO says.
-                val frame = Codec.decode(bytes, if (name == "INFO") minOf(version, bytes[2].toInt()) else version)
+                val frame = Codec.decode(bytes, version)
                 assertEquals(name, frame.body.typeName)
                 assertEquals(f.int("seq"), frame.seq, name)
                 assertEquals(f.str("from") == "client", Companion.isRequest(frame.body.type), name)
