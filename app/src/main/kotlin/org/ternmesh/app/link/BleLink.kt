@@ -311,6 +311,20 @@ class BleLink(private val context: Context, private val handler: Handler) {
         )
     }
 
+    /**
+     * Removes the phone's bond with the node at [address], after the node erased itself (`WIPE`):
+     * its own half is gone, so the phone's is no use, and keeping it would only make the next
+     * pairing fail. Android has no public call for this; BluetoothDevice's removeBond(), which its
+     * Settings uses, is reached by reflection. False if it is not there, or refused: the user then
+     * removes the node in Android's Bluetooth settings.
+     */
+    fun removeBond(address: String): Boolean {
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter ?: return false
+        val device = runCatching { adapter.getRemoteDevice(address) }.getOrNull() ?: return false
+        if (device.bondState == BluetoothDevice.BOND_NONE) return true
+        return runCatching { device.javaClass.getMethod("removeBond").invoke(device) as? Boolean }.getOrNull() == true
+    }
+
     private fun stopWatchingBond() {
         bondWatch?.let { runCatching { context.unregisterReceiver(it) } }
         bondWatch = null

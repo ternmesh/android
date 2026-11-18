@@ -73,7 +73,7 @@ fun PeopleScreen(
     // A link to add is taken by the contacts' dialog.
     LaunchedEffect(incoming) { if (incoming != null) nearby = false }
     val near = remember(state.records) {
-        val cards = if (hasCards(state)) state.records.cards.keys.map { it.routingId }.toSet() else emptySet()
+        val cards = if (hasCards(state)) state.records.cards.keys.mapNotNull { state.records.routingIdOf(it) }.toSet() else emptySet()
         cards.size + state.records.neighbours.keys.count { it !in cards }
     }
     Column(Modifier.fillMaxSize()) {
@@ -129,7 +129,7 @@ private fun ContactsList(
             items(contacts, key = { it.address.toString() }) { c ->
                 var menu by remember { mutableStateOf(false) }
                 val name = c.name.ifEmpty { Conversations.short(c.address.toString()) }
-                val neighbour = state.records.neighbours[c.address.routingId]
+                val neighbour = state.records.routingIdOf(c.address)?.let { state.records.neighbours[it] }
                 PersonRow(
                     avatar = { Avatar(name, key = c.address.toString()) },
                     title = { Text(name, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)) },

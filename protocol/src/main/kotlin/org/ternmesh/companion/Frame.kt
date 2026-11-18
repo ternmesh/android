@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 12: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 14: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -9,8 +9,8 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 11 is this without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 12
+    /** The version this client speaks. Version 13 is this with routing ids made from the address itself, not from the key blinded from it (RoutingIds), version 12 is version 13 without signed images (`UPDATE_BEGIN`'s `signature`) and `WIPE`, version 11 is version 12 without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 14
     /** `SET` 3's power that asks for the most the node may transmit at, which it works out (version 10). */
     const val POWER_MOST = -128
     const val MAX_FRAME = 180
@@ -38,6 +38,9 @@ object Companion {
 
     /** A SHA-256 digest's length. */
     const val DIGEST = 32
+
+    /** An image's signature's length, Ed25519's (version 13). */
+    const val SIGNATURE = 64
 
     /** How long a client waits for an answer. */
     const val ANSWER_WAIT_MS = 5_000L
@@ -80,6 +83,7 @@ object Companion {
         0x94 -> 8
         0x06 -> 9
         0x36 -> 12
+        0x37 -> 13
         else -> 0
     }
 
@@ -100,18 +104,6 @@ class Address(bytes: ByteArray) {
     }
 
     fun toByteArray(): ByteArray = bytes.copyOf()
-
-    /**
-     * The routing id routing knows the node by, as draft/routing.md works it out from the address: a
-     * neighbour, and the writer of a group message, are known to a client only by theirs.
-     */
-    val routingId: Long by lazy {
-        val sha = java.security.MessageDigest.getInstance("SHA-256")
-        sha.update("tern routing id".toByteArray(Charsets.US_ASCII))
-        val h = sha.digest(bytes)
-        (0 until 8).map { i -> (0 until 4).fold(0L) { n, j -> (n shl 8) or (h[4 * i + j].toLong() and 0xFF) } }
-            .first { it != 0L && it != 0xFFFF_FFFFL }
-    }
 
     override fun equals(other: Any?) = other is Address && bytes.contentEquals(other.bytes)
     override fun hashCode() = bytes.contentHashCode()
@@ -180,7 +172,11 @@ object ErrorCode {
     /** Not where the update is: none under way, or not at that offset. `UPDATE_BEGIN` again says where. */
     const val NOT_THERE = 10
 
-    /** Not an image this node runs, or not the one its digest names: the update is discarded. */
+    /**
+     * To `UPDATE_END`: not an image this node runs, or not the one its digest names, and the update
+     * is discarded. To `UPDATE_BEGIN` (version 13): the image is not signed by a release key the
+     * node holds, and any update under way is left as it was.
+     */
     const val NOT_AN_IMAGE = 11
 
     /** Not a contact: `SHARE` names an address the node does not hold as one. */
@@ -298,7 +294,7 @@ object MessageState {
     const val RECEIVED = 4
 }
 
-/** What a frame says: every frame of version 12. [since] is the least version that defines it. */
+/** What a frame says: every frame of version 14. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String) {
     /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
     open val since: Int get() = Companion.since(type)
@@ -344,19 +340,27 @@ sealed class Body(val type: Int, val typeName: String) {
         override fun toString() = "JoinLink(…)"
     }
 
-    /** An image of [size] bytes, whose SHA-256 is [digest], follows. */
-    class UpdateBegin(val size: Long, digest: ByteArray) : Body(0x30, "UPDATE_BEGIN") {
+    /**
+     * An image of [size] bytes, whose SHA-256 is [digest], follows, signed with [signature]
+     * (version 13): 64 bytes, or empty for none. Null below version 13, whose `UPDATE_BEGIN` has no
+     * such field.
+     */
+    class UpdateBegin(val size: Long, digest: ByteArray, signature: ByteArray? = null) : Body(0x30, "UPDATE_BEGIN") {
         private val bytes = digest.copyOf()
+        private val sig = signature?.copyOf()
 
         init {
             require(digest.size == Companion.DIGEST) { "a digest is ${Companion.DIGEST} bytes, not ${digest.size}" }
+            require(signature == null || signature.size <= Companion.SIGNATURE) { "a signature is at most ${Companion.SIGNATURE} bytes" }
         }
 
         val digest: ByteArray get() = bytes.copyOf()
+        val signature: ByteArray? get() = sig?.copyOf()
 
-        override fun equals(other: Any?) = other is UpdateBegin && size == other.size && bytes.contentEquals(other.bytes)
+        override fun equals(other: Any?) = other is UpdateBegin && size == other.size && bytes.contentEquals(other.bytes) &&
+            (sig?.let { s -> other.sig?.contentEquals(s) ?: false } ?: (other.sig == null))
         override fun hashCode() = 31 * size.hashCode() + bytes.contentHashCode()
-        override fun toString() = "UpdateBegin(size=$size, digest=${Hex.encode(bytes)})"
+        override fun toString() = "UpdateBegin(size=$size, digest=${Hex.encode(bytes)}, signature=${sig?.let(Hex::encode)})"
     }
 
     /** The image's bytes from [offset]. */
@@ -378,6 +382,13 @@ sealed class Body(val type: Int, val typeName: String) {
      * (version 12). Only for a node whose `INFO` says [UpdateBy.BOOTLOADER].
      */
     data object UpdateBootloader : Body(0x36, "UPDATE_BOOTLOADER")
+
+    /**
+     * Erase the node, which it answers with `OK` before it does (version 13): its identity, so it
+     * starts again with a new address, its sessions, contacts, groups, messages and settings, and
+     * every Bluetooth bond. Only ever what the user asked for, after being told so.
+     */
+    data object Wipe : Body(0x37, "WIPE")
 
     /**
      * The client's own position: [lat] and [lon] in 10⁻⁷ degree, north and east positive;

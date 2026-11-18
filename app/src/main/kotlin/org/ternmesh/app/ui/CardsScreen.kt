@@ -60,7 +60,7 @@ fun NearbyList(repository: NodeRepository, state: NodeState, open: (Peer) -> Uni
         if (hasCards(state)) r.cards.values.sortedBy { heardNow(state, it, now) } else emptyList()
     }
     val byRouting = remember(r) { r.neighbours.values.associateBy { it.routingId } }
-    val carded = remember(cards) { cards.map { it.address.routingId }.toSet() }
+    val carded = remember(r, cards) { cards.mapNotNull { r.routingIdOf(it.address) }.toSet() }
     val bare = remember(r, carded) { r.neighbours.values.filter { it.routingId !in carded }.sortedBy { it.heard } }
     var choosing by remember { mutableStateOf<Body.Card?>(null) }
 
@@ -72,7 +72,7 @@ fun NearbyList(repository: NodeRepository, state: NodeState, open: (Peer) -> Uni
             item { SectionHeader(stringResource(R.string.nearby_cards)) }
             items(cards, key = { it.address.toString() }) { card ->
                 val contact = r.contacts[card.address]
-                val heard = byRouting[card.address.routingId]
+                val heard = r.routingIdOf(card.address)?.let { byRouting[it] }
                 PersonRow(
                     avatar = { Avatar(card.name, key = card.address.toString(), unknown = card.name.isEmpty()) },
                     title = { CardName(card) },
@@ -92,7 +92,7 @@ fun NearbyList(repository: NodeRepository, state: NodeState, open: (Peer) -> Uni
             item { SectionHeader(stringResource(if (cards.isEmpty()) R.string.nearby_heard else R.string.nearby_heard_no_card)) }
             items(bare, key = { "n${it.routingId}" }) { n ->
                 val name = Conversations.nameOf(r, n.routingId)
-                val contact = r.contacts.values.firstOrNull { it.address.routingId == n.routingId }
+                val contact = Conversations.contactOf(r, n.routingId)
                 PersonRow(
                     avatar = { Avatar(name ?: "", key = contact?.address?.toString() ?: "%08x".format(n.routingId), unknown = name == null) },
                     title = {

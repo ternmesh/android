@@ -16,6 +16,14 @@ an ESP32 board, and through its bootloader for an nRF52840 board (Heltec T114, S
 below. It
 turns the node off when the user asks, after saying that only the node's button, reset or power
 turns it on again, and then stays off it, saying the node is off, until the user connects again.
+It erases a node of version 13 or later when the user asks (`WIPE`), after saying that its address,
+contacts, groups and messages go for good, and then forgets the node and the phone's pairing with it.
+
+It speaks version 14 of the companion protocol, and any earlier version a node speaks. From a node
+of version 14, the routing ids it is told (of neighbours, group messages' writers and group
+positions) are made from a key blinded from each address, as below; from an earlier node, from the
+address itself. When pairing fails it says that a node with no screen pairs only for three minutes
+after it is turned on, reset or its button pressed.
 
 It shows who is about: the presence cards the node has heard from the nodes near it, each with
 the name its sender claims beside its short code, and a contact made from one only when the user
@@ -58,6 +66,51 @@ JDK 17 or later; the app also needs the Android SDK (platform 35), which Android
 or `sdk.dir` in `local.properties`. The `protocol` module is plain Kotlin with no Android in it, so
 its tests run on any JVM.
 
+## Signed firmware
+
+From companion version 13, every image a release carries is signed with the project's **release
+key**: Ed25519 over `"TERN-FIRMWARE-V1" || SHA-256(file)`, which `latest.json` gives as each image's
+`signature` (the firmware's
+[docs/signing.md](https://github.com/ternmesh/firmware/blob/main/docs/signing.md)). The app checks it
+against its own list of release keys before it downloads an image, and again over the bytes it
+downloaded, before it sends anything:
+
+* **Signed by a release key:** offered as any update. To a node of version 13 or later the
+  signature goes in `UPDATE_BEGIN`, and the node checks it too. A node that refuses it (`ERROR` 11
+  to `UPDATE_BEGIN`) is said not to trust the key it was signed with; nothing was sent.
+* **Signed, but by no key the app holds,** or **not signed** (releases up to 0.6.0-alpha.1 were
+  published before signing): the app says the image may not be the project's, and installs it only
+  if the user then asks again. A node of version 12 or earlier checks nothing itself.
+* **Not signed, for a node of version 13 or later updated over the link:** not offered. The node
+  takes only signed images, so the app says the release came before signing, and to flash it over
+  USB at `ternmesh.org/flash`.
+
+An nRF52840 node's bootloader checks no signature, so the app's check is the only one its package
+has, and the app says that until the update finishes anyone in Bluetooth range could give the
+bootloader an image of their own.
+
+**The release keys** are in
+[`protocol/src/main/kotlin/org/ternmesh/companion/ReleaseKeys.kt`](protocol/src/main/kotlin/org/ternmesh/companion/ReleaseKeys.kt),
+the same list as the firmware's `ports/node/release_keys.h`: today release key 1, added 2026-11-18
+(ternmesh/firmware#120). A new key is one line there, its 64 hex digits with a comment saying when it
+was added; an old one stays until no release signed with it is offered. The specification's
+published test key never goes there; the tests use it on their own. Checking is BouncyCastle's
+Ed25519 (`bcprov-jdk18on`), which refuses an `S` not less than the group order, as the
+specification requires.
+
+## Routing ids
+
+A node of version 14 knows every node by a routing id made from a **routing key** `B = [h]A`
+blinded from its address `A`, with `h = SHA-512("tern v0 blind" || A || u32be(0)) mod L`, and not
+from `A` itself (the specification's draft/routing.md). The app works out each contact's and card's
+id the way the node's version does (`RoutingIds.kt`, through `Records.routingIdOf`), keeps the
+blinded ones once worked out, and matches neighbours, group messages' writers and group positions
+against them. An address that is not a valid key of the curve's prime order has no blinded id, and
+matches nothing. The one scalar multiplication is done with `java.math.BigInteger` and the curve's
+textbook formulas, checked against every id of the specification's `routing.json` and against
+BouncyCastle's own keys: neither Android nor BouncyCastle offers it on a point of one's own, and
+since an address and its hash are public, it need not run in constant time.
+
 ## Updating an nRF52840 node
 
 An nRF52840 board has room for one image of its firmware, not two, so it cannot take an update
@@ -66,7 +119,8 @@ over the link as an ESP32 board does. Its bootloader takes it instead (companion
 `ternmesh.org/firmware/latest.json` lists, for each nRF52840 board and region, a DFU package
 (`tern-<board>-<region>-<version>.zip`) marked `"update": "bootloader"`. The app:
 
-1. downloads the package and checks its size and SHA-256 against the manifest;
+1. downloads the package, checks its size and SHA-256 against the manifest, and its signature
+   against the release keys (above);
 2. sends `UPDATE_BOOTLOADER`; the node answers, and restarts into its bootloader, which drops the link;
 3. scans for the bootloader's service (Nordic's legacy DFU, `00001530-1212-efde-1523-785feabcd123`),
    preferring one at the node's address or the next one up, as Adafruit's bootloader advertises;
@@ -86,18 +140,20 @@ says a board.
 
 | Path | |
 |---|---|
-| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 12, as Kotlin types, and its numbers. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 14, as Kotlin types, and its numbers. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Codec.kt` | A frame built into bytes, and read back from them. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/ByteStream.kt` | Frames on a byte stream (USB serial, TCP), with the node's console text between them. Bluetooth does not need it. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Connection.kt` | One connection, the client's half: `HELLO` and the version both speak, one request at a time, counted news, syncing again, and the `PING` that keeps a node from taking the app for gone. No I/O and no clock of its own: a link hands it frames and calls `tick()`. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Updater.kt` | One firmware image given to a node over a connection: `UPDATE_BEGIN`, the image in chunks from wherever the node says, `UPDATE_END`, and going on after the link drops. No I/O, as with the connection. `BootloaderUpdater`: `UPDATE_BOOTLOADER`, then the package to the bootloader, as many times as it takes. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Dfu.kt` | An nRF52840 node's bootloader given a DFU package (`manifest.json`, `.dat`, `.bin`) by Nordic's legacy DFU: its steps, waits, receipts and pace, behind `DfuLink`, a control point and a packet characteristic, so that its tests play the bootloader on any JVM. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Release.kt` | The firmware manifest at `ternmesh.org/firmware/latest.json`: the image for a board, a region and the way the node is updated (its `update`, absent for over the link), and whether its release is newer than a node's, by Semantic Versioning. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/ReleaseKeys.kt`, `Signatures.kt` | The release keys, and an image's signature checked against them: what is offered to which node. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/RoutingIds.kt` | Routing ids from addresses, as a node of version 14 (blinded) or earlier makes them. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Records.kt` | What the node has said it holds, as news leaves it, positions received, sharing, the cards of who is about and the node's own fix included, and the `after` the next sync asks from. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/RecordsFile.kt` | The records on disk, each as the frame that carried it, so the next run syncs only what is new; not positions, sharing, cards or the node's fix, which every sync sends whole. The Apple app keeps the same format. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Sharing.kt`, `JoinCode.kt` | An address's text, link and short code (draft/sharing.md); and a group's join code read, to name the group before the user joins it (draft/groups.md). |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Conversations.kt` | The records as conversations, and how far a `READ` may reach without marking another conversation's messages read. |
-| `protocol/src/test/` | The conformance section of the specification, as a client: the codec against every vector, the connection as the client in `exchange`, `older`, `unknown_to_older` and `bootloader`, and the updater as the client in `update`; and the DFU client against a bootloader played by hand. |
+| `protocol/src/test/` | The conformance section of the specification, as a client: the codec against every vector, the connection as the client in `exchange`, `older`, `unknown_to_older` and `bootloader`, the updater as the client in `update`, every case of `signatures`, and every id and no-id of `routing.json`; and the DFU client against a bootloader played by hand. |
 | `app/src/main/kotlin/org/ternmesh/app/link/` | Bluetooth LE: scanning for the node's service, and the GATT link (an MTU of at least 183, passkey pairing, one frame per write and per notification); and `BootloaderLink.kt`, finding an nRF52840 node's bootloader and the link the DFU client writes over. |
 | `app/src/main/kotlin/org/ternmesh/app/node/` | The node the app drives: the link, the connection over it and the records on disk (`NodeRepository`), the foreground service that keeps it while the app is closed, message notifications, downloading firmware and checking it before it is sent (`Firmware.kt`), and the phone's location given to the node while it shares (`LocationFeed.kt`). |
 | `app/src/main/kotlin/org/ternmesh/app/ui/` | The screens, in Jetpack Compose: choosing a node, then four tabs: chats (and one conversation), people (contacts, and who is near), the map (and sharing a position), and the node, a dashboard with a screen for each thing about it. `Theme`, `TernIcons` and `Components` are what they share. Every word they show is in `res/values/strings.xml`. |
@@ -107,13 +163,14 @@ group a code is for, so that the app can say whether the node holds it already.
 
 `protocol/src/test/resources/vectors/` holds copies of the specification's
 [`companion.json`](https://github.com/ternmesh/spec/blob/main/vectors/companion.json),
-[`sharing.json`](https://github.com/ternmesh/spec/blob/main/vectors/sharing.json) and
+[`sharing.json`](https://github.com/ternmesh/spec/blob/main/vectors/sharing.json),
 [`groups.json`](https://github.com/ternmesh/spec/blob/main/vectors/groups.json), of which only
-the join codes are run here. CI runs the tests against the copies, and against the
+the join codes are run here, and [`routing.json`](https://github.com/ternmesh/spec/blob/main/vectors/routing.json),
+of which only the routing ids are. CI runs the tests against the copies, and against the
 specification's own as they are on `main`, which also runs once a week: if the specification
 changes, that job fails or warns. Copy the new file here in the pull request that changes the code
 to match. To run against other files locally, set `TERN_COMPANION_VECTORS`,
-`TERN_SHARING_VECTORS` or `TERN_GROUPS_VECTORS` to their paths.
+`TERN_SHARING_VECTORS`, `TERN_GROUPS_VECTORS` or `TERN_ROUTING_VECTORS` to their paths.
 
 ## Still to come
 

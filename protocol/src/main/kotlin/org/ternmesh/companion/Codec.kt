@@ -84,12 +84,13 @@ object Codec {
             is Body.UpdateBegin -> {
                 w.u32(b.size)
                 w.raw(b.digest)
+                b.signature?.let { w.bytes(it, Companion.SIGNATURE) }
             }
             is Body.UpdateData -> {
                 w.u32(b.offset)
                 w.bytes(b.data, Companion.UPDATE_CHUNK)
             }
-            Body.UpdateEnd, Body.UpdateBootloader -> {}
+            Body.UpdateEnd, Body.UpdateBootloader, Body.Wipe -> {}
             is Body.SetPosition -> {
                 w.i32(b.lat)
                 w.i32(b.lon)
@@ -297,10 +298,11 @@ object Codec {
             0x25 -> Body.Join(r.u32())
             0x26 -> Body.GroupLink(r.gid())
             0x27 -> Body.JoinLink(r.str(Companion.LINK_MAX))
-            0x30 -> Body.UpdateBegin(r.u32(), r.raw(Companion.DIGEST))
+            0x30 -> Body.UpdateBegin(r.u32(), r.raw(Companion.DIGEST), if (version >= 13) r.bytes(Companion.SIGNATURE) else null)
             0x31 -> Body.UpdateData(r.u32(), r.bytes(Companion.UPDATE_CHUNK))
             0x32 -> Body.UpdateEnd
             0x36 -> Body.UpdateBootloader
+            0x37 -> Body.Wipe
             0x33 -> Body.SetPosition(r.i32(), r.i32(), r.i16(), r.u16(), r.u16())
             0x34 -> Body.Share(r.addr(), r.u8(), r.u8(), r.u16(), r.u16())
             0x35 -> Body.ShareGroup(r.gid(), r.u8(), r.u8(), r.u16(), r.u16())

@@ -43,6 +43,26 @@ class ReleaseTest {
      * without `update` is given over the link, and one given a way this client does not know is
      * passed over.
      */
+    /** An image's signature, from the first signed release: read, and checked over its sha256 with the release keys. */
+    @Test
+    fun anImagesSignature() {
+        val signed = vectors.list("signatures").first { it.str("why") == "the image's own" }
+        val sha = signed.str("digest")
+        val sig = signed.str("signature")
+        val m = Manifest.parse(
+            """{"release": "0.7.0", "images": [
+               {"board": "a", "region": "EU868", "file": "a.bin", "size": 400, "sha256": "$sha", "signature": "${sig.uppercase()}"},
+               {"board": "b", "region": "EU868", "file": "b.bin", "size": 400, "sha256": "$sha"},
+               {"board": "c", "region": "EU868", "file": "c.bin", "size": 400, "sha256": "$sha", "signature": "abc"}]}""",
+        )
+        val a = m.imageFor("a", "EU868")!!
+        assertEquals(sig, a.signature, "as lowercase")
+        assertEquals(Signed.VERIFIED, a.signed(listOf(testKey)))
+        assertEquals(Signed.NOT_VERIFIED, a.signed(), "the test key is not a release key")
+        assertEquals(Signed.UNSIGNED, m.imageFor("b", "EU868")!!.signed(), "a release from before signing")
+        assertEquals(Signed.UNSIGNED, m.imageFor("c", "EU868")!!.signed(), "one that is not 128 hex digits is none")
+    }
+
     @Test
     fun theImageForTheWayTheNodeIsUpdated() {
         val m = Manifest.parse(

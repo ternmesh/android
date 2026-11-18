@@ -199,7 +199,7 @@ class RecordsFileTest {
         assertTrue(r.groupSharing.isEmpty())
     }
 
-    /** The ids of vectors/routing.json in ternmesh/spec, which the companion vectors do not carry. */
+    /** The ids a node of version 13 or earlier makes, from the address itself (vectors/routing.json in ternmesh/spec, before announces carried a blinded key). */
     @Test
     fun routingIdsAsRoutingWorksThemOut() {
         val ids = mapOf(
@@ -208,7 +208,7 @@ class RecordsFileTest {
             "a5".repeat(32) to 1399809041L,
             "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" to 1752530551L,
         )
-        for ((hex, id) in ids) assertEquals(id, Address.fromHex(hex)!!.routingId, hex)
+        for ((hex, id) in ids) assertEquals(id, RoutingIds.plain(Address.fromHex(hex)!!), hex)
     }
 
     @Test
@@ -216,8 +216,8 @@ class RecordsFileTest {
         val r = Records()
         r.apply(Body.Contact(alice, 1, "Alice"))
         r.apply(Body.Contact(bob, 0, ""))
-        assertEquals("Alice", Conversations.nameOf(r, alice.routingId))
-        assertNull(Conversations.nameOf(r, bob.routingId), "a contact with no name")
+        assertEquals("Alice", Conversations.nameOf(r, RoutingIds.plain(alice)))
+        assertNull(Conversations.nameOf(r, RoutingIds.plain(bob)), "a contact with no name")
         assertNull(Conversations.nameOf(r, 0x1234), "no contact")
     }
 
@@ -230,16 +230,16 @@ class RecordsFileTest {
         val r = Records()
         val card = Body.Card(alice, 60, "Alice?")
         r.apply(card)
-        assertEquals(card, Conversations.cardOf(r, alice.routingId))
+        assertEquals(card, Conversations.cardOf(r, RoutingIds.plain(alice)))
         assertNull(Conversations.cardOf(r, 0x1234), "no card")
 
         r.apply(Body.Contact(alice, 1, ""))
-        assertNull(Conversations.cardOf(r, alice.routingId), "a contact's, even one with no name")
+        assertNull(Conversations.cardOf(r, RoutingIds.plain(alice)), "a contact's, even one with no name")
 
-        assertEquals(twin.routingId, otherTwin.routingId)
+        assertEquals(RoutingIds.plain(twin), RoutingIds.plain(otherTwin))
         r.apply(Body.Card(twin, 60, "One"))
-        assertEquals("One", Conversations.cardOf(r, twin.routingId)?.name)
+        assertEquals("One", Conversations.cardOf(r, RoutingIds.plain(twin))?.name)
         r.apply(Body.Card(otherTwin, 60, "Two"))
-        assertNull(Conversations.cardOf(r, twin.routingId), "two cards with it name neither")
+        assertNull(Conversations.cardOf(r, RoutingIds.plain(twin)), "two cards with it name neither")
     }
 }

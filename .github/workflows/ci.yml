@@ -76,6 +76,9 @@ jobs:
           if ! cmp -s spec/vectors/groups.json protocol/src/test/resources/vectors/groups.json; then
             echo "::warning::protocol/src/test/resources/vectors/groups.json differs from the specification's. Copy the new file in the pull request that changes the code to match."
           fi
+          if ! cmp -s spec/vectors/routing.json protocol/src/test/resources/vectors/routing.json; then
+            echo "::warning::protocol/src/test/resources/vectors/routing.json differs from the specification's. Copy the new file in the pull request that changes the code to match."
+          fi
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -86,3 +89,4 @@ jobs:
           TERN_COMPANION_VECTORS: ${{ github.workspace }}/spec/vectors/companion.json
           TERN_SHARING_VECTORS: ${{ github.workspace }}/spec/vectors/sharing.json
           TERN_GROUPS_VECTORS: ${{ github.workspace }}/spec/vectors/groups.json
+          TERN_ROUTING_VECTORS: ${{ github.workspace }}/spec/vectors/routing.json

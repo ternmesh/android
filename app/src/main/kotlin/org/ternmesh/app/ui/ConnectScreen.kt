@@ -158,6 +158,7 @@ fun ConnectScreen(repository: NodeRepository, state: NodeState, modifier: Modifi
         }
     }
     forgetting?.let { node -> ForgetDialog(node, onDismiss = { forgetting = null }) { repository.forget(node.address) } }
+    state.wiped?.let { WipedDialog(it, repository::dismissWiped) }
 }
 
 @Composable

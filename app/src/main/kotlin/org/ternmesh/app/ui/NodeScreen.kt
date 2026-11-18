@@ -75,16 +75,20 @@ import org.ternmesh.app.node.FirmwareUpdate
 import org.ternmesh.app.node.NodeRepository
 import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
+import org.ternmesh.app.node.Wiped
 import org.ternmesh.app.node.percent
 import org.ternmesh.app.node.stayingOff
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Companion
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.ErrorCode
+import org.ternmesh.companion.Install
 import org.ternmesh.companion.Offer
 import org.ternmesh.companion.Pairing
 import org.ternmesh.companion.ReceiverState
 import org.ternmesh.companion.Setting
+import org.ternmesh.companion.Signed
+import org.ternmesh.companion.install
 import org.ternmesh.companion.UpdateBy
 import org.ternmesh.companion.updateBy
 import org.ternmesh.companion.Sharing
@@ -131,6 +135,7 @@ fun NodeScreen(repository: NodeRepository, state: NodeState, go: (NodePage) -> U
     var forgetting by remember { mutableStateOf<ChosenNode?>(null) }
     var renaming by remember { mutableStateOf(false) }
     var turningOff by remember { mutableStateOf(false) }
+    var wiping by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
         TabTitle(stringResource(R.string.tab_node), state, toNode = null)
@@ -222,6 +227,19 @@ fun NodeScreen(repository: NodeRepository, state: NodeState, go: (NodePage) -> U
                     onClick = { turningOff = true },
                 )
             }
+            // WIPE is version 13's: a node of version 12 or earlier is not asked, and has no row for it.
+            if (canWipe(state)) {
+                GroupDivider()
+                SettingsRow(
+                    stringResource(R.string.wipe_node),
+                    icon = TernIcons.Trash, tint = MaterialTheme.colorScheme.error,
+                    titleColor = MaterialTheme.colorScheme.error,
+                    chevron = false,
+                    enabled = state.phase == Phase.READY && state.update !is FirmwareUpdate.Downloading &&
+                        state.update !is FirmwareUpdate.Sending && state.update !is FirmwareUpdate.Bootloader,
+                    onClick = { wiping = true },
+                )
+            }
             state.node?.let { node ->
                 GroupDivider()
                 SettingsRow(
@@ -251,6 +269,10 @@ fun NodeScreen(repository: NodeRepository, state: NodeState, go: (NodePage) -> U
     state.node?.takeIf { turningOff }?.let { node ->
         val report = rememberReport()
         TurnOffDialog(node, onDismiss = { turningOff = false }) { repository.turnOff(report) }
+    }
+    state.node?.takeIf { wiping }?.let { node ->
+        val report = rememberReport()
+        WipeDialog(node, onDismiss = { wiping = false }) { repository.wipe(report) }
     }
 }
 
@@ -461,7 +483,7 @@ fun NeighboursScreen(repository: NodeRepository, state: NodeState, back: () -> U
             val name = Conversations.nameOf(r, n.routingId)
             // Not a contact's: named by the card the node holds from it, as what it claims, if any.
             val card = if (name == null) Conversations.cardOf(r, n.routingId) else null
-            if (name == null && card == null && r.contacts.values.none { it.address.routingId == n.routingId }) unnamed = true
+            if (name == null && card == null && Conversations.contactOf(r, n.routingId) == null) unnamed = true
             val line = listOf(
                 stringResource(if (n.role == 1) R.string.role_relay_short else R.string.role_leaf_short),
                 stringResource(R.string.heard_ago, spanText(n.heard.toLong())),
@@ -470,7 +492,7 @@ fun NeighboursScreen(repository: NodeRepository, state: NodeState, back: () -> U
             PersonRow(
                 avatar = {
                     when {
-                        name != null -> Avatar(name, size = 40.dp, key = r.contacts.values.firstOrNull { it.address.routingId == n.routingId }?.address?.toString() ?: name)
+                        name != null -> Avatar(name, size = 40.dp, key = Conversations.contactOf(r, n.routingId)?.address?.toString() ?: name)
                         card != null -> Avatar(card.name, size = 40.dp, key = card.address.toString(), unknown = card.name.isEmpty())
                         else -> Avatar("", size = 40.dp, unknown = true)
                     }
@@ -750,6 +772,39 @@ fun canSendAtTheMost(state: NodeState) = (state.version ?: 0) >= 10
 /** Whether the node can be turned off from the app: `OFF` is version 9's. */
 fun canTurnOff(state: NodeState) = (state.version ?: 0) >= 9
 
+/** Whether the node can be erased from the app: `WIPE` is version 13's. */
+fun canWipe(state: NodeState) = (state.version ?: 0) >= 13
+
+/**
+ * Asks before erasing the node, and says first what the specification has a client say: its
+ * address, contacts, groups and messages go for good, and it must be paired again.
+ */
+@Composable
+private fun WipeDialog(node: ChosenNode, onDismiss: () -> Unit, wipe: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.wipe_node_title, node.shown ?: stringResource(R.string.unnamed_device))) },
+        text = { Text(stringResource(R.string.wipe_node_explained)) },
+        confirmButton = {
+            TextButton(onClick = { onDismiss(); wipe() }) {
+                Text(stringResource(R.string.wipe), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+/** Says the node was erased, once it has, and whether the user must still remove its pairing by hand. */
+@Composable
+fun WipedDialog(wiped: Wiped, dismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text(stringResource(R.string.wiped_title, wiped.name ?: stringResource(R.string.unnamed_device))) },
+        text = { Text(stringResource(if (wiped.bondRemoved) R.string.wiped_text else R.string.wiped_text_bond)) },
+        confirmButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.ok)) } },
+    )
+}
+
 /**
  * Asks before turning the node off, and says first what the specification has a client say: only
  * someone at the node can turn it on again.
@@ -872,12 +927,15 @@ private fun FirmwareUpdates(repository: NodeRepository, state: NodeState) {
                 u.image == null && region.isEmpty() -> Text(stringResource(R.string.update_no_region))
                 u.image == null -> Text(stringResource(R.string.update_no_image, u.release, board, region))
                 u.offer == Offer.CURRENT -> Text(stringResource(R.string.update_up_to_date, u.release))
+                // A release from before signing, to a node that takes only signed images over the link.
+                install(u.image.signed(), state.version, u.image.update) == Install.REFUSE ->
+                    Text(stringResource(R.string.update_unsigned, u.release))
                 else -> {
                     Text(stringResource(if (u.offer == Offer.NEWER) R.string.update_newer else R.string.update_unknown, u.release))
                     Button(onClick = { confirming = u }, enabled = ready) { Text(stringResource(R.string.update)) }
                 }
             }
-            if (u.image == null || u.offer == Offer.CURRENT) {
+            if (u.image == null || u.offer == Offer.CURRENT || install(u.image.signed(), state.version, u.image.update) == Install.REFUSE) {
                 TextButton(onClick = repository::checkForUpdate, enabled = ready) { Text(stringResource(R.string.update_check)) }
             }
         }
@@ -914,6 +972,7 @@ private fun FirmwareUpdates(repository: NodeRepository, state: NodeState) {
             ),
             repository::dismissUpdate,
         )
+        FirmwareUpdate.NotTrusted -> Ended(stringResource(R.string.update_not_trusted), repository::dismissUpdate)
         is FirmwareUpdate.Refused -> Ended(
             when (u.code) {
                 ErrorCode.NO_ROOM -> stringResource(R.string.update_no_room)
@@ -927,7 +986,7 @@ private fun FirmwareUpdates(repository: NodeRepository, state: NodeState) {
                 stringResource(
                     R.string.update_boot_sending, u.release, percent(u) ?: 0,
                     Formatter.formatFileSize(context, u.sent), Formatter.formatFileSize(context, u.size),
-                ),
+                ) + "\n\n" + stringResource(R.string.update_boot_window),
                 if (u.size > 0) u.sent.toFloat() / u.size else 0f,
                 // Stopped part of the way, the node would wait in its bootloader: it is not offered.
                 cancel = null,
@@ -942,7 +1001,7 @@ private fun FirmwareUpdates(repository: NodeRepository, state: NodeState) {
                             BootloaderStep.ERASING -> R.string.update_boot_erasing
                             else -> R.string.update_boot_checking
                         },
-                    ),
+                    ) + if (u.step == BootloaderStep.CHECKING) "" else "\n\n" + stringResource(R.string.update_boot_window),
                 )
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             }
@@ -967,6 +1026,7 @@ private fun FirmwareUpdates(repository: NodeRepository, state: NodeState) {
                     FirmwareFailure.CORRUPT -> R.string.update_corrupt
                     FirmwareFailure.UNSUPPORTED -> R.string.update_unsupported
                     FirmwareFailure.CHANGED -> R.string.update_changed
+                    FirmwareFailure.UNSIGNED -> R.string.update_unsigned_failed
                 },
             ),
             repository::dismissUpdate,
@@ -974,21 +1034,31 @@ private fun FirmwareUpdates(repository: NodeRepository, state: NodeState) {
     }
 
     confirming?.let { c ->
+        val signed = c.image?.signed()
+        // Not signed by a release key this app holds: said first, and installed only if asked again.
+        val warn = signed != null && install(signed, state.version, c.image.update) == Install.WARN
+        val bootloader = c.image?.update == UpdateBy.BOOTLOADER
         AlertDialog(
             onDismissRequest = { confirming = null },
-            title = { Text(stringResource(R.string.update_confirm_title, c.release)) },
+            title = { Text(stringResource(if (warn) R.string.update_warn_title else R.string.update_confirm_title, c.release)) },
             text = {
-                Text(
-                    stringResource(
-                        if (c.image?.update == UpdateBy.BOOTLOADER) R.string.update_confirm_text_bootloader else R.string.update_confirm_text,
-                    ),
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    when {
+                        warn && signed == Signed.UNSIGNED -> Text(stringResource(R.string.update_warn_unsigned, c.release), color = MaterialTheme.colorScheme.error)
+                        warn -> Text(stringResource(R.string.update_warn_not_verified, c.release), color = MaterialTheme.colorScheme.error)
+                        else -> Text(stringResource(R.string.update_signed))
+                    }
+                    Text(stringResource(if (bootloader) R.string.update_confirm_text_bootloader else R.string.update_confirm_text))
+                    if (bootloader) Text(stringResource(R.string.update_boot_window))
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
                     confirming = null
-                    c.image?.let { repository.startUpdate(c.release, it) }
-                }) { Text(stringResource(R.string.update)) }
+                    c.image?.let { repository.startUpdate(c.release, it, insisted = warn) }
+                }) {
+                    if (warn) Text(stringResource(R.string.update_anyway), color = MaterialTheme.colorScheme.error) else Text(stringResource(R.string.update))
+                }
             },
             dismissButton = { TextButton(onClick = { confirming = null }) { Text(stringResource(R.string.cancel)) } },
         )
