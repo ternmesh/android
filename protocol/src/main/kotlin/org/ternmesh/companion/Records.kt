@@ -46,6 +46,19 @@ class Records {
     var syncedVersion: Int? = null
 
     /**
+     * The version both ends spoke on the latest connection, null before one has opened: before then
+     * [syncedVersion] says how the node makes routing ids. Not kept on disk.
+     */
+    var speaking: Int? = null
+
+    /**
+     * The routing id the node knows [address] by, to match against a `NEIGHBOUR`'s, a group message's
+     * writer's or a group position's: blinded from a node of version 14 or later, as RoutingIds
+     * says. Null for an address that has none, which matches nothing.
+     */
+    fun routingIdOf(address: Address): Long? = RoutingIds.of(address, speaking ?: syncedVersion)
+
+    /**
      * The greatest `id` held when news was first missed, until a sync that asked again from it
      * finishes; null when nothing is missed. Kept with the records, not the connection: what was
      * lost may be below records received after it, in this run or the one before.
@@ -199,6 +212,7 @@ class Records {
         it.power = power
         it.fix = fix
         it.syncedVersion = syncedVersion
+        it.speaking = speaking
         it.missedSince = missedSince
     }
 

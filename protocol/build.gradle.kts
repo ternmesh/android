@@ -15,6 +15,9 @@ kotlin {
 }
 
 dependencies {
+    // Ed25519 verification, for a firmware image's signature (Signatures.kt). BouncyCastle's
+    // own: pure Java, so the same on the JVM the tests run on and on every Android the app does.
+    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }
@@ -25,4 +28,5 @@ tasks.test {
     System.getenv("TERN_COMPANION_VECTORS")?.let { systemProperty("tern.companion.vectors", it) }
     System.getenv("TERN_SHARING_VECTORS")?.let { systemProperty("tern.sharing.vectors", it) }
     System.getenv("TERN_GROUPS_VECTORS")?.let { systemProperty("tern.groups.vectors", it) }
+    System.getenv("TERN_ROUTING_VECTORS")?.let { systemProperty("tern.routing.vectors", it) }
 }

@@ -35,6 +35,7 @@ import org.ternmesh.companion.Body
 import org.ternmesh.companion.GroupId
 import org.ternmesh.companion.MessageState
 import org.ternmesh.companion.Records
+import org.ternmesh.companion.RoutingIds
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Locale
@@ -157,17 +158,17 @@ private object Sample {
             Body.Message(3, robin, today(8, 41), READ, MessageState.RECEIVED, 0, 0, "Kettle is on at the hut."),
             Body.Message(4, robin, today(8, 43), 0, MessageState.DELIVERED, 0, 0, "Perfect. Two of us, maybe three."),
             Body.Message(5, robin, today(8, 44), 0, MessageState.SENT, 0, 0, "Will share my position when we start down."),
-            Body.GroupMessage(6, ridge, robin.routingId, today(7, 30), READ, MessageState.RECEIVED, 0, 0, "Morning all. Clear skies above 1800 m."),
-            Body.GroupMessage(7, ridge, sam.routingId, today(7, 52), READ, MessageState.RECEIVED, 0, 0, "Hut has water and space for six tonight."),
+            Body.GroupMessage(6, ridge, RoutingIds.plain(robin), today(7, 30), READ, MessageState.RECEIVED, 0, 0, "Morning all. Clear skies above 1800 m."),
+            Body.GroupMessage(7, ridge, RoutingIds.plain(sam), today(7, 52), READ, MessageState.RECEIVED, 0, 0, "Hut has water and space for six tonight."),
             Body.GroupMessage(8, ridge, 0, today(8, 5), 0, MessageState.SENT, 0, 0, "Leaving the car park now."),
-            Body.GroupMessage(9, ridge, alex.routingId, today(9, 31), 0, MessageState.RECEIVED, 0, 0, "Wind is picking up on the east side."),
+            Body.GroupMessage(9, ridge, RoutingIds.plain(alex), today(9, 31), 0, MessageState.RECEIVED, 0, 0, "Wind is picking up on the east side."),
             Body.Message(10, sam, today(9, 2), 0, MessageState.RECEIVED, 0, 0, "Saved you two bunks."),
             Body.Position(robin, precision = 18, lat = 461_234_567, lon = 77_654_321, altitude = 2340, accuracy = 40, age = 900),
             Body.Sharing(robin, precision = 18, fields = 3, interval = 600, minutes = 90),
             Body.Card(kit, heard = 1260, name = "Kit · ridge hut"),
             Body.Card(crew, heard = 4080, name = "Trail crew"),
-            Body.Neighbour(sam.routingId, role = 1, snrQuarterDb = 38, heard = 14),
-            Body.Neighbour(kit.routingId, role = 0, snrQuarterDb = -26, heard = 95),
+            Body.Neighbour(RoutingIds.plain(sam), role = 1, snrQuarterDb = 38, heard = 14),
+            Body.Neighbour(RoutingIds.plain(kit), role = 0, snrQuarterDb = -26, heard = 95),
             Body.Airtime(period = 3600, allowed = 360_000, used = 18_400, wait = 0),
             Body.Power(millivolts = 3987, percent = 81, flags = 0),
         ).forEach(r::apply)

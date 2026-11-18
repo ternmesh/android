@@ -264,6 +264,7 @@ class Connection(
         when {
             kind == Kind.Hello && body is Body.Info -> {
                 nodeVersion = body.version
+                records.speaking = minOf(body.version, version)
                 firmware = body.firmware
                 board = body.board
                 release = body.release

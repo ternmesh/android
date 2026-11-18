@@ -23,7 +23,7 @@ class UpdaterTest {
     fun update() {
         val connections = vectors.getValue("update").jsonArray.map { c -> c.jsonArray.map { it.jsonObject } }
         val setTime = Codec.decode(connections[0].first { it.str("type") == "SET_TIME" }.bytes("frame")).body as Body.SetTime
-        val updater = Updater(image)
+        val updater = Updater(image, vectors.bytes("image_signature"))
         assertEquals(vectors.str("image_digest"), Hex.encode(updater.digest))
 
         val first = Played(Connection(now = { 0 }, wallTime = { setTime.time }), updater)
@@ -116,7 +116,7 @@ class UpdaterTest {
         assertEquals(172, updater.acknowledged)
 
         node.reconnect(updater)
-        assertEquals(listOf(Body.UpdateBegin(400, updater.digest)), listOf(node.serve()))
+        assertEquals(listOf(Body.UpdateBegin(400, updater.digest, vectors.bytes("image_signature"))), listOf(node.serve()))
         assertEquals(lost, node.peek(), "the same chunk again")
 
         // And the next chunk, taken by the node this time with its answer lost: not sent twice.
@@ -287,6 +287,62 @@ class BootloaderUpdaterTest {
 }
 
 /** A connection playing the client's half of the specification's frames, with [updater] handed it once the node answers `HELLO`. */
+/** Signed images (version 13): the signature goes in UPDATE_BEGIN only to a node that reads it, and a refusal ends the update before any byte is sent. */
+class SignedUpdateTest {
+    private val image = vectors.bytes("image")
+
+    @Test
+    fun aNodeOf13IsGivenTheSignatureAndOneOf12IsNot() {
+        val signature = vectors.bytes("image_signature")
+        val node = HandNode()
+        val updater = node.start(image, signature)
+        val begin = node.peek() as Body.UpdateBegin
+        assertContentEquals(signature, begin.signature)
+        node.serveAll()
+        assertEquals(UpdateState.Restarting, updater.state)
+
+        val old = HandNode(version = 12)
+        old.start(image, signature)
+        // As the vectors' client of version 12 builds it: size and digest, nothing after.
+        val sent = old.sent.first()
+        assertEquals(1 + 1 + 4 + 32, sent.size)
+        assertEquals(null, (Codec.decode(sent, 12).body as Body.UpdateBegin).signature, "a node of 12 has no such field")
+    }
+
+    @Test
+    fun anUnsignedImageGoesWithAnEmptySignatureAndIsRefused() {
+        val node = HandNode()
+        val updater = node.start(image, null)
+        assertContentEquals(ByteArray(0), (node.peek() as Body.UpdateBegin).signature)
+        node.serve()
+        assertEquals(UpdateState.NotTrusted, updater.state)
+        assertTrue(updater.isFinished)
+        assertEquals(0, node.sent.size, "nothing sent after the refusal")
+    }
+
+    @Test
+    fun anotherKeysSignatureIsRefusedAtTheBeginning() {
+        val other = vectors.list("signatures").first { it.str("why") == "by a key the node does not hold" }
+        val node = HandNode()
+        val updater = node.start(image, other.bytes("signature"))
+        node.serve()
+        assertEquals(UpdateState.NotTrusted, updater.state)
+    }
+
+    /** The specification's refusals, as the client reads them: each `UPDATE_BEGIN` refused with 11 at once. */
+    @Test
+    fun theRefusalsAreEleven() {
+        val frames = vectors.list("refusals")
+        for ((i, f) in frames.withIndex()) {
+            if (f.str("type") != "UPDATE_BEGIN") continue
+            val begin = Codec.decode(f.bytes("frame")).body as Body.UpdateBegin
+            val answer = Codec.decode(frames[i + 1].bytes("frame")).body
+            val wanted = Signatures.verifies(begin.digest, begin.signature, listOf(testKey))
+            if (!wanted) assertEquals(Body.Error(ErrorCode.NOT_AN_IMAGE), answer, f.str("frame"))
+        }
+    }
+}
+
 private class Played(val connection: Connection, updater: Updater) {
     val out = ArrayDeque<ByteArray>()
 
@@ -329,9 +385,9 @@ private class HandNode(val version: Int = Companion.VERSION) {
         serve() // SYNC
     }
 
-    /** Opens, greets, and hands [image]'s updater the connection once it is ready. */
-    fun start(image: ByteArray): Updater {
-        val updater = Updater(image)
+    /** Opens, greets, and hands [image]'s updater, with [signature], the connection once it is ready. */
+    fun start(image: ByteArray, signature: ByteArray? = vectors.bytes("image_signature")): Updater {
+        val updater = Updater(image, signature)
         connection.open()
         serve() // HELLO
         serve() // SYNC
@@ -367,7 +423,11 @@ private class HandNode(val version: Int = Companion.VERSION) {
         val answer = when (request) {
             is Body.Hello -> info(version, request.version)
             is Body.Sync -> Body.Synced(if (minOf(version, connection.version) >= 3) 0 else null)
-            is Body.UpdateBegin -> {
+            // A node of version 13 holds the test key as its one release key, and checks every
+            // UPDATE_BEGIN's signature, leaving an update under way alone if it refuses one.
+            is Body.UpdateBegin -> if (version >= 13 && !Signatures.verifies(request.digest, request.signature, listOf(testKey))) {
+                Body.Error(ErrorCode.NOT_AN_IMAGE)
+            } else {
                 if (request.size != size || !request.digest.contentEquals(digest)) {
                     size = request.size
                     digest = request.digest
@@ -398,3 +458,6 @@ private class HandNode(val version: Int = Companion.VERSION) {
     /** Serves until nothing is waiting; returns what was asked. */
     fun serveAll(): List<Body> = buildList { while (sent.isNotEmpty()) add(serve()) }
 }
+
+/** The specification's published test key: never one of the app's release keys. */
+internal val testKey: ByteArray get() = vectors.bytes("release_key")

@@ -53,6 +53,12 @@ sealed interface FirmwareUpdate {
     data class Refused(val code: Int) : FirmwareUpdate
 
     /**
+     * The node refused `UPDATE_BEGIN` with `ERROR` 11 (version 13): it takes only images signed by a
+     * release key it holds, and this one is not. Nothing was sent.
+     */
+    data object NotTrusted : FirmwareUpdate
+
+    /**
      * An update by the node's bootloader, at [step]; [sent] of [size] bytes of the image while
      * sending. The node is off the air and the app off its link until the bootloader starts the
      * image: then [Restarting].
@@ -116,6 +122,12 @@ enum class FirmwareFailure {
 
     /** The node's board or region is no longer the one the image was chosen for. */
     CHANGED,
+
+    /**
+     * The image is not signed, and the node takes only signed images over the link (version 13): a
+     * release from before signing, put on such a node over USB.
+     */
+    UNSIGNED,
 }
 
 internal object FirmwareDownload {

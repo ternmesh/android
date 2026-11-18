@@ -119,18 +119,21 @@ class ConnectionTest {
     /**
      * Clients of versions 3 and 4 are sent no position and no sharing, one of version 5 no card and
      * a `SELF` without the cards' fields, one of version 6 its card, one of version 7 no fix, and one
-     * of version 8 its fix, and one of version 11 no `update`. None sends the request, or the
+     * of version 8 its fix, and one of version 11 no `update`; one of version 12 is refused an unsigned
+     * update. None sends the request, or the
      * setting, its version does not define: it fails here, with nothing on the link.
      */
     @Test
     fun olderVersions3To8And11AndTheRequestEachMustNotSend() {
-        for (version in (3..8) + 11) {
+        for (version in (3..8) + 11 + 12) {
             val frames = vectors.list("older").first { it.int("version") == version }.list("frames")
             val link = Link(Connection(version = version, now = { 0 }, wallTime = null))
-            link.replay(frames.dropLast(2))
+            val answers = link.replay(frames.dropLast(2))
+            // Version 12's UPDATE_BEGIN carries no signature, and a node of 13 refuses it.
+            if (version == 12) assertEquals(Outcome.Refused(ErrorCode.NOT_AN_IMAGE), answers.last())
             assertEquals(version, link.connection.agreed)
             assertEquals(if (version >= 4) "heltec-v3" else null, link.connection.board)
-            assertEquals(null, link.connection.update)
+            assertEquals(if (version >= 12) UpdateBy.LINK else null, link.connection.update)
             assertEquals(1, link.events.count { it == ConnectionEvent.Synced })
             assertEquals(version, link.connection.records.syncedVersion)
             assertEquals(emptyMap(), link.connection.records.positions)
@@ -140,7 +143,7 @@ class ConnectionTest {
             assertEquals(version >= 6, link.connection.records.self?.cardName != null)
             assertEquals(version >= 8, link.connection.records.fix != null)
 
-            val refused = Codec.decode(frames[frames.size - 2].bytes("frame")).body
+            val refused = Codec.decode(frames[frames.size - 2].bytes("frame"), version + 1).body
             assertEquals(version + 1, refused.since)
             var result: Outcome? = null
             link.connection.submit(refused) { result = it }
@@ -201,7 +204,7 @@ class ConnectionTest {
         assertEquals(frames[0].str("frame"), Hex.encode(node.sent.removeFirst()))
         node.connection.receive(frames[1].bytes("frame"))
         assertEquals(UpdateBy.BOOTLOADER, node.connection.update)
-        assertEquals(ConnectionEvent.Ready(12, "tern 0.2.0 heltec-t114", "heltec-t114", "0.2.0", UpdateBy.BOOTLOADER), events.first())
+        assertEquals(ConnectionEvent.Ready(Companion.VERSION, "tern 0.2.0 heltec-t114", "heltec-t114", "0.2.0", UpdateBy.BOOTLOADER), events.first())
         node.answerAll() // SET_TIME and SYNC
 
         val outcomes = mutableListOf<Outcome>()
@@ -868,7 +871,7 @@ private class Link(val connection: Connection) {
         val answers = mutableListOf<Outcome>()
         connection.open()
         for (f in frames.filter { it.str("from") == "client" }) {
-            val body = Codec.decode(f.bytes("frame")).body
+            val body = Codec.decode(f.bytes("frame"), connection.version).body
             if (body is Body.Hello || body is Body.Sync || body is Body.SetTime) continue
             connection.submit(body) { answers += it }
         }

@@ -11,6 +11,11 @@
 //               {"board": "heltec-t114", "region": "US915", "file": "tern-heltec-t114-us915-0.2.0.zip",
 //                "size": 262144, "sha256": "<64 hex digits>", "update": "bootloader"}]}
 //
+// From the first signed release, each image also carries `signature`: its `.sig`, the 64 bytes of
+// the release key's Ed25519 signature over "TERN-FIRMWARE-V1" || SHA-256(file), as 128 hex digits
+// (the firmware's docs/signing.md). Releases from before signing have none, and are still offered,
+// with a warning, to nodes that do not check (Signatures.kt).
+//
 // An image's `update` says how it reaches a node: "link", over the companion protocol, or
 // "bootloader", a DFU package for the node's bootloader (Dfu.kt). Absent, it is "link", so a client
 // that never heard of bootloaders, and never sees a board from a node updated by one, is not
@@ -31,12 +36,20 @@ data class Manifest(val release: String, val images: List<Image>) {
         val size: Long,
         val sha256: String,
         val update: Int = UpdateBy.LINK,
+        /** The release key's signature of the file, 128 hex digits; null for a release from before signing. */
+        val signature: String? = null,
     ) {
         /** Where it is published. */
         val url: String get() = BASE + file
 
         /** The digest the bytes downloaded must have, and the node checks them against. */
         val digest: ByteArray get() = Hex.decode(sha256)!!
+
+        /** The signature's 64 bytes, or null for none. */
+        val signatureBytes: ByteArray? get() = signature?.let(Hex::decode)
+
+        /** Whether the image is signed by a release key: checked over [sha256], before anything is downloaded. */
+        fun signed(keys: List<ByteArray> = ReleaseKeys.keys): Signed = Signatures.check(digest, signatureBytes, keys)
     }
 
     /**
@@ -63,6 +76,7 @@ data class Manifest(val release: String, val images: List<Image>) {
         /** The largest image taken: more than any node's slot, and an array a phone can hold. */
         const val IMAGE_MAX = 16L * 1024 * 1024
         private val SHA256 = Regex("[0-9a-fA-F]{64}")
+        private val SIGNATURE = Regex("[0-9a-fA-F]{128}")
 
         /** Reads a manifest, or throws IllegalArgumentException if it is not one. */
         fun parse(text: String): Manifest {
@@ -81,7 +95,9 @@ data class Manifest(val release: String, val images: List<Image>) {
                     "bootloader" -> UpdateBy.BOOTLOADER
                     else -> return@mapNotNull null // a way this client does not know
                 }
-                Image(board, region, file, size, sha256, update)
+                // A signature that is not 128 hex digits is none at all, which is warned of as one.
+                val signature = (o["signature"] as? String)?.takeIf(SIGNATURE::matches)?.lowercase()
+                Image(board, region, file, size, sha256, update, signature)
             }
             return Manifest(release, images)
         }

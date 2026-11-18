@@ -41,6 +41,12 @@ sealed interface UpdateState {
     /** The node refused it with this code: 5 if it cannot be updated this way or has no room, 11 if the image is not one it runs. */
     data class Refused(val code: Int) : UpdateState
 
+    /**
+     * The node refused `UPDATE_BEGIN` with `ERROR` 11 (version 13): it takes only images signed by a
+     * release key it holds, and this one is not, or carries no signature. Nothing was sent.
+     */
+    data object NotTrusted : UpdateState
+
     /** It could not be asked: the node's version, or this client's, does not define updates. */
     data class Failed(val outcome: Outcome) : UpdateState
 
@@ -48,11 +54,17 @@ sealed interface UpdateState {
 }
 
 /**
- * Gives [image] to a node. Hand it a connection with resume(), and again after each new connection
- * opens; [onChange] says each step. Everything happens on the connection's thread.
+ * Gives [image] to a node, with its [signature], 64 bytes, or null for none. Hand it a connection
+ * with resume(), and again after each new connection opens; [onChange] says each step. Everything
+ * happens on the connection's thread.
+ *
+ * The signature goes in `UPDATE_BEGIN` only to a node of version 13 or later, which checks it; an
+ * earlier node's `UPDATE_BEGIN` has no such field. Whether to send an image at all, signed or not,
+ * is the caller's to decide first ([Signatures]).
  */
-class Updater(image: ByteArray) {
+class Updater(image: ByteArray, signature: ByteArray? = null) {
     private val image = image.copyOf()
+    private val signature = signature?.copyOf()
 
     val size: Long = image.size.toLong()
 
@@ -112,7 +124,9 @@ class Updater(image: ByteArray) {
 
     private fun begin() {
         set(UpdateState.Beginning)
-        request(Body.UpdateBegin(size, digest)) { outcome ->
+        val signed = (connection?.agreed ?: 0) >= SIGNED_SINCE
+        request(Body.UpdateBegin(size, digest, if (signed) signature ?: ByteArray(0) else null)) { outcome ->
+            if ((outcome as? Outcome.Refused)?.code == ErrorCode.NOT_AN_IMAGE) return@request set(UpdateState.NotTrusted)
             val offset = ((outcome as? Outcome.Answered)?.body as? Body.Updating)?.offset
             when {
                 offset != null && offset <= size -> {
@@ -178,6 +192,9 @@ class Updater(image: ByteArray) {
         onChange(this)
     }
 }
+
+/** The first version whose `UPDATE_BEGIN` carries a signature. */
+const val SIGNED_SINCE = 13
 
 /** How many `ERROR` 10s in a row, with no bytes taken between them, before an update is given up on. */
 private const val SENT_BACK = 3

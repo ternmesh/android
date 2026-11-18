@@ -49,7 +49,11 @@ object Conversations {
      * A group message's routing id is what its writer claimed: the name is who it claims to be.
      */
     fun nameOf(records: Records, routingId: Long): String? =
-        records.contacts.values.firstOrNull { it.address.routingId == routingId }?.name?.takeIf { it.isNotEmpty() }
+        contactOf(records, routingId)?.name?.takeIf { it.isNotEmpty() }
+
+    /** The contact whose address has [routingId], as the node makes routing ids, or null for none. */
+    fun contactOf(records: Records, routingId: Long): Body.Contact? =
+        records.contacts.values.firstOrNull { records.routingIdOf(it.address) == routingId }
 
     /**
      * The card held from the address that has [routingId], to name a neighbour no contact names: null
@@ -57,8 +61,8 @@ object Conversations {
      * null for no card; and null when two cards held have it, which cannot be told apart by it.
      */
     fun cardOf(records: Records, routingId: Long): Body.Card? {
-        if (records.contacts.values.any { it.address.routingId == routingId }) return null
-        return records.cards.values.filter { it.address.routingId == routingId }.singleOrNull()
+        if (contactOf(records, routingId) != null) return null
+        return records.cards.values.filter { records.routingIdOf(it.address) == routingId }.singleOrNull()
     }
 
     /** The first 8 hex digits, to tell addresses apart at a glance. Not a check that one is who it claims. */

@@ -21,7 +21,7 @@
     <!-- Where the link is -->
     <string name="phase_none">No node chosen</string>
     <string name="phase_connecting">Connecting…</string>
-    <string name="phase_pairing">Pairing: enter the PIN your node shows, or 123456 if it has no screen</string>
+    <string name="phase_pairing">Pairing: enter the PIN your node shows, or 123456 if it has no screen. A node with no screen pairs only within 3 minutes of being turned on or its button pressed.</string>
     <string name="phase_greeting">Saying hello…</string>
     <string name="phase_syncing">Catching up…</string>
     <string name="phase_ready">Connected</string>
@@ -33,7 +33,7 @@
     <string name="problem_bluetooth_off">Bluetooth is off.</string>
     <string name="problem_no_service">That device is not a Tern node, or its firmware is too old.</string>
     <string name="problem_mtu">The phone and node could not agree a large enough packet size (MTU).</string>
-    <string name="problem_pairing">Pairing failed. Check the PIN and try again. If the node was reset, remove it from Android\'s Bluetooth settings first.</string>
+    <string name="problem_pairing">Pairing failed. If the node shows a passkey on its screen, type that one. If not, it pairs only for 3 minutes after someone is at it: press the node\'s button, or turn it off and on (press RESET on a board with no button), then pair within 3 minutes. If the node was reset or erased, remove it from Android\'s Bluetooth settings first.</string>
     <string name="problem_lost">The link dropped. Waiting for the node to come back.</string>
     <string name="problem_gone">The node stopped answering. Reconnecting.</string>
     <string name="problem_refused">The node refused the connection: %1$s</string>
@@ -49,7 +49,7 @@
     <string name="error_8">the node is busy; try again shortly</string>
     <string name="error_9">the node is not in that group, or no longer holds that invite</string>
     <string name="error_10">the node is not where the update is</string>
-    <string name="error_11">that is not firmware this node runs</string>
+    <string name="error_11">that is not firmware this node runs, or not signed by a key it trusts</string>
     <string name="error_12">that is not one of the node\'s contacts</string>
     <string name="error_other">error %1$d</string>
 
@@ -104,6 +104,13 @@
     <string name="known_nearby">Nearby</string>
     <string name="nearby_nodes">Other nodes nearby</string>
     <string name="forget">Forget</string>
+    <string name="wipe_node">Erase this node</string>
+    <string name="wipe_node_title">Erase %1$s?</string>
+    <string name="wipe_node_explained">The node erases everything it holds and starts again as a new node. Its address goes for good: contacts who know it can no longer reach it, and they must add its new one. Its contacts, groups and messages go for good too, from the node and from this app, and so do its settings and passkey. You will have to pair with it again. This cannot be undone.</string>
+    <string name="wipe">Erase for good</string>
+    <string name="wiped_title">%1$s was erased</string>
+    <string name="wiped_text">The node starts again as a new one, with a new address. Tern forgot it, and this phone\'s Bluetooth pairing with it. To use it again, connect to it as a new node.</string>
+    <string name="wiped_text_bond">The node starts again as a new one, with a new address. Tern forgot it. Remove it from Android\'s Bluetooth settings too, before you pair with it again.</string>
     <string name="forget_node">Forget node</string>
     <string name="forget_node_title">Forget %1$s?</string>
     <string name="forget_node_explained">Tern disconnects and deletes the messages and contacts it saved from this node. They stay on the node, and come back if you connect to it again.</string>
@@ -303,6 +310,15 @@
     <string name="update_not_started">The node did not start %1$s, and went back to %2$s.</string>
     <string name="update_not_finished">The node still runs %2$s: the update to %1$s did not finish. Try again.</string>
     <string name="update_no_room">This node cannot be updated over Bluetooth. Flash it once over USB, at ternmesh.org/flash.</string>
+    <string name="update_not_trusted">The node refused the update: this firmware is not signed by a key the node trusts, so nothing was sent. Its firmware is unchanged.</string>
+    <string name="update_unsigned">Release %1$s was published before Tern\'s releases were signed, and your node takes only signed firmware over Bluetooth, so it cannot be installed from here. Flash it over USB at ternmesh.org/flash, or wait for the next release.</string>
+    <string name="update_unsigned_failed">This firmware is not signed, and your node takes only signed firmware over Bluetooth. Flash it over USB at ternmesh.org/flash.</string>
+    <string name="update_warn_unsigned">Release %1$s carries no signature, so Tern cannot tell that it is the firmware the Tern project published: anyone who could change the download could have changed it. Releases from before signing began have none. Install it only if you trust where it came from.</string>
+    <string name="update_warn_not_verified">Release %1$s is signed, but not by a key this app knows. It may not be the firmware the Tern project published, or this app may need updating first. Install it only if you trust where it came from.</string>
+    <string name="update_warn_title">Not signed by Tern</string>
+    <string name="update_anyway">Install anyway</string>
+    <string name="update_signed">Signed by the Tern project.</string>
+    <string name="update_boot_window">Until the update finishes, anyone in Bluetooth range could give the node\'s bootloader firmware of their own: it checks no signature. Stay near the node and let it finish.</string>
     <string name="update_not_an_image">That is not firmware this node runs, so the node discarded it.</string>
     <string name="update_refused">The node refused the update: %1$s</string>
     <string name="update_download_failed">Could not download the firmware. Check the phone\'s internet connection and try again.</string>

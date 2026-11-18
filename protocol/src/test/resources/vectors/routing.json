@@ -1,0 +1,5621 @@
+{
+  "description": "Routing, draft 0 (draft/routing.md). Routing ids, sequence numbers, promise codes and metrics are numbers; addresses and frames are hex. In floors, powers are dBm, snr_quarter_db is the signal-to-noise ratio in quarters of a decibel, as the SX126x reports it, and floor_sixteenths is the floor in sixteenths of a dBm. In links, own_margin_sixteenths is the node's full power less its floor for the neighbour, in sixteenths of a decibel, and their_margin is the margin byte the neighbour gave; either is null when it is missing, and the steps follow one another. In places, neighbours is a full table, each with the node's floor for it, whether its link is up and whether it is out of use, floor_sixteenths is the floor an announce from a node not in it gives, and replaces is an index into neighbours. In selection and kept, each route's metric is the one its neighbour announced, every link costs link_cost, and selected, selects and replaces are indexes into routes. In defaults, each neighbour's out_of_use says whether it is out of use, tried and next are indexes into neighbours, busy_ppm is the leaf's busy share in millionths, and metric is the default route's. In ids, blind is h as 32 bytes little-endian, key the routing key [h]A, and id the routing id, each at epoch 0; where seed is given, blinded_scalar is b and blinded_prefix the prefix its signatures are made with. No routing id is derived from an address in no_ids. Each announce is signed by the routing key of the address of seed, address, whose key is key, and carries the key in the frame if carries_key is true. A rejected frame MUST be discarded whether or not the receiver holds its sender's key. In verified, announce is an index into announces, held_key is the key the receiver holds for its sender (null for none), takes whether it takes the announce rather than discarding it, and holds_key the key it then holds for the sender, if the rest of the section then takes the announce from a neighbour. In listed, metric_field is a listed route's metric as it goes on the air, retracts whether it retracts the route, leaf and metric what it says otherwise (null for a retraction), and field what a node writes for them. In anchors, each of relays is a neighbour of a leaf, relay saying whether it is one, with whether its link is up, whether it is out of use, its link's margin in sixteenths of a decibel, the seconds since it was heard and its promise in seconds (null for none); sparse is whether the leaf solicits there, anchor an index into relays (null for none), and asks whether it asks after it on its SOLICIT_GAP. In answering, own_margin_sixteenths is the relay's full power less its floor for the leaf, asked whether the solicit asks after it, wait the most its answer waits in airtimes of the answer (null if it does not answer), and cancelled whether others' answers cancel it. In answered, asked is the relay the leaf asked after, its anchor when it asked, another or null for none; asked_heard and others_heard whether it heard from that relay and from any other in SOLICIT_WAIT; anchor_now whether its anchor now is the one it last re-attached to, another, or null for none; attached_before whether it has re-attached before; does is settled, again, waits, moved or reattaches. In leaves, relay is what the destination's own last announce said of its role (null if the node does not keep it as a neighbour), listed whether each route the node holds to it was listed as one to a leaf, selected an index into listed (null for none), was what the node took before, and leaf what it takes now. In selection and kept, a route whose usable is false goes through a neighbour the node may not use: its link is down or it is out of use. In powers, a node, a leaf or not, with the neighbours given, each with its floor and whether it is out of use, and with the lowest and full power given in dBm, sends a frame for every neighbour at power. In answered, relays are the leaf's relay neighbours, the one asked after first if any, each with whether its link is up, whether it was out of use, whether the leaf heard from it in SOLICIT_WAIT, and whether it is out of use after. In given_up, relays are a leaf's neighbours as in anchors, at the index of the one hops hops in a row are given up at, out_of_use_after whether each is then out of use, asks whether the leaf then asks, after the index it asks after (null for none) and anchored whether that was its anchor. In elsewhere, a node keeps a neighbour whose link is up or not, out of use or not and a relay or not, whose own last announce gave own_seq, and another neighbour offers a route to it at offered_seq, a retraction or not; out_of_use_after is whether the first is then out of use. In samples, a node, a leaf or not, keeps a neighbour, a relay or not, with floor_sixteenths, their_margin (0 for none) and its link up or not, and hears from it a solicit or an answer (an answer to me is one for this node) sent at power, heard at snr_quarter_db at SF9, with margin; its full power is full_power, and the floor, the margin and the link are then the ones after; a relay that answers a solicit answers with answer_margin at answer_power, both null where it does not answer. Where kept is false the node does not keep the sender, and takes nothing from the frame: it keeps no neighbour for it and answers nothing. out_of_use and out_of_use_after say whether the neighbour is out of use before and after: heard from, it is in use again. In answered, anchor_heard, where the leaf asked after a relay that was not its anchor, says whether it heard from the relay that was (null where there was none, or the anchor is the one asked after), and that relay is among relays; anchor_heard_first whether it heard that anchor in the first solicit of the pair, which the leaf keeps for the second as anchor_heard_first_after; each relay's heard_first says whether the leaf heard from it in the first solicit of the pair. In in_use_again, a node keeps a neighbour out of use and hears from it what heard says: an announce it takes, one it discards (as a copy, by its number), a frame the neighbour passed on, a solicit or an answer; out_of_use_after is whether it is then out of use.",
+  "generator": "vectors/tools/routing.py",
+  "ids": [
+    {
+      "address": "3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
+      "blind": "aee60205aab348a5979bfa92075cacccf693875825edf9ce6eac55b2fee48e07",
+      "key": "3cac296a1a10d6e48b5617609b8c60ad1d45bed83a2d05191f9c593c3baa85b9",
+      "id": 2355060531
+    },
+    {
+      "address": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "blind": "749434fb22067217258e07ca3b9eeb1e44e8d6008c1ee908e3ba1d5498a0b703",
+      "key": "df404b2bb36231649ed3bbea7be09ae207c7d799fabaaffd7852e31f1da7ab79",
+      "id": 1545353172
+    },
+    {
+      "address": "29e5833a915a6429a4e3a7948475c338ef436eb82be89c92f059704403db9d55",
+      "blind": "78aa42929f013dafbd6abfb9478c737cd09de848bd4a323c11f84ea041107904",
+      "key": "7181485df2ec81ba825a3b0dd092d4d54cba1daabb70075111a57a96846a0a95",
+      "id": 2538206572
+    },
+    {
+      "address": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+      "blind": "a9ec8b4da15be90ba1b60043feed45e655b45fd47ebc8f07315803d57449e409",
+      "key": "d08ba1f3b1d8eb75f47d972c21329de02f75ca84562017fd2640dc85c3ae521f",
+      "id": 1832418206
+    },
+    {
+      "seed": "67b665228d76c9f4d596e7f1ced6fe1b1bc7dfc77803a56b7da51179d13c4e24",
+      "address": "d6d15fabbc42ce56174a4363e757437a4a7baf421b690caa24676f3f4f17c996",
+      "blind": "54d880bb6b3567f7a66ef7e730dba14aabf30192bd90950416a1ba3801b38c01",
+      "key": "3325ffb41e75e0776c2ddbab9ec08c9bf45f7112078e0a772f06e9736db335d2",
+      "id": 3019831007,
+      "blinded_scalar": "f225efc6ac7e64fde96bb98be58ddffcd241203f767f957a1e28fe00e345a80b",
+      "blinded_prefix": "53d7a4784646c2824b276cd3587744aca668ffd1901282af8318c61a8eef6248"
+    },
+    {
+      "seed": "e504638ece856468a5fa2dcde22d6488b01e18f5d4b37389fe568b5dee00e4a3",
+      "address": "19dd846009f5b0274b07bc4347a3635a3fee4464f2720f79e233f38ce8f95108",
+      "blind": "4dd7106b2e4e6389425e2515c0fcd1bae7d0042c51226a8626e29a6581ca8f04",
+      "key": "c3ae3d804dfe75931870942786549e1c83ed082af55f8403d91c05fc9250b609",
+      "id": 2922406531,
+      "blinded_scalar": "186871fe727425c36bd04ff2a8e9d876b8c6870ffdde9ef043aa850e67a0040d",
+      "blinded_prefix": "de5e34e5f95c891578df2006cff61793d986c67c6b2cf32cef851695acea6327"
+    },
+    {
+      "seed": "c5bf3d9f0a38850460f4972f3e1c8b2feaed0a33c2d0a748de217bc947e64856",
+      "address": "dfc0ccb9e5961a0350bbb875ccce76e6947e7ad64643b3796d07f27e09a6f054",
+      "blind": "6c4893472fe4a560c77bac899d06db0a33617cf6baa40c7d27922eb28ffc450a",
+      "key": "644d03e9d416c932469fdb2d20efeb0add707c906243cdc52c945dc07da8b5dd",
+      "id": 3436257972,
+      "blinded_scalar": "91ef8fc27515c53eda4bf0fb2f3e898193e846e665e686753e741762be66d806",
+      "blinded_prefix": "3970f8f47cf998cb6fb6250ae8123dd272a6925ec97176a68f11c5b822de87ba"
+    }
+  ],
+  "no_ids": [
+    {
+      "why": "the neutral element",
+      "address": "0100000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "why": "a point of order 8",
+      "address": "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05"
+    },
+    {
+      "why": "an address plus a point of order 8",
+      "address": "a38f33bce1db848db94f41dfe0805a1d7babadacc49ca08425c6c978efa92834"
+    },
+    {
+      "why": "no point: no x has this y",
+      "address": "0200000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "newer": [
+    {
+      "a": 1,
+      "b": 0,
+      "newer": true
+    },
+    {
+      "a": 0,
+      "b": 1,
+      "newer": false
+    },
+    {
+      "a": 0,
+      "b": 0,
+      "newer": false
+    },
+    {
+      "a": 0,
+      "b": 65535,
+      "newer": true
+    },
+    {
+      "a": 65535,
+      "b": 0,
+      "newer": false
+    },
+    {
+      "a": 32767,
+      "b": 0,
+      "newer": true
+    },
+    {
+      "a": 32768,
+      "b": 0,
+      "newer": false
+    },
+    {
+      "a": 32768,
+      "b": 1,
+      "newer": true
+    },
+    {
+      "a": 5,
+      "b": 32774,
+      "newer": true
+    },
+    {
+      "a": 5,
+      "b": 32773,
+      "newer": false
+    }
+  ],
+  "promises": [
+    {
+      "seconds": 1,
+      "code": 1,
+      "read_seconds": 1
+    },
+    {
+      "seconds": 600,
+      "code": 600,
+      "read_seconds": 600
+    },
+    {
+      "seconds": 32767,
+      "code": 32767,
+      "read_seconds": 32767
+    },
+    {
+      "seconds": 32768,
+      "code": 33315,
+      "read_seconds": 32820
+    },
+    {
+      "seconds": 32820,
+      "code": 33315,
+      "read_seconds": 32820
+    },
+    {
+      "seconds": 32821,
+      "code": 33316,
+      "read_seconds": 32880
+    },
+    {
+      "seconds": 40000,
+      "code": 33435,
+      "read_seconds": 40020
+    },
+    {
+      "seconds": 1965960,
+      "code": 65534,
+      "read_seconds": 1965960
+    },
+    {
+      "seconds": 1965961,
+      "code": 65535,
+      "read_seconds": null
+    },
+    {
+      "seconds": 4000000,
+      "code": 65535,
+      "read_seconds": null
+    }
+  ],
+  "announces": [
+    {
+      "sender": 3019831007,
+      "number": 65535,
+      "seq": 0,
+      "relay": false,
+      "starting": true,
+      "carries_key": true,
+      "promise": 600,
+      "round": 0,
+      "power": 22,
+      "neighbours": [],
+      "routes": [],
+      "seed": "67b665228d76c9f4d596e7f1ced6fe1b1bc7dfc77803a56b7da51179d13c4e24",
+      "address": "d6d15fabbc42ce56174a4363e757437a4a7baf421b690caa24676f3f4f17c996",
+      "key": "3325ffb41e75e0776c2ddbab9ec08c9bf45f7112078e0a772f06e9736db335d2",
+      "frame": "59b3fef6dfffff000006025800001600003325ffb41e75e0776c2ddbab9ec08c9bf45f7112078e0a772f06e9736db335d2cac0730ea9368825efeba99433a65a32efd55ec874aa646412cbc01ac7a4908713c9a0d21bfa9a5662ff122cc9dbee3c8edfb0d24a541be5138f9d177419110e"
+    },
+    {
+      "sender": 2922406531,
+      "number": 258,
+      "seq": 32769,
+      "relay": true,
+      "starting": false,
+      "carries_key": false,
+      "promise": 33435,
+      "round": 2,
+      "power": -9,
+      "neighbours": [
+        {
+          "id": 2355060531,
+          "margin": 128
+        },
+        {
+          "id": 2538206572,
+          "margin": 255
+        }
+      ],
+      "routes": [
+        {
+          "destination": 2538206572,
+          "seq": 7,
+          "metric": 54
+        },
+        {
+          "destination": 1832418206,
+          "seq": 65534,
+          "metric": 65535
+        }
+      ],
+      "seed": "e504638ece856468a5fa2dcde22d6488b01e18f5d4b37389fe568b5dee00e4a3",
+      "address": "19dd846009f5b0274b07bc4347a3635a3fee4464f2720f79e233f38ce8f95108",
+      "key": "c3ae3d804dfe75931870942786549e1c83ed082af55f8403d91c05fc9250b609",
+      "frame": "59ae3062830102800101829b0002f702028c5f5f33809749f56cff9749f56c000700366d387b9efffeffff7b8fef44a32da42b6cd479fcb670772557393c9534344d7d5cbb833cd1751dd06797d73d63475506a4f5b457941fad5bd455e850ccf0d2a3b027a905902c5304"
+    },
+    {
+      "sender": 3436257972,
+      "number": 5,
+      "seq": 9,
+      "relay": true,
+      "starting": false,
+      "carries_key": false,
+      "promise": 65535,
+      "round": 1,
+      "power": 2,
+      "neighbours": [],
+      "routes": [
+        {
+          "destination": 65537,
+          "seq": 1,
+          "metric": 54
+        },
+        {
+          "destination": 65538,
+          "seq": 2,
+          "metric": 108
+        },
+        {
+          "destination": 65539,
+          "seq": 3,
+          "metric": 162
+        },
+        {
+          "destination": 65540,
+          "seq": 4,
+          "metric": 216
+        },
+        {
+          "destination": 65541,
+          "seq": 5,
+          "metric": 270
+        },
+        {
+          "destination": 65542,
+          "seq": 6,
+          "metric": 324
+        },
+        {
+          "destination": 65543,
+          "seq": 7,
+          "metric": 378
+        },
+        {
+          "destination": 65544,
+          "seq": 8,
+          "metric": 432
+        },
+        {
+          "destination": 65545,
+          "seq": 9,
+          "metric": 486
+        },
+        {
+          "destination": 65546,
+          "seq": 10,
+          "metric": 540
+        },
+        {
+          "destination": 65547,
+          "seq": 11,
+          "metric": 594
+        },
+        {
+          "destination": 65548,
+          "seq": 12,
+          "metric": 648
+        },
+        {
+          "destination": 65549,
+          "seq": 13,
+          "metric": 702
+        },
+        {
+          "destination": 65550,
+          "seq": 14,
+          "metric": 756
+        },
+        {
+          "destination": 65551,
+          "seq": 15,
+          "metric": 810
+        },
+        {
+          "destination": 65552,
+          "seq": 16,
+          "metric": 864
+        },
+        {
+          "destination": 65553,
+          "seq": 17,
+          "metric": 918
+        },
+        {
+          "destination": 65554,
+          "seq": 18,
+          "metric": 972
+        },
+        {
+          "destination": 65555,
+          "seq": 19,
+          "metric": 1026
+        },
+        {
+          "destination": 65556,
+          "seq": 20,
+          "metric": 1080
+        },
+        {
+          "destination": 65557,
+          "seq": 21,
+          "metric": 1134
+        }
+      ],
+      "seed": "c5bf3d9f0a38850460f4972f3e1c8b2feaed0a33c2d0a748de217bc947e64856",
+      "address": "dfc0ccb9e5961a0350bbb875ccce76e6947e7ad64643b3796d07f27e09a6f054",
+      "key": "644d03e9d416c932469fdb2d20efeb0add707c906243cdc52c945dc07da8b5dd",
+      "frame": "59ccd122b40005000901ffff00010200150001000100010036000100020002006c00010003000300a200010004000400d8000100050005010e0001000600060144000100070007017a00010008000801b000010009000901e60001000a000a021c0001000b000b02520001000c000c02880001000d000d02be0001000e000e02f40001000f000f032a0001001000100360000100110011039600010012001203cc00010013001304020001001400140438000100150015046eab497226272f3a17d6a0b89f8175d41f2a1556ee2984f8c86e6876be84b8c3beecff5733030853229ab295f55c6b69a3ce51e4a7c765556599570f2bd5e0860a"
+    },
+    {
+      "sender": 2922406531,
+      "number": 259,
+      "seq": 32769,
+      "relay": true,
+      "starting": false,
+      "carries_key": true,
+      "promise": 600,
+      "round": 1,
+      "power": 14,
+      "neighbours": [
+        {
+          "id": 2355060531,
+          "margin": 130
+        }
+      ],
+      "routes": [
+        {
+          "destination": 2538206572,
+          "seq": 7,
+          "metric": 54
+        }
+      ],
+      "seed": "e504638ece856468a5fa2dcde22d6488b01e18f5d4b37389fe568b5dee00e4a3",
+      "address": "19dd846009f5b0274b07bc4347a3635a3fee4464f2720f79e233f38ce8f95108",
+      "key": "c3ae3d804dfe75931870942786549e1c83ed082af55f8403d91c05fc9250b609",
+      "frame": "59ae3062830103800105025800010e0101c3ae3d804dfe75931870942786549e1c83ed082af55f8403d91c05fc9250b6098c5f5f33829749f56c00070036427787ae5ae0d06712aa292fcc40584da7176b85bf5aa86115129bb51f1e95f88807773bb2175216617f701bba9e2bd179a4053a71e10c9fd0ee894b6e789500"
+    },
+    {
+      "sender": 3436257972,
+      "number": 6,
+      "seq": 9,
+      "relay": true,
+      "starting": false,
+      "carries_key": false,
+      "promise": 600,
+      "round": 1,
+      "power": 8,
+      "neighbours": [],
+      "routes": [
+        {
+          "destination": 2355060531,
+          "seq": 256,
+          "metric": 32822
+        },
+        {
+          "destination": 1832418206,
+          "seq": 3,
+          "metric": 32766
+        },
+        {
+          "destination": 1545353172,
+          "seq": 4,
+          "metric": 65535
+        }
+      ],
+      "seed": "c5bf3d9f0a38850460f4972f3e1c8b2feaed0a33c2d0a748de217bc947e64856",
+      "address": "dfc0ccb9e5961a0350bbb875ccce76e6947e7ad64643b3796d07f27e09a6f054",
+      "key": "644d03e9d416c932469fdb2d20efeb0add707c906243cdc52c945dc07da8b5dd",
+      "frame": "59ccd122b40006000901025800010800038c5f5f33010080366d387b9e00037ffe5c1c37d40004ffff0f0837f9e369ccc1f7c9f6258b7dcbf714646feee18004da3075a11a48ea7e7af0a2c6f499ea046384e6b436613a7f807c25fd4d37ec4c441b3907a942da4c01"
+    }
+  ],
+  "requests": [
+    {
+      "next": 4294967295,
+      "requests": [
+        {
+          "destination": 1832418206,
+          "seq": 0,
+          "hops": 0
+        }
+      ],
+      "frame": "5affffffff016d387b9e000000"
+    },
+    {
+      "next": 1545353172,
+      "requests": [
+        {
+          "destination": 2538206572,
+          "seq": 8,
+          "hops": 32
+        },
+        {
+          "destination": 1832418206,
+          "seq": 65535,
+          "hops": 1
+        }
+      ],
+      "frame": "5a5c1c37d4029749f56c0008206d387b9effff01"
+    }
+  ],
+  "solicits": [
+    {
+      "sender": 2355060531,
+      "id": 0,
+      "after": 1545353172,
+      "power": 22,
+      "frame": "5b8c5f5f3300005c1c37d416"
+    },
+    {
+      "sender": 1832418206,
+      "id": 65535,
+      "after": 4294967295,
+      "power": -9,
+      "frame": "5b6d387b9efffffffffffff7"
+    }
+  ],
+  "answers": [
+    {
+      "sender": 1545353172,
+      "leaf": 2355060531,
+      "id": 0,
+      "margin": 128,
+      "power": 14,
+      "frame": "5c5c1c37d48c5f5f330000800e"
+    },
+    {
+      "sender": 2538206572,
+      "leaf": 1832418206,
+      "id": 65535,
+      "margin": 1,
+      "power": -9,
+      "frame": "5c9749f56c6d387b9effff01f7"
+    }
+  ],
+  "rejected": [
+    {
+      "why": "an announce a byte short",
+      "frame": "59ae3062830102800101829b0002f702028c5f5f33809749f56cff9749f56c000700366d387b9efffeffff7b8fef44a32da42b6cd479fcb670772557393c9534344d7d5cbb833cd1751dd06797d73d63475506a4f5b457941fad5bd455e850ccf0d2a3b027a905902c53"
+    },
+    {
+      "why": "an announce a byte long",
+      "frame": "59ae3062830102800101829b0002f702028c5f5f33809749f56cff9749f56c000700366d387b9efffeffff7b8fef44a32da42b6cd479fcb670772557393c9534344d7d5cbb833cd1751dd06797d73d63475506a4f5b457941fad5bd455e850ccf0d2a3b027a905902c530400"
+    },
+    {
+      "why": "an announce shorter than its head and signature",
+      "frame": "59ae3062830102800101829b0002f702028c5f5f33809749f56cff9749f56c000700366d387b9efffeffff7b8fef44a32da42b6cd479fcb670772557393c9534344d7d5cbb833cd1751dd06797d73d63"
+    },
+    {
+      "why": "an announce with an unknown flag",
+      "frame": "59ae3062830102800109829b0002f702028c5f5f33809749f56cff9749f56c000700366d387b9efffeffff7b8fef44a32da42b6cd479fcb670772557393c9534344d7d5cbb833cd1751dd06797d73d63475506a4f5b457941fad5bd455e850ccf0d2a3b027a905902c5304"
+    },
+    {
+      "why": "an announce from routing id 0",
+      "frame": "59000000000102800101829b0002f702028c5f5f33809749f56cff9749f56c000700366d387b9efffeffff7b8fef44a32da42b6cd479fcb670772557393c9534344d7d5cbb833cd1751dd06797d73d63475506a4f5b457941fad5bd455e850ccf0d2a3b027a905902c5304"
+    },
+    {
+      "why": "an announce from routing id ffffffff",
+      "frame": "59ffffffff0102800101829b0002f702028c5f5f33809749f56cff9749f56c000700366d387b9efffeffff7b8fef44a32da42b6cd479fcb670772557393c9534344d7d5cbb833cd1751dd06797d73d63475506a4f5b457941fad5bd455e850ccf0d2a3b027a905902c5304"
+    },
+    {
+      "why": "an announce from the receiver's own routing id",
+      "frame": "596d387b9effff000002025800001600002d412a498ab5744b05db94151a74d2f383d1a64c74006f05d2ed083453ef982b830e7cc61bf027894cc4ab23f234b323f7369d91a884677e6b054026ebeef70f"
+    },
+    {
+      "why": "an announce whose signature is not its sender's",
+      "frame": "59ae3062830102800101829b0002f702028c5f5f33809749f56cff9749f56c000700366d387b9efffeffff7b8fef44a32da42b6cd479fcb670772557393c9534344d7d5cbb833cd1751dd06797d73d63475506a4f5b457941fad5bd455e850ccf0d2a3b027a905902c5305"
+    },
+    {
+      "why": "an announce changed after it was signed",
+      "frame": "59ae3062830102800101829b0002f602028c5f5f33809749f56cff9749f56c000700366d387b9efffeffff7b8fef44a32da42b6cd479fcb670772557393c9534344d7d5cbb833cd1751dd06797d73d63475506a4f5b457941fad5bd455e850ccf0d2a3b027a905902c5304"
+    },
+    {
+      "why": "an announce carrying a key of small order",
+      "frame": "59245d720a0103800105025800010e010126e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc058c5f5f33829749f56c00070036189ea1d8a80eea04b0251dda7328fed95814e26057665377a836d75130065be0a75feeb1a15290ae86542668163009cf1f3203b5621c4f4989923d8acdd22004"
+    },
+    {
+      "why": "an announce carrying a key not its sender's",
+      "frame": "59b3fef6df0103800105025800010e0101c3ae3d804dfe75931870942786549e1c83ed082af55f8403d91c05fc9250b6098c5f5f33829749f56c00070036f330759dd0cd5fed0ecbcf0494860666071f52692b469485638f40ff1684fb0373d2a8030a79ea9961fc166618c19c71e203ec6e85fc497a13ca72e44aa97b03"
+    },
+    {
+      "why": "a request a byte short",
+      "frame": "5a5c1c37d4029749f56c0008206d387b9effff"
+    },
+    {
+      "why": "a request a byte long",
+      "frame": "5a5c1c37d4029749f56c0008206d387b9effff0100"
+    },
+    {
+      "why": "a request with nothing in it",
+      "frame": "5a5c1c37d400"
+    },
+    {
+      "why": "a solicit a byte short",
+      "frame": "5b8c5f5f3300015c1c37d4"
+    },
+    {
+      "why": "a solicit a byte long",
+      "frame": "5b8c5f5f3300015c1c37d41600"
+    },
+    {
+      "why": "a solicit from routing id 0",
+      "frame": "5b0000000000015c1c37d416"
+    },
+    {
+      "why": "a solicit from the receiver's own routing id",
+      "frame": "5b6d387b9e00015c1c37d416"
+    },
+    {
+      "why": "an answer a byte short",
+      "frame": "5c5c1c37d48c5f5f3300018c"
+    },
+    {
+      "why": "an answer a byte long",
+      "frame": "5c5c1c37d48c5f5f3300018c1600"
+    },
+    {
+      "why": "an answer from routing id ffffffff",
+      "frame": "5cffffffff8c5f5f3300018c16"
+    }
+  ],
+  "verified": [
+    {
+      "announce": 3,
+      "held_key": null,
+      "takes": true,
+      "holds_key": "c3ae3d804dfe75931870942786549e1c83ed082af55f8403d91c05fc9250b609"
+    },
+    {
+      "announce": 3,
+      "held_key": "c3ae3d804dfe75931870942786549e1c83ed082af55f8403d91c05fc9250b609",
+      "takes": true,
+      "holds_key": "c3ae3d804dfe75931870942786549e1c83ed082af55f8403d91c05fc9250b609"
+    },
+    {
+      "announce": 1,
+      "held_key": "c3ae3d804dfe75931870942786549e1c83ed082af55f8403d91c05fc9250b609",
+      "takes": true,
+      "holds_key": "c3ae3d804dfe75931870942786549e1c83ed082af55f8403d91c05fc9250b609"
+    },
+    {
+      "announce": 1,
+      "held_key": null,
+      "takes": false,
+      "holds_key": null
+    },
+    {
+      "announce": 1,
+      "held_key": "644d03e9d416c932469fdb2d20efeb0add707c906243cdc52c945dc07da8b5dd",
+      "takes": false,
+      "holds_key": "644d03e9d416c932469fdb2d20efeb0add707c906243cdc52c945dc07da8b5dd"
+    },
+    {
+      "announce": 0,
+      "held_key": null,
+      "takes": true,
+      "holds_key": "3325ffb41e75e0776c2ddbab9ec08c9bf45f7112078e0a772f06e9736db335d2"
+    }
+  ],
+  "floors": [
+    {
+      "spreading_factor": 9,
+      "full_power": 22,
+      "heard": [
+        {
+          "power": 2,
+          "snr_quarter_db": 46,
+          "floor_sixteenths": -352,
+          "margin": 172
+        },
+        {
+          "power": 2,
+          "snr_quarter_db": 44,
+          "floor_sixteenths": -350,
+          "margin": 171
+        },
+        {
+          "power": 2,
+          "snr_quarter_db": -40,
+          "floor_sixteenths": -265,
+          "margin": 166
+        },
+        {
+          "power": -9,
+          "snr_quarter_db": -50,
+          "floor_sixteenths": -235,
+          "margin": 164
+        },
+        {
+          "power": 22,
+          "snr_quarter_db": 20,
+          "floor_sixteenths": -159,
+          "margin": 159
+        }
+      ]
+    },
+    {
+      "spreading_factor": 7,
+      "full_power": 14,
+      "heard": [
+        {
+          "power": 14,
+          "snr_quarter_db": -30,
+          "floor_sixteenths": 224,
+          "margin": 128
+        },
+        {
+          "power": 14,
+          "snr_quarter_db": -29,
+          "floor_sixteenths": 223,
+          "margin": 128
+        },
+        {
+          "power": 14,
+          "snr_quarter_db": -31,
+          "floor_sixteenths": 224,
+          "margin": 128
+        },
+        {
+          "power": 14,
+          "snr_quarter_db": -27,
+          "floor_sixteenths": 221,
+          "margin": 128
+        },
+        {
+          "power": 10,
+          "snr_quarter_db": 40,
+          "floor_sixteenths": 135,
+          "margin": 133
+        }
+      ]
+    },
+    {
+      "spreading_factor": 9,
+      "full_power": -9,
+      "heard": [
+        {
+          "power": 22,
+          "snr_quarter_db": -50,
+          "floor_sixteenths": 352,
+          "margin": 97
+        },
+        {
+          "power": 22,
+          "snr_quarter_db": 127,
+          "floor_sixteenths": 175,
+          "margin": 108
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "own_margin_sixteenths": null,
+      "their_margin": 140,
+      "up": false
+    },
+    {
+      "own_margin_sixteenths": 160,
+      "their_margin": null,
+      "up": false
+    },
+    {
+      "own_margin_sixteenths": -1,
+      "their_margin": 140,
+      "up": false
+    },
+    {
+      "own_margin_sixteenths": 160,
+      "their_margin": 127,
+      "up": false
+    },
+    {
+      "own_margin_sixteenths": 0,
+      "their_margin": 128,
+      "up": true
+    },
+    {
+      "own_margin_sixteenths": -48,
+      "their_margin": 140,
+      "up": true
+    },
+    {
+      "own_margin_sixteenths": 160,
+      "their_margin": 125,
+      "up": true
+    },
+    {
+      "own_margin_sixteenths": -49,
+      "their_margin": 140,
+      "up": false
+    },
+    {
+      "own_margin_sixteenths": -16,
+      "their_margin": 127,
+      "up": false
+    },
+    {
+      "own_margin_sixteenths": 0,
+      "their_margin": 200,
+      "up": true
+    },
+    {
+      "own_margin_sixteenths": 320,
+      "their_margin": null,
+      "up": false
+    },
+    {
+      "own_margin_sixteenths": 320,
+      "their_margin": 128,
+      "up": true
+    }
+  ],
+  "named": [
+    {
+      "named": 10,
+      "number": 10,
+      "round": 1,
+      "withdrawn": false
+    },
+    {
+      "named": 10,
+      "number": 18,
+      "round": 1,
+      "withdrawn": false
+    },
+    {
+      "named": 10,
+      "number": 19,
+      "round": 1,
+      "withdrawn": true
+    },
+    {
+      "named": 10,
+      "number": 18,
+      "round": 0,
+      "withdrawn": false
+    },
+    {
+      "named": 10,
+      "number": 19,
+      "round": 0,
+      "withdrawn": true
+    },
+    {
+      "named": 65532,
+      "number": 4,
+      "round": 1,
+      "withdrawn": false
+    },
+    {
+      "named": 65532,
+      "number": 5,
+      "round": 1,
+      "withdrawn": true
+    },
+    {
+      "named": 100,
+      "number": 124,
+      "round": 3,
+      "withdrawn": false
+    },
+    {
+      "named": 100,
+      "number": 125,
+      "round": 3,
+      "withdrawn": true
+    },
+    {
+      "named": 0,
+      "number": 32766,
+      "round": 32767,
+      "withdrawn": false
+    },
+    {
+      "named": 0,
+      "number": 32767,
+      "round": 32767,
+      "withdrawn": true
+    },
+    {
+      "named": 0,
+      "number": 32768,
+      "round": 32767,
+      "withdrawn": true
+    }
+  ],
+  "places": [
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -400,
+          "up": false,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": -176,
+      "replaces": 1
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -400,
+          "up": false,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": -175,
+      "replaces": null
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -400,
+          "up": false,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": -600,
+      "replaces": 1
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -400,
+          "up": false,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": 0,
+      "replaces": null
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -400,
+          "up": false,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": -296,
+      "replaces": 2
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -400,
+          "up": false,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": -295,
+      "replaces": null
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -400,
+          "up": false,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": -176,
+      "replaces": null
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -400,
+          "up": true,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": -2000,
+      "replaces": null
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": 100,
+          "up": false,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": 4,
+      "replaces": 0
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": 100,
+          "up": false,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": 5,
+      "replaces": null
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -400,
+          "up": false,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": 0,
+      "replaces": 0
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": true,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": -400,
+          "up": true,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": -2000,
+      "replaces": 2
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": false,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -400,
+          "up": false,
+          "out_of_use": false
+        }
+      ],
+      "floor_sixteenths": -600,
+      "replaces": 1
+    }
+  ],
+  "numbering": [
+    {
+      "last": 10,
+      "number": 11,
+      "starting": false,
+      "was_starting": false,
+      "does": "take"
+    },
+    {
+      "last": 10,
+      "number": 10,
+      "starting": false,
+      "was_starting": false,
+      "does": "discard"
+    },
+    {
+      "last": 10,
+      "number": 9,
+      "starting": false,
+      "was_starting": false,
+      "does": "discard"
+    },
+    {
+      "last": 10,
+      "number": 11,
+      "starting": true,
+      "was_starting": false,
+      "does": "again"
+    },
+    {
+      "last": 10,
+      "number": 9,
+      "starting": true,
+      "was_starting": false,
+      "does": "discard"
+    },
+    {
+      "last": 10,
+      "number": 10,
+      "starting": true,
+      "was_starting": false,
+      "does": "discard"
+    },
+    {
+      "last": 10,
+      "number": 11,
+      "starting": true,
+      "was_starting": true,
+      "does": "take"
+    },
+    {
+      "last": 10,
+      "number": 9,
+      "starting": true,
+      "was_starting": true,
+      "does": "discard"
+    },
+    {
+      "last": 10,
+      "number": 11,
+      "starting": false,
+      "was_starting": true,
+      "does": "take"
+    },
+    {
+      "last": 65535,
+      "number": 0,
+      "starting": false,
+      "was_starting": false,
+      "does": "take"
+    },
+    {
+      "last": 0,
+      "number": 32767,
+      "starting": false,
+      "was_starting": false,
+      "does": "take"
+    },
+    {
+      "last": 0,
+      "number": 32768,
+      "starting": false,
+      "was_starting": false,
+      "does": "discard"
+    },
+    {
+      "last": 0,
+      "number": 32768,
+      "starting": true,
+      "was_starting": false,
+      "does": "discard"
+    }
+  ],
+  "costs": [
+    {
+      "profile": "US915",
+      "link_cost": 70
+    },
+    {
+      "profile": "EU868",
+      "link_cost": 81
+    },
+    {
+      "profile": "AU915",
+      "link_cost": 70
+    },
+    {
+      "profile": "NZ915",
+      "link_cost": 70
+    },
+    {
+      "profile": "CL915",
+      "link_cost": 70
+    },
+    {
+      "profile": "MY919",
+      "link_cost": 70
+    },
+    {
+      "profile": "TH920",
+      "link_cost": 70
+    },
+    {
+      "profile": "RU868",
+      "link_cost": 81
+    },
+    {
+      "profile": "KZ863",
+      "link_cost": 81
+    }
+  ],
+  "feasible": [
+    {
+      "feasibility_distance": null,
+      "routes": [
+        {
+          "seq": 0,
+          "metric": 0,
+          "feasible": true
+        },
+        {
+          "seq": 9,
+          "metric": 32766,
+          "feasible": true
+        }
+      ]
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 161,
+          "feasible": true
+        },
+        {
+          "seq": 10,
+          "metric": 162,
+          "feasible": false
+        },
+        {
+          "seq": 10,
+          "metric": 163,
+          "feasible": false
+        },
+        {
+          "seq": 11,
+          "metric": 5000,
+          "feasible": true
+        },
+        {
+          "seq": 9,
+          "metric": 0,
+          "feasible": false
+        },
+        {
+          "seq": 32777,
+          "metric": 0,
+          "feasible": true
+        },
+        {
+          "seq": 32778,
+          "metric": 0,
+          "feasible": false
+        }
+      ]
+    },
+    {
+      "feasibility_distance": {
+        "seq": 65535,
+        "metric": 54
+      },
+      "routes": [
+        {
+          "seq": 0,
+          "metric": 9999,
+          "feasible": true
+        },
+        {
+          "seq": 65535,
+          "metric": 53,
+          "feasible": true
+        },
+        {
+          "seq": 65534,
+          "metric": 0,
+          "feasible": false
+        }
+      ]
+    }
+  ],
+  "selection": [
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 3,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 3,
+          "metric": 162,
+          "usable": true
+        }
+      ],
+      "selected": null,
+      "selects": 1
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 3,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 3,
+          "metric": 162,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 1
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 546,
+          "usable": true
+        },
+        {
+          "seq": 3,
+          "metric": 486,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 0
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 546,
+          "usable": true
+        },
+        {
+          "seq": 3,
+          "metric": 485,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 1
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 162,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 9,
+          "metric": 0,
+          "usable": true
+        }
+      ],
+      "selected": null,
+      "selects": 1
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 162,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 200,
+          "usable": true
+        },
+        {
+          "seq": 9,
+          "metric": 0,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": null
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 162,
+          "usable": true
+        },
+        {
+          "seq": 11,
+          "metric": 500,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 108,
+          "usable": true
+        }
+      ],
+      "selected": 1,
+      "selects": 2
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 162,
+          "usable": true
+        },
+        {
+          "seq": 11,
+          "metric": 500,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        }
+      ],
+      "selected": 1,
+      "selects": 2
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 1,
+          "metric": 32766,
+          "usable": true
+        },
+        {
+          "seq": 1,
+          "metric": 32752,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 0
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 4,
+          "metric": 108,
+          "usable": true
+        }
+      ],
+      "selected": null,
+      "selects": 1
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 4,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": true
+        }
+      ],
+      "selected": null,
+      "selects": 0
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 4,
+          "metric": 108,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 1
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 4,
+          "metric": 100,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 1
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 4,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 0
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 4,
+          "metric": 109,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 0
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 2,
+          "metric": 0,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 1
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 11,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 11,
+          "metric": 108,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 1
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 100,
+          "usable": true
+        },
+        {
+          "seq": 9,
+          "metric": 99,
+          "usable": true
+        },
+        {
+          "seq": 11,
+          "metric": 100,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 2
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 1000,
+          "usable": true
+        },
+        {
+          "seq": 9,
+          "metric": 10,
+          "usable": true
+        },
+        {
+          "seq": 11,
+          "metric": 900,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 1
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 65535,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 0,
+          "metric": 54,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 1
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [],
+      "selected": null,
+      "selects": null
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": false
+        },
+        {
+          "seq": 3,
+          "metric": 104,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 1
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": false
+        },
+        {
+          "seq": 3,
+          "metric": 500,
+          "usable": true
+        },
+        {
+          "seq": 3,
+          "metric": 200,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": 2
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": false
+        }
+      ],
+      "selected": 0,
+      "selects": null
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": false
+        },
+        {
+          "seq": 10,
+          "metric": 162,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "selects": null
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 3,
+          "metric": 10,
+          "usable": false
+        }
+      ],
+      "selected": 0,
+      "selects": 0
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 4,
+          "metric": 108,
+          "usable": false
+        }
+      ],
+      "selected": 0,
+      "selects": 0
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 3,
+          "metric": 10,
+          "usable": false
+        },
+        {
+          "seq": 3,
+          "metric": 108,
+          "usable": true
+        }
+      ],
+      "selected": null,
+      "selects": 1
+    }
+  ],
+  "kept": [
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 9,
+          "metric": 0,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 300,
+          "usable": true
+        }
+      ],
+      "selected": 1,
+      "offered": {
+        "seq": 10,
+        "metric": 161,
+        "usable": true
+      },
+      "replaces": 2
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 9,
+          "metric": 0,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 300,
+          "usable": true
+        }
+      ],
+      "selected": 1,
+      "offered": {
+        "seq": 10,
+        "metric": 400,
+        "usable": true
+      },
+      "replaces": 2
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 9,
+          "metric": 0,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 300,
+          "usable": true
+        }
+      ],
+      "selected": 1,
+      "offered": {
+        "seq": 9,
+        "metric": 54,
+        "usable": true
+      },
+      "replaces": null
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 9,
+          "metric": 0,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 300,
+          "usable": true
+        }
+      ],
+      "selected": 1,
+      "offered": {
+        "seq": 8,
+        "metric": 0,
+        "usable": true
+      },
+      "replaces": null
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 108,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 9,
+          "metric": 0,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 300,
+          "usable": true
+        }
+      ],
+      "selected": 3,
+      "offered": {
+        "seq": 11,
+        "metric": 5000,
+        "usable": true
+      },
+      "replaces": 2
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 55,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 56,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 57,
+          "usable": true
+        }
+      ],
+      "selected": 3,
+      "offered": {
+        "seq": 10,
+        "metric": 56,
+        "usable": true
+      },
+      "replaces": null
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 55,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 56,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 57,
+          "usable": true
+        }
+      ],
+      "selected": 2,
+      "offered": {
+        "seq": 10,
+        "metric": 56,
+        "usable": true
+      },
+      "replaces": 3
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 1,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 2,
+          "metric": 5000,
+          "usable": true
+        },
+        {
+          "seq": 3,
+          "metric": 9000,
+          "usable": true
+        },
+        {
+          "seq": 4,
+          "metric": 30000,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "offered": {
+        "seq": 5,
+        "metric": 32000,
+        "usable": true
+      },
+      "replaces": 1
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 1,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 2,
+          "metric": 5000,
+          "usable": true
+        },
+        {
+          "seq": 3,
+          "metric": 9000,
+          "usable": true
+        },
+        {
+          "seq": 4,
+          "metric": 30000,
+          "usable": true
+        }
+      ],
+      "selected": 3,
+      "offered": {
+        "seq": 1,
+        "metric": 0,
+        "usable": true
+      },
+      "replaces": 0
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 11,
+          "metric": 54,
+          "usable": false
+        },
+        {
+          "seq": 10,
+          "metric": 56,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 57,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "offered": {
+        "seq": 10,
+        "metric": 100,
+        "usable": true
+      },
+      "replaces": 1
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 11,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 56,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 57,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "offered": {
+        "seq": 11,
+        "metric": 0,
+        "usable": false
+      },
+      "replaces": null
+    },
+    {
+      "feasibility_distance": {
+        "seq": 10,
+        "metric": 162
+      },
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 10,
+          "metric": 54,
+          "usable": true
+        },
+        {
+          "seq": 11,
+          "metric": 54,
+          "usable": false
+        },
+        {
+          "seq": 10,
+          "metric": 56,
+          "usable": true
+        },
+        {
+          "seq": 10,
+          "metric": 57,
+          "usable": true
+        }
+      ],
+      "selected": 0,
+      "offered": {
+        "seq": 12,
+        "metric": 0,
+        "usable": false
+      },
+      "replaces": 1
+    },
+    {
+      "feasibility_distance": null,
+      "link_cost": 54,
+      "routes": [
+        {
+          "seq": 5,
+          "metric": 54,
+          "usable": false
+        },
+        {
+          "seq": 5,
+          "metric": 60,
+          "usable": false
+        },
+        {
+          "seq": 5,
+          "metric": 70,
+          "usable": false
+        },
+        {
+          "seq": 5,
+          "metric": 80,
+          "usable": true
+        }
+      ],
+      "selected": 3,
+      "offered": {
+        "seq": 1,
+        "metric": 9000,
+        "usable": true
+      },
+      "replaces": 2
+    }
+  ],
+  "defaults": [
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [],
+      "next": 0,
+      "link_cost": 70,
+      "metric": 420
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 499999,
+      "tried": [],
+      "next": 0,
+      "link_cost": 81,
+      "metric": 486
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 500000,
+      "tried": [],
+      "next": null,
+      "link_cost": 81,
+      "metric": 486
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": true,
+      "busy_ppm": 0,
+      "tried": [],
+      "next": null,
+      "link_cost": 70,
+      "metric": 420
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        }
+      ],
+      "leaf": false,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [],
+      "next": null,
+      "link_cost": 70,
+      "metric": 420
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [
+        0
+      ],
+      "next": 1,
+      "link_cost": 70,
+      "metric": 420
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [
+        0,
+        1
+      ],
+      "next": 3,
+      "link_cost": 70,
+      "metric": 420
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [
+        0,
+        1,
+        3
+      ],
+      "next": null,
+      "link_cost": 70,
+      "metric": 420
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -100,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -300,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [],
+      "next": 1,
+      "link_cost": 70,
+      "metric": 420
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -100,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [],
+      "next": null,
+      "link_cost": 70,
+      "metric": 420
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [],
+      "next": 0,
+      "link_cost": 11000,
+      "metric": 32766
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [],
+      "next": 1,
+      "link_cost": 70,
+      "metric": 420
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": -80,
+          "up": true,
+          "relay": true,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [],
+      "next": 3,
+      "link_cost": 70,
+      "metric": 420
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -300,
+          "up": false,
+          "relay": true,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": -100,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -480,
+          "up": true,
+          "relay": false,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [],
+      "next": 1,
+      "link_cost": 70,
+      "metric": 420
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": false
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [],
+      "next": 1,
+      "link_cost": 70,
+      "metric": 420
+    },
+    {
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "up": true,
+          "relay": true,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": -200,
+          "up": false,
+          "relay": true,
+          "out_of_use": true
+        }
+      ],
+      "leaf": true,
+      "starting": false,
+      "busy_ppm": 0,
+      "tried": [],
+      "next": null,
+      "link_cost": 70,
+      "metric": 420
+    }
+  ],
+  "listed": [
+    {
+      "metric_field": 54,
+      "retracts": false,
+      "leaf": false,
+      "metric": 54,
+      "field": 54
+    },
+    {
+      "metric_field": 32822,
+      "retracts": false,
+      "leaf": true,
+      "metric": 54,
+      "field": 32822
+    },
+    {
+      "metric_field": 32766,
+      "retracts": false,
+      "leaf": false,
+      "metric": 32766,
+      "field": 32766
+    },
+    {
+      "metric_field": 65534,
+      "retracts": false,
+      "leaf": true,
+      "metric": 32766,
+      "field": 65534
+    },
+    {
+      "metric_field": 0,
+      "retracts": false,
+      "leaf": false,
+      "metric": 0,
+      "field": 0
+    },
+    {
+      "metric_field": 32768,
+      "retracts": false,
+      "leaf": true,
+      "metric": 0,
+      "field": 32768
+    },
+    {
+      "metric_field": 65535,
+      "retracts": true,
+      "leaf": null,
+      "metric": null,
+      "field": 65535
+    },
+    {
+      "metric_field": 32767,
+      "retracts": true,
+      "leaf": null,
+      "metric": null,
+      "field": 65535
+    }
+  ],
+  "anchors": [
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 80,
+          "heard_s": 100,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 160,
+          "heard_s": 100,
+          "promise_s": 600
+        }
+      ],
+      "sparse": true,
+      "anchor": 1,
+      "asks": false
+    },
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 80,
+          "heard_s": 100,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 160,
+          "heard_s": 1300,
+          "promise_s": 600
+        }
+      ],
+      "sparse": true,
+      "anchor": 1,
+      "asks": true
+    },
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 160,
+          "heard_s": 1200,
+          "promise_s": 600
+        }
+      ],
+      "sparse": true,
+      "anchor": 0,
+      "asks": false
+    },
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 160,
+          "heard_s": 1201,
+          "promise_s": 600
+        }
+      ],
+      "sparse": true,
+      "anchor": 0,
+      "asks": true
+    },
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 160,
+          "heard_s": 99999,
+          "promise_s": null
+        }
+      ],
+      "sparse": true,
+      "anchor": 0,
+      "asks": false
+    },
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": true,
+          "margin_sixteenths": 300,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": false,
+          "out_of_use": false,
+          "margin_sixteenths": 400,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": false,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 900,
+          "heard_s": 10,
+          "promise_s": 600
+        }
+      ],
+      "sparse": true,
+      "anchor": null,
+      "asks": true
+    },
+    {
+      "relays": [],
+      "sparse": true,
+      "anchor": null,
+      "asks": true
+    },
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 16,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 32,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 48,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 64,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 80,
+          "heard_s": 10,
+          "promise_s": 600
+        }
+      ],
+      "sparse": false,
+      "anchor": 4,
+      "asks": false
+    },
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 16,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 32,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 48,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 64,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 80,
+          "heard_s": 2000,
+          "promise_s": 600
+        }
+      ],
+      "sparse": true,
+      "anchor": 4,
+      "asks": true
+    }
+  ],
+  "answering": [
+    {
+      "own_margin_sixteenths": 0,
+      "asked": true,
+      "answers": true,
+      "wait": 2,
+      "cancelled": false
+    },
+    {
+      "own_margin_sixteenths": 0,
+      "asked": false,
+      "answers": true,
+      "wait": 16,
+      "cancelled": true
+    },
+    {
+      "own_margin_sixteenths": -1,
+      "asked": true,
+      "answers": false,
+      "wait": null,
+      "cancelled": null
+    },
+    {
+      "own_margin_sixteenths": -1,
+      "asked": false,
+      "answers": false,
+      "wait": null,
+      "cancelled": null
+    },
+    {
+      "own_margin_sixteenths": 320,
+      "asked": false,
+      "answers": true,
+      "wait": 16,
+      "cancelled": true
+    },
+    {
+      "own_margin_sixteenths": -48,
+      "asked": true,
+      "answers": false,
+      "wait": null,
+      "cancelled": null
+    }
+  ],
+  "answered": [
+    {
+      "asked": "anchor",
+      "doubt": false,
+      "unanswered": 0,
+      "asked_heard": true,
+      "others_heard": true,
+      "anchor_now": "attached",
+      "attached_before": true,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "settled",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "anchor",
+      "doubt": true,
+      "unanswered": 2,
+      "asked_heard": true,
+      "others_heard": false,
+      "anchor_now": "attached",
+      "attached_before": true,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": true,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "settled",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "anchor",
+      "doubt": false,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": true,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "again",
+      "doubt_after": true,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "anchor",
+      "doubt": false,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": false,
+      "anchor_now": null,
+      "attached_before": true,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "again",
+      "doubt_after": true,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 1
+    },
+    {
+      "asked": "anchor",
+      "doubt": false,
+      "unanswered": 2,
+      "asked_heard": false,
+      "others_heard": false,
+      "anchor_now": null,
+      "attached_before": true,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "waits",
+      "doubt_after": true,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 3
+    },
+    {
+      "asked": "anchor",
+      "doubt": true,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": true,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": true,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "reattaches",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "anchor",
+      "doubt": true,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": false,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": true,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "reattaches",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "anchor",
+      "doubt": true,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "attached",
+      "attached_before": true,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": true,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "moved",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "anchor",
+      "doubt": true,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": null,
+      "attached_before": true,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": true,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "moved",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "anchor",
+      "doubt": true,
+      "unanswered": 1,
+      "asked_heard": false,
+      "others_heard": false,
+      "anchor_now": "other",
+      "attached_before": true,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": true,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "waits",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 2
+    },
+    {
+      "asked": "another",
+      "doubt": true,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": true,
+      "anchor_heard": true,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": true,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "moved",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": null,
+      "doubt": false,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": true,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "reattaches",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": null,
+      "doubt": false,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": false,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "moved",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": null,
+      "doubt": false,
+      "unanswered": 1,
+      "asked_heard": false,
+      "others_heard": false,
+      "anchor_now": null,
+      "attached_before": false,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "waits",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 2
+    },
+    {
+      "asked": "anchor",
+      "doubt": false,
+      "unanswered": 2,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": true,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "again",
+      "doubt_after": true,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": null,
+      "doubt": false,
+      "unanswered": 2,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": true,
+      "anchor_heard": null,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "reattaches",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "another",
+      "doubt": true,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": true,
+      "anchor_heard": false,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": true,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "reattaches",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "another",
+      "doubt": true,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": true,
+      "anchor_heard": true,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": true,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "moved",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "another",
+      "doubt": false,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": true,
+      "anchor_heard": true,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "again",
+      "doubt_after": true,
+      "anchor_heard_first_after": true,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "another",
+      "doubt": false,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": true,
+      "anchor_heard": false,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "again",
+      "doubt_after": true,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "another",
+      "doubt": true,
+      "unanswered": 0,
+      "asked_heard": false,
+      "others_heard": true,
+      "anchor_now": "other",
+      "attached_before": true,
+      "anchor_heard": false,
+      "anchor_heard_first": true,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": true,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": true,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "moved",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    },
+    {
+      "asked": "another",
+      "doubt": false,
+      "unanswered": 0,
+      "asked_heard": true,
+      "others_heard": false,
+      "anchor_now": "attached",
+      "attached_before": true,
+      "anchor_heard": true,
+      "anchor_heard_first": false,
+      "relays": [
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": true,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        },
+        {
+          "up": true,
+          "out_of_use": true,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": true
+        },
+        {
+          "up": false,
+          "out_of_use": false,
+          "heard": false,
+          "heard_first": false,
+          "out_of_use_after": false
+        }
+      ],
+      "does": "settled",
+      "doubt_after": false,
+      "anchor_heard_first_after": false,
+      "unanswered_after": 0
+    }
+  ],
+  "leaves": [
+    {
+      "relay": false,
+      "listed": [
+        true
+      ],
+      "selected": 0,
+      "was": false,
+      "leaf": true
+    },
+    {
+      "relay": true,
+      "listed": [
+        true,
+        true
+      ],
+      "selected": 0,
+      "was": true,
+      "leaf": false
+    },
+    {
+      "relay": true,
+      "listed": [],
+      "selected": null,
+      "was": true,
+      "leaf": false
+    },
+    {
+      "relay": null,
+      "listed": [
+        false,
+        true
+      ],
+      "selected": 0,
+      "was": true,
+      "leaf": false
+    },
+    {
+      "relay": null,
+      "listed": [
+        false,
+        true
+      ],
+      "selected": 1,
+      "was": false,
+      "leaf": true
+    },
+    {
+      "relay": null,
+      "listed": [
+        true,
+        true
+      ],
+      "selected": null,
+      "was": false,
+      "leaf": false
+    },
+    {
+      "relay": null,
+      "listed": [],
+      "selected": null,
+      "was": true,
+      "leaf": true
+    }
+  ],
+  "powers": [
+    {
+      "leaf": true,
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -304,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -288,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -272,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -256,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -240,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -224,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -208,
+          "out_of_use": false
+        }
+      ],
+      "lowest": -9,
+      "full": 22,
+      "power": -3
+    },
+    {
+      "leaf": true,
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -304,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -288,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -272,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -256,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -240,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -224,
+          "out_of_use": false
+        }
+      ],
+      "lowest": -9,
+      "full": 22,
+      "power": 22
+    },
+    {
+      "leaf": true,
+      "neighbours": [
+        {
+          "floor_sixteenths": -480,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": -320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -304,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -288,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -272,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -256,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -240,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -224,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -208,
+          "out_of_use": false
+        }
+      ],
+      "lowest": -9,
+      "full": 22,
+      "power": -3
+    },
+    {
+      "leaf": false,
+      "neighbours": [
+        {
+          "floor_sixteenths": -480,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": -320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -304,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -288,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -272,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -256,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -240,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -224,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -208,
+          "out_of_use": false
+        }
+      ],
+      "lowest": -9,
+      "full": 22,
+      "power": -4
+    },
+    {
+      "leaf": true,
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -304,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -288,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -272,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -256,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -240,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -224,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -208,
+          "out_of_use": true
+        }
+      ],
+      "lowest": -9,
+      "full": 22,
+      "power": 22
+    },
+    {
+      "leaf": false,
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -304,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -288,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -272,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -256,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -240,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -224,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -208,
+          "out_of_use": true
+        }
+      ],
+      "lowest": -9,
+      "full": 22,
+      "power": -3
+    },
+    {
+      "leaf": true,
+      "neighbours": [
+        {
+          "floor_sixteenths": -320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -304,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -288,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -272,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -256,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -240,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -224,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -208,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": 0,
+          "out_of_use": true
+        }
+      ],
+      "lowest": -9,
+      "full": 22,
+      "power": -3
+    },
+    {
+      "leaf": true,
+      "neighbours": [
+        {
+          "floor_sixteenths": -304,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -288,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -272,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -256,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -240,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -224,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -208,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -320,
+          "out_of_use": true
+        },
+        {
+          "floor_sixteenths": 80,
+          "out_of_use": false
+        }
+      ],
+      "lowest": -9,
+      "full": 22,
+      "power": 15
+    },
+    {
+      "leaf": true,
+      "neighbours": [
+        {
+          "floor_sixteenths": -213,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -212,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -211,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -210,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -209,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -208,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -207,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -206,
+          "out_of_use": false
+        }
+      ],
+      "lowest": -9,
+      "full": 22,
+      "power": -2
+    },
+    {
+      "leaf": true,
+      "neighbours": [
+        {
+          "floor_sixteenths": -640,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -640,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -640,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -640,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -640,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -640,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -640,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": -640,
+          "out_of_use": false
+        }
+      ],
+      "lowest": -9,
+      "full": 22,
+      "power": -9
+    },
+    {
+      "leaf": true,
+      "neighbours": [
+        {
+          "floor_sixteenths": 320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": 320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": 320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": 320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": 320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": 320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": 320,
+          "out_of_use": false
+        },
+        {
+          "floor_sixteenths": 320,
+          "out_of_use": false
+        }
+      ],
+      "lowest": -9,
+      "full": 22,
+      "power": 22
+    }
+  ],
+  "given_up": [
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 80,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 160,
+          "heard_s": 10,
+          "promise_s": 600
+        }
+      ],
+      "at": 1,
+      "hops": 3,
+      "out_of_use_after": [
+        false,
+        true
+      ],
+      "asks": true,
+      "after": 1,
+      "anchored": true
+    },
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 80,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 160,
+          "heard_s": 10,
+          "promise_s": 600
+        }
+      ],
+      "at": 0,
+      "hops": 3,
+      "out_of_use_after": [
+        true,
+        false
+      ],
+      "asks": true,
+      "after": 0,
+      "anchored": false
+    },
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 80,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 160,
+          "heard_s": 10,
+          "promise_s": 600
+        }
+      ],
+      "at": 1,
+      "hops": 2,
+      "out_of_use_after": [
+        false,
+        false
+      ],
+      "asks": false,
+      "after": null,
+      "anchored": false
+    },
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 16,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 32,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 48,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 64,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 80,
+          "heard_s": 10,
+          "promise_s": 600
+        }
+      ],
+      "at": 4,
+      "hops": 3,
+      "out_of_use_after": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "asks": false,
+      "after": null,
+      "anchored": false
+    },
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": true,
+          "margin_sixteenths": 80,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 160,
+          "heard_s": 10,
+          "promise_s": 600
+        }
+      ],
+      "at": 0,
+      "hops": 3,
+      "out_of_use_after": [
+        true,
+        false
+      ],
+      "asks": false,
+      "after": null,
+      "anchored": false
+    },
+    {
+      "relays": [
+        {
+          "relay": true,
+          "up": false,
+          "out_of_use": false,
+          "margin_sixteenths": 80,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 160,
+          "heard_s": 10,
+          "promise_s": 600
+        }
+      ],
+      "at": 0,
+      "hops": 3,
+      "out_of_use_after": [
+        false,
+        false
+      ],
+      "asks": false,
+      "after": null,
+      "anchored": false
+    },
+    {
+      "relays": [
+        {
+          "relay": false,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 80,
+          "heard_s": 10,
+          "promise_s": 600
+        },
+        {
+          "relay": true,
+          "up": true,
+          "out_of_use": false,
+          "margin_sixteenths": 160,
+          "heard_s": 10,
+          "promise_s": 600
+        }
+      ],
+      "at": 0,
+      "hops": 3,
+      "out_of_use_after": [
+        false,
+        false
+      ],
+      "asks": false,
+      "after": null,
+      "anchored": false
+    }
+  ],
+  "elsewhere": [
+    {
+      "up": true,
+      "out_of_use": false,
+      "relay": false,
+      "own_seq": 5,
+      "offered_seq": 6,
+      "retracts": false,
+      "out_of_use_after": true
+    },
+    {
+      "up": true,
+      "out_of_use": false,
+      "relay": false,
+      "own_seq": 5,
+      "offered_seq": 5,
+      "retracts": false,
+      "out_of_use_after": false
+    },
+    {
+      "up": true,
+      "out_of_use": false,
+      "relay": false,
+      "own_seq": 5,
+      "offered_seq": 4,
+      "retracts": false,
+      "out_of_use_after": false
+    },
+    {
+      "up": true,
+      "out_of_use": false,
+      "relay": false,
+      "own_seq": 65535,
+      "offered_seq": 0,
+      "retracts": false,
+      "out_of_use_after": true
+    },
+    {
+      "up": true,
+      "out_of_use": false,
+      "relay": false,
+      "own_seq": 5,
+      "offered_seq": 6,
+      "retracts": true,
+      "out_of_use_after": false
+    },
+    {
+      "up": true,
+      "out_of_use": false,
+      "relay": true,
+      "own_seq": 5,
+      "offered_seq": 6,
+      "retracts": false,
+      "out_of_use_after": false
+    },
+    {
+      "up": false,
+      "out_of_use": false,
+      "relay": false,
+      "own_seq": 5,
+      "offered_seq": 6,
+      "retracts": false,
+      "out_of_use_after": false
+    },
+    {
+      "up": true,
+      "out_of_use": true,
+      "relay": false,
+      "own_seq": 5,
+      "offered_seq": 4,
+      "retracts": false,
+      "out_of_use_after": true
+    }
+  ],
+  "samples": [
+    {
+      "kind": "answer to me",
+      "leaf": true,
+      "relay": true,
+      "kept": true,
+      "floor_sixteenths": -320,
+      "their_margin": 0,
+      "up": false,
+      "out_of_use": false,
+      "full_power": 22,
+      "power": 14,
+      "snr_quarter_db": 0,
+      "margin": 140,
+      "floor_after": -234,
+      "their_margin_after": 140,
+      "up_after": true,
+      "out_of_use_after": false,
+      "answer_margin": null,
+      "answer_power": null
+    },
+    {
+      "kind": "answer to me",
+      "leaf": true,
+      "relay": true,
+      "kept": true,
+      "floor_sixteenths": -320,
+      "their_margin": 0,
+      "up": false,
+      "out_of_use": false,
+      "full_power": 22,
+      "power": 14,
+      "snr_quarter_db": 0,
+      "margin": 127,
+      "floor_after": -234,
+      "their_margin_after": 127,
+      "up_after": false,
+      "out_of_use_after": false,
+      "answer_margin": null,
+      "answer_power": null
+    },
+    {
+      "kind": "answer to me",
+      "leaf": false,
+      "relay": true,
+      "kept": true,
+      "floor_sixteenths": -320,
+      "their_margin": 0,
+      "up": false,
+      "out_of_use": false,
+      "full_power": 22,
+      "power": 14,
+      "snr_quarter_db": 0,
+      "margin": 140,
+      "floor_after": -234,
+      "their_margin_after": 0,
+      "up_after": false,
+      "out_of_use_after": false,
+      "answer_margin": null,
+      "answer_power": null
+    },
+    {
+      "kind": "answer to me",
+      "leaf": true,
+      "relay": false,
+      "kept": true,
+      "floor_sixteenths": -320,
+      "their_margin": 0,
+      "up": false,
+      "out_of_use": false,
+      "full_power": 22,
+      "power": 14,
+      "snr_quarter_db": 0,
+      "margin": 140,
+      "floor_after": -234,
+      "their_margin_after": 0,
+      "up_after": false,
+      "out_of_use_after": false,
+      "answer_margin": null,
+      "answer_power": null
+    },
+    {
+      "kind": "answer to another",
+      "leaf": true,
+      "relay": true,
+      "kept": true,
+      "floor_sixteenths": -320,
+      "their_margin": 130,
+      "up": true,
+      "out_of_use": false,
+      "full_power": 22,
+      "power": 14,
+      "snr_quarter_db": -40,
+      "margin": 200,
+      "floor_after": -194,
+      "their_margin_after": 130,
+      "up_after": true,
+      "out_of_use_after": false,
+      "answer_margin": null,
+      "answer_power": null
+    },
+    {
+      "kind": "solicit",
+      "leaf": false,
+      "relay": false,
+      "kept": true,
+      "floor_sixteenths": -320,
+      "their_margin": 135,
+      "up": true,
+      "out_of_use": false,
+      "full_power": 22,
+      "power": 22,
+      "snr_quarter_db": -50,
+      "margin": null,
+      "floor_after": -152,
+      "their_margin_after": 135,
+      "up_after": true,
+      "out_of_use_after": false,
+      "answer_margin": 159,
+      "answer_power": 1
+    },
+    {
+      "kind": "solicit",
+      "leaf": false,
+      "relay": false,
+      "kept": true,
+      "floor_sixteenths": 480,
+      "their_margin": 135,
+      "up": true,
+      "out_of_use": false,
+      "full_power": 22,
+      "power": 22,
+      "snr_quarter_db": -50,
+      "margin": null,
+      "floor_after": 448,
+      "their_margin_after": 135,
+      "up_after": false,
+      "out_of_use_after": false,
+      "answer_margin": null,
+      "answer_power": null
+    },
+    {
+      "kind": "answer to me",
+      "leaf": true,
+      "relay": true,
+      "kept": true,
+      "floor_sixteenths": -320,
+      "their_margin": 140,
+      "up": true,
+      "out_of_use": true,
+      "full_power": 22,
+      "power": 14,
+      "snr_quarter_db": 0,
+      "margin": 140,
+      "floor_after": -234,
+      "their_margin_after": 140,
+      "up_after": true,
+      "out_of_use_after": false,
+      "answer_margin": null,
+      "answer_power": null
+    },
+    {
+      "kind": "answer to another",
+      "leaf": true,
+      "relay": true,
+      "kept": true,
+      "floor_sixteenths": -320,
+      "their_margin": 130,
+      "up": true,
+      "out_of_use": true,
+      "full_power": 22,
+      "power": 14,
+      "snr_quarter_db": -40,
+      "margin": 200,
+      "floor_after": -194,
+      "their_margin_after": 130,
+      "up_after": true,
+      "out_of_use_after": false,
+      "answer_margin": null,
+      "answer_power": null
+    },
+    {
+      "kind": "solicit",
+      "leaf": false,
+      "relay": false,
+      "kept": true,
+      "floor_sixteenths": -320,
+      "their_margin": 135,
+      "up": true,
+      "out_of_use": true,
+      "full_power": 22,
+      "power": 22,
+      "snr_quarter_db": -50,
+      "margin": null,
+      "floor_after": -152,
+      "their_margin_after": 135,
+      "up_after": true,
+      "out_of_use_after": false,
+      "answer_margin": 159,
+      "answer_power": 1
+    },
+    {
+      "kind": "solicit",
+      "leaf": false,
+      "relay": true,
+      "kept": false,
+      "floor_sixteenths": null,
+      "their_margin": null,
+      "up": null,
+      "out_of_use": null,
+      "out_of_use_after": null,
+      "full_power": 22,
+      "power": 14,
+      "snr_quarter_db": 0,
+      "margin": null,
+      "floor_after": null,
+      "their_margin_after": null,
+      "up_after": null,
+      "answer_margin": null,
+      "answer_power": null
+    },
+    {
+      "kind": "answer to me",
+      "leaf": true,
+      "relay": false,
+      "kept": false,
+      "floor_sixteenths": null,
+      "their_margin": null,
+      "up": null,
+      "out_of_use": null,
+      "out_of_use_after": null,
+      "full_power": 22,
+      "power": 14,
+      "snr_quarter_db": 0,
+      "margin": 140,
+      "floor_after": null,
+      "their_margin_after": null,
+      "up_after": null,
+      "answer_margin": null,
+      "answer_power": null
+    }
+  ],
+  "in_use_again": [
+    {
+      "heard": "announce taken",
+      "out_of_use": true,
+      "out_of_use_after": false
+    },
+    {
+      "heard": "announce discarded",
+      "out_of_use": true,
+      "out_of_use_after": true
+    },
+    {
+      "heard": "frame passed on",
+      "out_of_use": true,
+      "out_of_use_after": false
+    },
+    {
+      "heard": "solicit",
+      "out_of_use": true,
+      "out_of_use_after": false
+    },
+    {
+      "heard": "answer",
+      "out_of_use": true,
+      "out_of_use_after": false
+    }
+  ]
+}

@@ -111,8 +111,10 @@ class CompanionVectorsTest {
             val version = c.int("version")
             for (f in c.list("frames")) {
                 val name = f.str("type")
-                // Version 1's client ends with a request its version does not define.
-                val latest = runCatching { Codec.decode(f.bytes("frame")) }.getOrNull()
+                // Version 1's client ends with a request its version does not define. (A version
+                // 12 client's UPDATE_BEGIN, without a signature, is read whole by version 12.)
+                val latest = runCatching { Codec.decode(f.bytes("frame")) }
+                    .recoverCatching { Codec.decode(f.bytes("frame"), 12) }.getOrNull()
                 if (latest != null && latest.body.since > version) {
                     assertFailsWith<DecodeException>(name) { Codec.decode(f.bytes("frame"), version) }
                     continue
@@ -313,6 +315,26 @@ class CompanionVectorsTest {
         assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(bytes, 8) }.reason)
     }
 
+    /** `WIPE` is version 13's, with no fields: the vectors' connection reads and builds back, and version 12 does not define it. */
+    @Test
+    fun wipeIsVersion13s() {
+        val frames = v.list("wipe")
+        val names = frames.map { it.str("type") }
+        assertEquals(listOf("HELLO", "INFO", "WIPE", "OK"), names)
+        for (f in frames) {
+            val frame = Codec.decode(f.bytes("frame"))
+            assertEquals(f.str("type"), frame.body.typeName)
+            assertEquals(f.str("frame"), Hex.encode(Codec.encode(frame)))
+        }
+        assertEquals(13, Body.Wipe.since)
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(byteArrayOf(0x37, 1), 12) }.reason)
+        // UPDATE_BEGIN's signature is version 13's too: 64 bytes at most.
+        assertFailsWith<IllegalArgumentException> { Body.UpdateBegin(1, ByteArray(32), ByteArray(65)) }
+        val empty = Codec.encode(Frame(1, Body.UpdateBegin(1, ByteArray(32), ByteArray(0))))
+        assertEquals(1 + 1 + 4 + 32 + 1, empty.size)
+        assertEquals(Body.UpdateBegin(1, ByteArray(32), ByteArray(0)), Codec.decode(empty).body)
+    }
+
     /** A frame of a later version than the one both ends speak is one that version does not define. */
     @Test
     fun aFrameOfALaterVersionIsUndefined() {
@@ -418,10 +440,11 @@ class CompanionVectorsTest {
         "JOIN" -> Body.Join(f.long("id"))
         "GROUP_LINK" -> Body.GroupLink(f.gid("group"))
         "JOIN_LINK" -> Body.JoinLink(f.str("link"))
-        "UPDATE_BEGIN" -> Body.UpdateBegin(f.long("size"), f.bytes("digest"))
+        "UPDATE_BEGIN" -> Body.UpdateBegin(f.long("size"), f.bytes("digest"), f["signature"]?.let { Hex.decode(it.jsonPrimitive.content)!! })
         "UPDATE_DATA" -> Body.UpdateData(f.long("offset"), f.bytes("data"))
         "UPDATE_END" -> Body.UpdateEnd
         "UPDATE_BOOTLOADER" -> Body.UpdateBootloader
+        "WIPE" -> Body.Wipe
         "SET_POSITION" -> Body.SetPosition(f.int("lat"), f.int("lon"), f.int("altitude"), f.int("accuracy"), f.int("age"))
         "SHARE" -> Body.Share(f.addr("contact"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"))
         "SHARE_GROUP" -> Body.ShareGroup(f.gid("group"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"))

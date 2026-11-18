@@ -38,6 +38,7 @@ import org.ternmesh.companion.ConnectionEvent
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.DfuPackage
 import org.ternmesh.companion.DfuState
+import org.ternmesh.companion.Install
 import org.ternmesh.companion.Item
 import org.ternmesh.companion.Manifest
 import org.ternmesh.companion.MessageState
@@ -45,12 +46,16 @@ import org.ternmesh.companion.Outcome
 import org.ternmesh.companion.Peer
 import org.ternmesh.companion.Records
 import org.ternmesh.companion.RecordsFile
+import org.ternmesh.companion.Signatures
+import org.ternmesh.companion.Signed
 import org.ternmesh.companion.UpdateBy
 import org.ternmesh.companion.UpdateState
 import org.ternmesh.companion.Updater
+import org.ternmesh.companion.install
 import org.ternmesh.companion.updateBy
 import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 import kotlin.random.Random
 
 /**
@@ -121,6 +126,9 @@ sealed interface Problem {
  */
 data class Unanswered(val ref: Long, val peer: Peer, val text: String, val after: Long)
 
+/** A node erased with `WIPE`: [name] as the user knew it; [bondRemoved] if the phone forgot its bond too. */
+data class Wiped(val name: String?, val bondRemoved: Boolean)
+
 data class NodeState(
     val node: ChosenNode? = null,
     val phase: Phase = Phase.NONE,
@@ -135,6 +143,11 @@ data class NodeState(
     /** How the node is updated, `INFO`'s `update` (an [UpdateBy]); null from a node of version 11 or earlier. */
     val updatedBy: Int? = null,
     val update: FirmwareUpdate = FirmwareUpdate.Idle,
+    /**
+     * The node just erased itself with `WIPE`, until the user has read what that means: its name,
+     * and whether the phone's Bluetooth bond with it could be removed here.
+     */
+    val wiped: Wiped? = null,
     /** First contacts the node refused, newest last, until the user deals with them. */
     val asked: List<Body.Asked> = emptyList(),
     val unanswered: List<Unanswered> = emptyList(),
@@ -294,6 +307,25 @@ class NodeRepository(private val context: Context) {
             if (outcome == Outcome.Answered(Body.Ok)) stayOff(Phase.OFF) else then(outcome)
         }
     }
+
+    /**
+     * Erases the node (`WIPE`, version 13): its address, contacts, groups, messages and settings,
+     * and its Bluetooth bonds. Asked only once the user has been told so. Once the node answers, the
+     * phone forgets its bond with it, and the app everything it held for it, as after [forget]: the
+     * node it finds next is a new one. [then] hears of any other outcome.
+     */
+    fun wipe(then: (Outcome) -> Unit = {}) {
+        val node = _state.value.node ?: return
+        submit(Body.Wipe) { outcome ->
+            if (outcome != Outcome.Answered(Body.Ok)) return@submit then(outcome)
+            forget(node.address)
+            val removed = link.removeBond(node.address)
+            update { it.copy(wiped = Wiped(node.shown, removed)) }
+        }
+    }
+
+    /** The user has read that the node was erased. */
+    fun dismissWiped() = update { it.copy(wiped = null) }
 
     /** Drops the link and stays off it in [phase], [Phase.DISCONNECTED] or [Phase.OFF], across restarts too. */
     private fun stayOff(phase: Phase) {
@@ -651,9 +683,19 @@ class NodeRepository(private val context: Context) {
         return false
     }
 
-    fun startUpdate(release: String, image: Manifest.Image) {
+    /**
+     * [insisted]: the user asked for an image not signed by a release key this app holds, after being
+     * told it may not be the release's. Without it only a signed one is sent; and an unsigned one is
+     * never sent to a node that takes only signed images (`install`).
+     */
+    fun startUpdate(release: String, image: Manifest.Image, insisted: Boolean = false) {
         if (busyUpdating(_state.value.update)) return
         if (!stillFor(image)) return
+        when (install(image.signed(), _state.value.version, image.update)) {
+            Install.OFFER -> {}
+            Install.WARN -> if (!insisted) return
+            Install.REFUSE -> return setUpdate(FirmwareUpdate.Failed(FirmwareFailure.UNSIGNED))
+        }
         // The service keeps the process, and so the link, while the app is not on screen.
         NodeService.start(context)
         setUpdate(FirmwareUpdate.Downloading(release, 0, image.size))
@@ -681,6 +723,13 @@ class NodeRepository(private val context: Context) {
             // Cancelled while its last read was under way: it sends nothing.
             coroutineContext.ensureActive()
             if (!stillFor(image)) return@launch
+            // The bytes are the manifest's, so their digest is the one signed; checked again over
+            // the bytes themselves, before the node is asked for anything. A bootloader checks no
+            // signature, so this is the only check an nRF52840 node's package has.
+            val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+            if (Signatures.check(digest, image.signatureBytes) != Signed.VERIFIED && !insisted) {
+                return@launch setUpdate(FirmwareUpdate.Failed(FirmwareFailure.CORRUPT))
+            }
             if (image.update == UpdateBy.BOOTLOADER) {
                 val pkg = try {
                     DfuPackage.read(bytes)
@@ -696,7 +745,8 @@ class NodeRepository(private val context: Context) {
                 if (_state.value.phase == Phase.READY) resumeIfStillFor()
                 return@launch
             }
-            val u = Updater(bytes)
+            // The signature goes to a node of version 13 or later, which checks it again.
+            val u = Updater(bytes, image.signatureBytes)
             updater = u
             updatingTo = release
             updateImage = image
@@ -759,6 +809,7 @@ class NodeRepository(private val context: Context) {
             UpdateState.Restarting -> FirmwareUpdate.Restarting(release, confirmed = true)
             UpdateState.Unknown -> FirmwareUpdate.Restarting(release, confirmed = false)
             is UpdateState.Refused -> FirmwareUpdate.Refused(s.code)
+            UpdateState.NotTrusted -> FirmwareUpdate.NotTrusted
             is UpdateState.Failed -> FirmwareUpdate.Failed(FirmwareFailure.UNSUPPORTED)
             UpdateState.Cancelled -> checked ?: FirmwareUpdate.Idle
         }
