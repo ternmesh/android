@@ -75,6 +75,7 @@ class BleLink(private val context: Context, private val handler: Handler) {
     /** Frames to write, one write in flight at a time, as GATT requires. */
     private val writes = ArrayDeque<ByteArray>()
     private var writing = false
+    private var discovering = false // this link's services asked for (onMtuChanged)
     private var bondWatch: BroadcastReceiver? = null
 
     /** The pairing [bondFirst] is waiting on, so that one superseded by a later connect is ignored. */
@@ -132,6 +133,7 @@ class BleLink(private val context: Context, private val handler: Handler) {
         }
         gatt = null
         toNode = null
+        discovering = false
         writes.clear()
         writing = false
         if (state != LinkState.Closed) set(LinkState.Closed)
@@ -196,10 +198,17 @@ class BleLink(private val context: Context, private val handler: Handler) {
 
         override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) = on(g) {
             if (status != BluetoothGatt.GATT_SUCCESS || mtu < Protocol.MIN_MTU) return@on fail(LinkFailure.MTU)
+            // Android can report the MTU twice: once for the link it already had with the node
+            // (another app's, or its own), and once for this request. A second discovery would
+            // subscribe twice, and the second write of the descriptor, refused while the first is
+            // under way, would end the link: discover once.
+            if (discovering) return@on
+            discovering = true
             if (!g.discoverServices()) fail(LinkFailure.LOST)
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) = on(g) {
+            if (toNode != null) return@on // a discovery Android ran again, of a link already set up
             // A discovery that failed shows nothing missing: start the link again, not give up on it.
             if (status != BluetoothGatt.GATT_SUCCESS) return@on fail(LinkFailure.LOST)
             val service = g.getService(SERVICE)
