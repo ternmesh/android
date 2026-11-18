@@ -27,7 +27,12 @@ class Scanner(private val context: Context) {
     private val callback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val f = Found(result.device.address, result.scanRecord?.deviceName ?: result.device.name, result.rssi)
-            _found.value = (_found.value.filter { it.address != f.address } + f).sortedByDescending { it.rssi }
+            // In the order the nodes were first heard, each kept in its place as its signal
+            // changes: sorted by signal, two nodes close by swap places many times a second and
+            // cannot be tapped.
+            val list = _found.value
+            val i = list.indexOfFirst { it.address == f.address }
+            _found.value = if (i < 0) list + f else list.toMutableList().also { it[i] = f }
         }
 
         override fun onScanFailed(errorCode: Int) {
