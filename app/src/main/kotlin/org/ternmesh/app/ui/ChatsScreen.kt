@@ -352,7 +352,9 @@ private fun previewWithWriter(context: android.content.Context, state: NodeState
     if (item is Body.Message && item.state != org.ternmesh.companion.MessageState.RECEIVED) return context.getString(R.string.preview_you, text)
     if (item !is Body.GroupMessage) return text
     if (item.state != org.ternmesh.companion.MessageState.RECEIVED) return context.getString(R.string.preview_you, text)
-    val name = Conversations.nameOf(state.records, item.from) ?: "%08x".format(item.from)
+    // A name it matches is what the writer claimed, and said to be (draft/groups.md, Receiving).
+    val name = Conversations.nameOf(state.records, item.from)?.let { context.getString(R.string.writer_claimed, it) }
+        ?: "%08x".format(item.from)
     return context.getString(R.string.preview_writer, name, text)
 }
 
