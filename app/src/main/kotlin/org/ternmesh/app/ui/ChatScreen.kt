@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -65,6 +66,7 @@ import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Companion
+import org.ternmesh.companion.Conversation
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.Item
 import org.ternmesh.companion.MessageState
@@ -118,6 +120,9 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
                                 DropdownMenuItem(text = { Text(stringResource(R.string.join_code)) }, onClick = { menu = false; dialog = ChatDialog.JOIN_CODE })
                             }
                             DropdownMenuItem(text = { Text(stringResource(R.string.leave)) }, onClick = { menu = false; dialog = ChatDialog.LEAVE })
+                            if (canForget(state, conversation)) {
+                                DropdownMenuItem(text = { Text(stringResource(R.string.delete_chat)) }, onClick = { menu = false; dialog = ChatDialog.FORGET })
+                            }
                         }
                         is Peer.Contact -> {
                             val saved = state.records.contacts[peer.address]
@@ -129,6 +134,9 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
                                 text = { Text(stringResource(R.string.end_session)) },
                                 onClick = { menu = false; dialog = ChatDialog.END_SESSION },
                             )
+                            if (canForget(state, conversation)) {
+                                DropdownMenuItem(text = { Text(stringResource(R.string.delete_chat)) }, onClick = { menu = false; dialog = ChatDialog.FORGET })
+                            }
                         }
                     }
                 }
@@ -195,27 +203,94 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
             },
             dismissButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.cancel)) } },
         )
-        ChatDialog.LEAVE -> AlertDialog(
-            onDismissRequest = { dialog = null },
-            title = { Text(stringResource(R.string.leave_title, conversation.name)) },
-            text = { Text(stringResource(R.string.leave_explained)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    dialog = null
-                    if (peer is Peer.Group) {
-                        repository.submit(Body.LeaveGroup(peer.group)) { o -> report(o); if (o is Outcome.Answered) back() }
+        ChatDialog.LEAVE -> {
+            // A client that offers to forget while it leaves sends both, the forgetting first.
+            var forgetToo by remember { mutableStateOf(false) }
+            val canAlso = canForget(state, conversation)
+            AlertDialog(
+                onDismissRequest = { dialog = null },
+                title = { Text(stringResource(R.string.leave_title, conversation.name)) },
+                text = {
+                    Column {
+                        Text(stringResource(R.string.leave_explained))
+                        if (canAlso) AlsoForget(stringResource(R.string.leave_delete_chat), forgetToo) { forgetToo = it }
                     }
-                }) { Text(stringResource(R.string.leave)) }
-            },
-            dismissButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.cancel)) } },
-        )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        dialog = null
+                        if (peer is Peer.Group) {
+                            val leave = { repository.submit(Body.LeaveGroup(peer.group)) { o -> report(o); if (o is Outcome.Answered) back() } }
+                            val through = conversation.last?.id
+                            if (canAlso && forgetToo && through != null) {
+                                repository.forget(peer, through) { o -> if (o is Outcome.Answered) leave() else report(o) }
+                            } else {
+                                leave()
+                            }
+                        }
+                    }) { Text(stringResource(R.string.leave)) }
+                },
+                dismissButton = { TextButton(onClick = { dialog = null }) { Text(stringResource(R.string.cancel)) } },
+            )
+        }
+        ChatDialog.FORGET -> ForgetDialog(repository, conversation, report, onDismiss = { dialog = null }, done = back)
         ChatDialog.SHARE -> ShareDialog(repository, state, peer) { dialog = null }
         ChatDialog.JOIN_CODE -> if (peer is Peer.Group) JoinCodeDialog(repository, peer.group, conversation.name) { dialog = null }
         null -> {}
     }
 }
 
-private enum class ChatDialog { RENAME, INVITE, END_SESSION, LEAVE, SHARE, JOIN_CODE }
+private enum class ChatDialog { RENAME, INVITE, END_SESSION, LEAVE, SHARE, JOIN_CODE, FORGET }
+
+/** Whether the user may forget [conversation]: the node can (version 16), and there is something in it to forget. */
+internal fun canForget(state: NodeState, conversation: Conversation) =
+    (state.version ?: 0) >= 16 && state.phase == Phase.READY && conversation.last != null
+
+/**
+ * Asks before forgetting [conversation] on the node and on every client of it, for good, and says
+ * what goes with it: what is still to be sent will not be. It forgets as far as the last item shown.
+ */
+@Composable
+internal fun ForgetDialog(
+    repository: NodeRepository,
+    conversation: Conversation,
+    report: (Outcome) -> Unit,
+    onDismiss: () -> Unit,
+    done: () -> Unit,
+) {
+    val through = conversation.last?.id ?: return onDismiss()
+    // A group message once sent is on the air: only one to an address, or an invite, waits after it.
+    val unsent = conversation.items.any {
+        it.state == MessageState.WAITING || (it.state == MessageState.SENT && it !is Body.GroupMessage)
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.delete_chat_title, conversation.name)) },
+        text = {
+            Column {
+                val group = conversation.peer is Peer.Group
+                Text(stringResource(if (group) R.string.delete_chat_group_explained else R.string.delete_chat_contact_explained))
+                if (unsent) Text(stringResource(R.string.delete_chat_unsent), Modifier.padding(top = 8.dp))
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onDismiss()
+                repository.forget(conversation.peer, through) { o -> report(o); if (o is Outcome.Answered) done() }
+            }) { Text(stringResource(R.string.delete_chat), color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+/** A box to tick in a dialog that leaves or removes: forget the conversation too. */
+@Composable
+internal fun AlsoForget(label: String, checked: Boolean, change: (Boolean) -> Unit) {
+    Row(Modifier.padding(top = 8.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = checked, onCheckedChange = change)
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+    }
+}
 
 /** Who the conversation is with, and in a word how: secure, not yet talked to, or a group. */
 @Composable

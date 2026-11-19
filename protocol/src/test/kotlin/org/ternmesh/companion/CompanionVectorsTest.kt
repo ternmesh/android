@@ -452,6 +452,8 @@ class CompanionVectorsTest {
         )
         "SEND" -> Body.Send(f.long("ref"), f.addr("to"), f.str("text"))
         "READ" -> Body.Read(f.long("through"))
+        "FORGET" -> Body.Forget(f.addr("contact"), f.long("through"))
+        "FORGET_GROUP" -> Body.ForgetGroup(f.gid("group"), f.long("through"))
         "SAVE_CONTACT" -> Body.SaveContact(f.addr("address"), f.str("name"))
         "REMOVE_CONTACT" -> Body.RemoveContact(f.addr("address"))
         "END_SESSION" -> Body.EndSession(f.addr("address"))
@@ -532,6 +534,8 @@ class CompanionVectorsTest {
             f.long("age"), f.int("satellites"),
         )
         "SLEEP" -> Body.Sleep(f.int("wake"), f.int("listen"), f.int("state"), f.long("keeper"), f.int("retry"))
+        "FORGOTTEN" -> Body.Forgotten(f.addr("contact"), f.long("through"))
+        "GROUP_FORGOTTEN" -> Body.GroupForgotten(f.gid("group"), f.long("through"))
         else -> fail("no frame named $name")
     }
 }

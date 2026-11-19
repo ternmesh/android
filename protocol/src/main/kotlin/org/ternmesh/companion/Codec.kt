@@ -59,6 +59,10 @@ object Codec {
                 w.str(b.text, Companion.TEXT_MAX)
             }
             is Body.Read -> w.u32(b.through)
+            is Body.Forget -> {
+                w.addr(b.contact)
+                w.u32(b.through)
+            }
             is Body.SaveContact -> {
                 w.addr(b.address)
                 w.str(b.name, Companion.NAME_MAX)
@@ -83,6 +87,10 @@ object Codec {
             is Body.Join -> w.u32(b.id)
             is Body.GroupLink -> w.gid(b.group)
             is Body.JoinLink -> w.str(b.link, Companion.LINK_MAX)
+            is Body.ForgetGroup -> {
+                w.gid(b.group)
+                w.u32(b.through)
+            }
             is Body.UpdateBegin -> {
                 w.u32(b.size)
                 w.raw(b.digest)
@@ -258,6 +266,14 @@ object Codec {
                 w.u32(b.keeper)
                 w.u16(b.retry)
             }
+            is Body.Forgotten -> {
+                w.addr(b.contact)
+                w.u32(b.through)
+            }
+            is Body.GroupForgotten -> {
+                w.gid(b.group)
+                w.u32(b.through)
+            }
         }
         val out = w.toByteArray()
         require(out.size <= Companion.MAX_FRAME) { "${b.typeName} is ${out.size} bytes, more than a frame holds" }
@@ -300,6 +316,7 @@ object Codec {
             0x06 -> Body.Off
             0x10 -> Body.Send(r.u32(), r.addr(), r.str(Companion.TEXT_MAX))
             0x11 -> Body.Read(r.u32())
+            0x12 -> Body.Forget(r.addr(), r.u32())
             0x18 -> Body.SaveContact(r.addr(), r.str(Companion.NAME_MAX))
             0x19 -> Body.RemoveContact(r.addr())
             0x1A -> Body.EndSession(r.addr())
@@ -311,6 +328,7 @@ object Codec {
             0x25 -> Body.Join(r.u32())
             0x26 -> Body.GroupLink(r.gid())
             0x27 -> Body.JoinLink(r.str(Companion.LINK_MAX))
+            0x28 -> Body.ForgetGroup(r.gid(), r.u32())
             0x30 -> Body.UpdateBegin(r.u32(), r.raw(Companion.DIGEST), if (version >= 13) r.bytes(Companion.SIGNATURE) else null)
             0x31 -> Body.UpdateData(r.u32(), r.bytes(Companion.UPDATE_CHUNK))
             0x32 -> Body.UpdateEnd
@@ -383,6 +401,8 @@ object Codec {
             0x93 -> Body.CardGone(r.addr())
             0x94 -> Body.Fix(r.u8(), r.u8(), r.i32(), r.i32(), r.i16(), r.u16(), r.u32(), r.u8())
             0x95 -> Body.Sleep(r.u16(), r.u8(), r.u8(), r.u32(), r.u16())
+            0x96 -> Body.Forgotten(r.addr(), r.u32())
+            0x97 -> Body.GroupForgotten(r.gid(), r.u32())
             else -> throw DecodeException(Unreadable.UNDEFINED)
         }
         return Frame(seq, body)

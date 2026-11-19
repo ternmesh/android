@@ -19,7 +19,7 @@ turns it on again, and then stays off it, saying the node is off, until the user
 It erases a node of version 13 or later when the user asks (`WIPE`), after saying that its address,
 contacts, groups and messages go for good, and then forgets the node and the phone's pairing with it.
 
-It speaks version 15 of the companion protocol, and any earlier version a node speaks. From a node
+It speaks version 16 of the companion protocol, and any earlier version a node speaks. From a node
 of version 14, the routing ids it is told (of neighbours, group messages' writers and group
 positions) are made from a key blinded from each address, as below; from an earlier node, from the
 address itself. When pairing fails it says that a node with no screen pairs only for three minutes
@@ -30,6 +30,14 @@ saying that messages to it then wait until it wakes, offers how often it wakes a
 listens, and says what it does now, from `SLEEP`: asleep and which relay keeps its messages,
 waiting for one, or resting relays that did not answer. A contact that said it sleeps shows how
 often it wakes, and a message sent to it says it is held until it does.
+
+A chat can be deleted from a node of version 16 or later (`FORGET`, `FORGET_GROUP`), from its ⋮
+menu or by pressing and holding it in the list. The app asks first, saying that its messages go from
+the node and from every phone or computer connected to it, for good, and that any not yet
+delivered will not be sent, and deletes only as far as the last message it showed. Leaving a group
+and removing a contact offer to delete the chat too. When any client deletes a chat, the node tells
+every client (`FORGOTTEN`, `GROUP_FORGOTTEN`), at once or at its next sync, and each removes those
+messages and their notifications. The contact, its session and the group are kept.
 
 It shows who is about: the presence cards the node has heard from the nodes near it, each with
 the name its sender claims beside its short code, and a contact made from one only when the user
@@ -146,7 +154,7 @@ says a board.
 
 | Path | |
 |---|---|
-| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 15, as Kotlin types, and its numbers. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 16, as Kotlin types, and its numbers. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Codec.kt` | A frame built into bytes, and read back from them. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/ByteStream.kt` | Frames on a byte stream (USB serial, TCP), with the node's console text between them. Bluetooth does not need it. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Connection.kt` | One connection, the client's half: `HELLO` and the version both speak, one request at a time, counted news, syncing again, and the `PING` that keeps a node from taking the app for gone. No I/O and no clock of its own: a link hands it frames and calls `tick()`. |

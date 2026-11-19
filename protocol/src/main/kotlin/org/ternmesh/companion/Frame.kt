@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 15: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 16: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -9,8 +9,8 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 14 is this without sleeping (`SET` 8 and 9, `SLEEP`, and `CONTACT`'s `wake`), version 13 is this with routing ids made from the address itself, not from the key blinded from it (RoutingIds), version 12 is version 13 without signed images (`UPDATE_BEGIN`'s `signature`) and `WIPE`, version 11 is version 12 without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 15
+    /** The version this client speaks. Version 15 is this without forgetting (`FORGET`, `FORGET_GROUP`, `FORGOTTEN` and `GROUP_FORGOTTEN`), version 14 is version 15 without sleeping (`SET` 8 and 9, `SLEEP`, and `CONTACT`'s `wake`), version 13 is this with routing ids made from the address itself, not from the key blinded from it (RoutingIds), version 12 is version 13 without signed images (`UPDATE_BEGIN`'s `signature`) and `WIPE`, version 11 is version 12 without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 16
     /** `SET` 3's power that asks for the most the node may transmit at, which it works out (version 10). */
     const val POWER_MOST = -128
     const val MAX_FRAME = 180
@@ -57,6 +57,9 @@ object Companion {
     /** How many of its last messages a node matches a `SEND`'s `ref` against. */
     const val REFS = 16
 
+    /** The fewest `FORGOTTEN` and `GROUP_FORGOTTEN` records a node keeps (version 16). */
+    const val FORGOTTEN_KEPT = 16
+
     /** The least time between two `ASKED`s for one address, or two of `NEIGHBOUR`, `AIRTIME` or `POWER`, or two `FIX`es for a fix that moved. */
     const val QUIET_MS = 10_000L
 
@@ -85,6 +88,7 @@ object Companion {
         0x36 -> 12
         0x37 -> 13
         0x95 -> 15
+        0x12, 0x28, 0x96, 0x97 -> 16
         else -> 0
     }
 
@@ -349,6 +353,13 @@ sealed class Body(val type: Int, val typeName: String) {
 
     data class Send(val ref: Long, val to: Address, val text: String) : Body(0x10, "SEND")
     data class Read(val through: Long) : Body(0x11, "READ")
+
+    /**
+     * Forget the conversation with [contact], every message and invite with it whose `id` is
+     * [through] or less, on the node and every client of it, for good (version 16). Only ever what
+     * the user asked for, with [through] the greatest `id` they were shown in it.
+     */
+    data class Forget(val contact: Address, val through: Long) : Body(0x12, "FORGET")
     data class SaveContact(val address: Address, val name: String) : Body(0x18, "SAVE_CONTACT")
     data class RemoveContact(val address: Address) : Body(0x19, "REMOVE_CONTACT")
     data class EndSession(val address: Address) : Body(0x1A, "END_SESSION")
@@ -371,6 +382,9 @@ sealed class Body(val type: Int, val typeName: String) {
         override fun hashCode() = link.hashCode()
         override fun toString() = "JoinLink(…)"
     }
+
+    /** `FORGET` for [group]'s conversation: every group message to it whose `id` is [through] or less (version 16). */
+    data class ForgetGroup(val group: GroupId, val through: Long) : Body(0x28, "FORGET_GROUP")
 
     /**
      * An image of [size] bytes, whose SHA-256 is [digest], follows, signed with [signature]
@@ -653,6 +667,16 @@ sealed class Body(val type: Int, val typeName: String) {
      */
     data class Sleep(val wake: Int, val listen: Int, val state: Int, val keeper: Long, val retry: Int) :
         Body(0x95, "SLEEP")
+
+    /**
+     * How much of the conversation with [contact] the user has forgotten (version 16): every
+     * message and invite with it whose `id` is [through] or less. A client holds none of them once
+     * it has this.
+     */
+    data class Forgotten(val contact: Address, val through: Long) : Body(0x96, "FORGOTTEN")
+
+    /** How much of [group]'s conversation the user has forgotten: every group message to it whose `id` is [through] or less. */
+    data class GroupForgotten(val group: GroupId, val through: Long) : Body(0x97, "GROUP_FORGOTTEN")
 }
 
 internal object Hex {

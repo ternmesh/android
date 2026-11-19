@@ -526,6 +526,30 @@ class NodeRepository(private val context: Context) {
     fun dismissUnanswered(u: Unanswered) = setUnanswered { it - u }
 
     /**
+     * Forgets [peer]'s conversation on the node and on every client of it, for good, as far as
+     * [through]: the greatest id the user was shown in it, so that a message that arrives while they
+     * decide is not forgotten unseen (version 16). The node's `FORGOTTEN` takes it from the records.
+     */
+    fun forget(peer: Peer, through: Long, then: (Outcome) -> Unit = {}) = submit(
+        when (peer) {
+            is Peer.Contact -> Body.Forget(peer.address, through)
+            is Peer.Group -> Body.ForgetGroup(peer.group, through)
+        },
+        then,
+    )
+
+    /**
+     * What a conversation forgot, here or on another client, goes from what the app keeps of it
+     * besides the records too: its notification, and sends not answered from before it.
+     */
+    private fun forgotten(peer: Peer, through: Long) {
+        notifier.cancel(peer)
+        if (_state.value.unanswered.any { it.peer == peer && it.after < through }) {
+            setUnanswered { list -> list.filterNot { it.peer == peer && it.after < through } }
+        }
+    }
+
+    /**
      * Messages the node may or may not have are kept on disk too: sent again after a restart under
      * a new `ref`, one the node did take would go twice.
      */
@@ -1140,6 +1164,8 @@ class NodeRepository(private val context: Context) {
             setAsked { list -> list.filter { it.address != body.address } + body }
             return
         }
+        if (body is Body.Forgotten) forgotten(Peer.Contact(body.contact), body.through)
+        if (body is Body.GroupForgotten) forgotten(Peer.Group(body.group), body.through)
         if (body is Body.Position || body is Body.GroupPosition || body is Body.Sharing || body is Body.GroupSharing ||
             body is Body.Card || body is Body.Fix
         ) {

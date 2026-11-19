@@ -3,7 +3,9 @@
 // user to save or dismiss.
 package org.ternmesh.app.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,7 +43,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -69,6 +73,8 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, toNode: () -> Unit
     var joining by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val shown = remember(conversations, query) { conversations.filter { matches(it, query.trim()) } }
+    var pressed by remember { mutableStateOf<Peer?>(null) }
+    var forgetting by remember { mutableStateOf<Conversation?>(null) }
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
@@ -84,7 +90,19 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, toNode: () -> Unit
             } else if (shown.isEmpty()) {
                 item { Text(stringResource(R.string.search_none), Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            items(shown, key = { org.ternmesh.app.node.Notifier.key(it.peer) }) { c -> ConversationRow(state, c) { open(c.peer) } }
+            items(shown, key = { org.ternmesh.app.node.Notifier.key(it.peer) }) { c ->
+                // Pressed and held: what may be done to the conversation from here.
+                val held = canForget(state, c)
+                Box {
+                    ConversationRow(state, c, onLongClick = if (held) ({ pressed = c.peer }) else null) { open(c.peer) }
+                    DropdownMenu(expanded = held && pressed == c.peer, onDismissRequest = { pressed = null }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.delete_chat)) },
+                            onClick = { pressed = null; forgetting = c },
+                        )
+                    }
+                }
+            }
         }
         Box(Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
             FloatingActionButton(
@@ -109,6 +127,11 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, toNode: () -> Unit
         }
     }
     if (joining) JoinDialog(repository, state, "", onDismiss = { joining = false }, open = open)
+    forgetting?.let { c ->
+        // As it stands now, not as it was when pressed: what the user is shown is what goes.
+        val now = conversations.firstOrNull { it.peer == c.peer } ?: c
+        ForgetDialog(repository, now, rememberReport(), onDismiss = { forgetting = null }, done = {})
+    }
     if (naming) {
         val report = rememberReport()
         NameDialog(stringResource(R.string.new_group), "", Companion.NAME_MAX, stringResource(R.string.make), onDismiss = { naming = false }) { name ->
@@ -121,14 +144,28 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, toNode: () -> Unit
     }
 }
 
-/** One conversation in the list: who, what was said last and by whom, when, and how much is unread. */
+/**
+ * One conversation in the list: who, what was said last and by whom, when, and how much is unread.
+ * [onLongClick], if any, is pressing and holding it.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ConversationRow(state: NodeState, c: Conversation, onClick: () -> Unit) {
+private fun ConversationRow(state: NodeState, c: Conversation, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     val group = c.peer is Peer.Group
     val unread = c.unread > 0
+    val press = if (onLongClick == null) {
+        Modifier.clickable(onClick = onClick)
+    } else {
+        Modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); onLongClick() },
+            onLongClickLabel = stringResource(R.string.more),
+        )
+    }
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().then(press).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {

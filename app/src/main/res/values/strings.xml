@@ -165,6 +165,14 @@
     <string name="save_contact">Save as contact</string>
     <string name="end_session">End secure session</string>
     <string name="end_session_explained">The next message will set up a new session, with fresh keys.</string>
+    <!-- Forgetting a conversation (FORGET, version 16 of draft/companion.md): from the node and every client of it, for good. -->
+    <string name="delete_chat">Delete chat</string>
+    <string name="delete_chat_title">Delete chat with %1$s?</string>
+    <string name="delete_chat_contact_explained">Every message and invite in this chat is erased from your node, and from every phone or computer connected to it. This can\'t be undone. The contact and any secure session with them are kept.</string>
+    <string name="delete_chat_group_explained">Every message in this group\'s chat is erased from your node, and from every phone or computer connected to it. This can\'t be undone. You stay in the group.</string>
+    <string name="delete_chat_unsent">Messages not yet delivered won\'t be sent.</string>
+    <string name="leave_delete_chat">Also delete its messages</string>
+    <string name="remove_delete_chat">Also delete your chat with them</string>
     <string name="back">Back</string>
     <string name="more">More</string>
     <string name="choose_contact">Choose a contact</string>
