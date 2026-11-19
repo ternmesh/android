@@ -56,6 +56,7 @@ import org.ternmesh.companion.Address
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Companion
 import org.ternmesh.companion.Conversations
+import org.ternmesh.companion.Outcome
 import org.ternmesh.companion.Peer
 
 /** Contacts or who is near, under one tab: the two ways of answering "who can I talk to?" */
@@ -168,14 +169,29 @@ private fun ContactsList(
     }
     showing?.let { c -> CodeDialog(c) { showing = null } }
     removing?.let { c ->
+        // A client that offers to forget while it removes sends both, the forgetting first.
+        val conversation = Conversations.of(state.records, Peer.Contact(c.address))
+        val canAlso = canForget(state, conversation)
+        var forgetToo by remember(c) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { removing = null },
             title = { Text(stringResource(R.string.remove_title, c.name.ifEmpty { Conversations.short(c.address.toString()) })) },
-            text = { Text(stringResource(R.string.remove_explained)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.remove_explained))
+                    if (canAlso) AlsoForget(stringResource(R.string.remove_delete_chat), forgetToo) { forgetToo = it }
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     removing = null
-                    repository.submit(Body.RemoveContact(c.address), report)
+                    val remove = { repository.submit(Body.RemoveContact(c.address), report) }
+                    val through = conversation.last?.id
+                    if (canAlso && forgetToo && through != null) {
+                        repository.forget(conversation.peer, through) { o -> if (o is Outcome.Answered) remove() else report(o) }
+                    } else {
+                        remove()
+                    }
                 }) { Text(stringResource(R.string.remove)) }
             },
             dismissButton = { TextButton(onClick = { removing = null }) { Text(stringResource(R.string.cancel)) } },

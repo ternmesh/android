@@ -1,8 +1,9 @@
 // What a client holds of a node: the records its news gave, kept as the specification's "What the
 // node holds" says. A record replaces the one before it; STATE changes a message in place; a
 // position or sharing of precision 0 is none; a sync is the whole list of contacts, groups,
-// neighbours, positions, sharing and cards, but not of messages; and a sync of version 8 sends a
-// FIX, which replaces the one before it as AIRTIME and POWER do.
+// neighbours, positions, sharing and cards, but not of messages; a sync of version 8 sends a
+// FIX, which replaces the one before it as AIRTIME and POWER do; and a FORGOTTEN or
+// GROUP_FORGOTTEN takes away every message it covers.
 package org.ternmesh.companion
 
 /**
@@ -111,6 +112,18 @@ class Records {
                 groupSharing.remove(news.group)
             }
             is Item -> items[news.id] = news
+            // What the user forgot, on this client or another (version 16): gone wherever it was kept.
+            // Told outright, so taken even from a sync that missed news.
+            is Body.Forgotten -> items.values.removeAll {
+                it.id <= news.through && when (it) {
+                    is Body.Message -> it.contact == news.contact
+                    is Body.Invite -> it.contact == news.contact
+                    else -> false
+                }
+            }
+            is Body.GroupForgotten -> items.values.removeAll {
+                it.id <= news.through && it is Body.GroupMessage && it.group == news.group
+            }
             is Body.State -> items[news.id]?.let { items[news.id] = it.with(news) }
             is Body.Neighbour -> {
                 neighbours[news.routingId] = news

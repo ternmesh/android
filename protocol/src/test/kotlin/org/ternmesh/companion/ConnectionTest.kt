@@ -76,6 +76,35 @@ class ConnectionTest {
         assertEquals(FixSource.RECEIVER, r.fix?.source, "and its fix kept while it was off")
     }
 
+    /**
+     * Forgetting (version 16): the client forgets Bob's conversation while a message to him waits,
+     * and the group's, and holds only what came after; a client that held every message through 21
+     * is told what was forgotten, and keeps none of it.
+     */
+    @Test
+    fun forgottenConversationsAreGoneFromEveryClient() {
+        val (first, second) = vectors.getValue("forget").jsonArray.map { c -> c.jsonArray.map { it.jsonObject } }
+        val link = Link(Connection(now = { 0 }, wallTime = null))
+        val answers = link.replay(first)
+        // FORGET of the node's own address is refused; the rest are answered.
+        assertEquals(listOf(Outcome.Refused(ErrorCode.BAD_ADDRESS)), answers.filter { it !is Outcome.Answered })
+        assertEquals(listOf(23L), link.connection.records.items.keys.toList())
+
+        val held = Records()
+        for (f in first.takeWhile { it.str("type") != "SYNCED" }) {
+            val body = Codec.decode(f.bytes("frame")).body
+            if (body is Item) held.items[body.id] = body
+        }
+        assertEquals((17L..21L).toList(), held.items.keys.sorted())
+        held.syncedVersion = Companion.VERSION
+        val away = Link(Connection(records = held, now = { 0 }, wallTime = null))
+        away.replay(second)
+        assertEquals(listOf(23L), away.connection.records.items.keys.toList())
+        val told = away.events.mapNotNull { (it as? ConnectionEvent.News)?.body }
+        assertEquals(1, told.count { it is Body.Forgotten })
+        assertEquals(1, told.count { it is Body.GroupForgotten })
+    }
+
     /** A client of version 0 that holds messages through 17 asks only for those after them, and sets no clock when it has none to give. */
     @Test
     fun olderVersion0() {
@@ -123,12 +152,12 @@ class ConnectionTest {
      * Clients of versions 3 and 4 are sent no position and no sharing, one of version 5 no card and
      * a `SELF` without the cards' fields, one of version 6 its card, one of version 7 no fix, and one
      * of version 8 its fix, and one of version 11 no `update`; one of version 12 is refused an unsigned
-     * update. None sends the request, or the
+     * update, and one of version 15 may not forget. None sends the request, or the
      * setting, its version does not define: it fails here, with nothing on the link.
      */
     @Test
-    fun olderVersions3To8And11AndTheRequestEachMustNotSend() {
-        for (version in (3..8) + 11 + 12) {
+    fun olderVersions3To8And11To15AndTheRequestEachMustNotSend() {
+        for (version in (3..8) + 11 + 12 + 15) {
             val frames = vectors.list("older").first { it.int("version") == version }.list("frames")
             val link = Link(Connection(version = version, now = { 0 }, wallTime = null))
             val answers = link.replay(frames.dropLast(2))
