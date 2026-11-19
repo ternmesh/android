@@ -49,6 +49,8 @@ object Codec {
                     is Setting.Cards -> w.u8(s.cards)
                     is Setting.CardName -> w.str(s.name, Companion.CARD_NAME_MAX)
                     is Setting.Receiver -> w.u8(s.on)
+                    is Setting.Wake -> w.u16(s.seconds)
+                    is Setting.Listen -> w.u8(s.seconds)
                 }
             }
             is Body.Send -> {
@@ -147,6 +149,8 @@ object Codec {
                 w.addr(b.address)
                 w.u8(b.session)
                 w.str(b.name, Companion.NAME_MAX)
+                // Version 15's.
+                if (b.wake != null) w.u16(b.wake)
             }
             is Body.ContactGone -> w.addr(b.address)
             is Body.Message -> {
@@ -247,6 +251,13 @@ object Codec {
                 w.u32(b.age)
                 w.u8(b.satellites)
             }
+            is Body.Sleep -> {
+                w.u16(b.wake)
+                w.u8(b.listen)
+                w.u8(b.state)
+                w.u32(b.keeper)
+                w.u16(b.retry)
+            }
         }
         val out = w.toByteArray()
         require(out.size <= Companion.MAX_FRAME) { "${b.typeName} is ${out.size} bytes, more than a frame holds" }
@@ -281,6 +292,8 @@ object Codec {
                     5 -> Setting.Cards(r.u8())
                     6 -> Setting.CardName(r.str(Companion.CARD_NAME_MAX))
                     7 -> Setting.Receiver(r.u8())
+                    8 -> Setting.Wake(r.u16())
+                    9 -> Setting.Listen(r.u8())
                     else -> throw DecodeException(Unreadable.UNDEFINED)
                 },
             )
@@ -343,7 +356,7 @@ object Codec {
                     Body.Self(address, role, region, power, time)
                 }
             }
-            0x81 -> Body.Contact(r.addr(), r.u8(), r.str(Companion.NAME_MAX))
+            0x81 -> Body.Contact(r.addr(), r.u8(), r.str(Companion.NAME_MAX), if (version >= 15) r.u16() else null)
             0x82 -> Body.ContactGone(r.addr())
             0x83 -> Body.Message(
                 r.u32(), r.addr(), r.u32(), r.u8(), r.u8(), r.u8(), r.u16(), r.str(Companion.TEXT_MAX),
@@ -369,6 +382,7 @@ object Codec {
             0x92 -> Body.Card(r.addr(), r.u32(), r.str(Companion.CARD_NAME_MAX))
             0x93 -> Body.CardGone(r.addr())
             0x94 -> Body.Fix(r.u8(), r.u8(), r.i32(), r.i32(), r.i16(), r.u16(), r.u32(), r.u8())
+            0x95 -> Body.Sleep(r.u16(), r.u8(), r.u8(), r.u32(), r.u16())
             else -> throw DecodeException(Unreadable.UNDEFINED)
         }
         return Frame(seq, body)

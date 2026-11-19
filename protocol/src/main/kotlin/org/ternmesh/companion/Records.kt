@@ -39,6 +39,10 @@ class Records {
     var fix: Body.Fix? = null
         internal set
 
+    /** Whether the node sleeps, and how; null before a node of version 15 has said. */
+    var sleep: Body.Sleep? = null
+        internal set
+
     /**
      * The version both ends spoke at the last sync that finished, null if none has. A node may hold
      * records a client of an earlier version was never sent, under `id`s below ones it was.
@@ -138,6 +142,7 @@ class Records {
             is Body.Airtime -> airtime = news
             is Body.Power -> power = news
             is Body.Fix -> fix = news
+            is Body.Sleep -> sleep = news
             else -> {}
         }
     }
@@ -185,6 +190,8 @@ class Records {
         if (version >= 6) cards.keys.retainAll(seen.cards)
         // A node of version 7 or earlier tells no fix: one held is from before it was.
         if (version < 8) fix = null
+        // Nor one of version 14 or earlier of sleeping.
+        if (version < 15) sleep = null
         syncedVersion = version
         missedSince = null
         syncing = null
@@ -211,6 +218,7 @@ class Records {
         it.airtime = airtime
         it.power = power
         it.fix = fix
+        it.sleep = sleep
         it.syncedVersion = syncedVersion
         it.speaking = speaking
         it.missedSince = missedSince
@@ -220,12 +228,12 @@ class Records {
         groups == other.groups && items == other.items && neighbours == other.neighbours &&
         positions == other.positions && groupPositions == other.groupPositions && sharing == other.sharing &&
         groupSharing == other.groupSharing && cards == other.cards && airtime == other.airtime && power == other.power &&
-        fix == other.fix &&
+        fix == other.fix && sleep == other.sleep &&
         syncedVersion == other.syncedVersion && missedSince == other.missedSince
 
     override fun hashCode() = listOf(
         self, contacts, groups, items, neighbours, positions, groupPositions, sharing, groupSharing, cards,
-        airtime, power, fix, syncedVersion, missedSince,
+        airtime, power, fix, sleep, syncedVersion, missedSince,
     ).hashCode()
 }
 

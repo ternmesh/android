@@ -284,6 +284,27 @@ class CompanionVectorsTest {
         assertTrue("TERNMESH" !in Body.JoinLink(link).toString() && "TERNMESH" !in Body.Link(link).toString())
     }
 
+    /** Sleeping is version 15's: the wake and listen settings, `SLEEP`, and `CONTACT`'s `wake`. */
+    @Test
+    fun sleepingIsVersion15s() {
+        for (setting in listOf(Setting.Wake(600), Setting.Listen(4))) {
+            val set = Codec.encode(Frame(1, Body.Set(setting)))
+            assertEquals(15, Body.Set(setting).since)
+            assertEquals(Body.Set(setting), Codec.decode(set).body)
+            assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(set, 14) }.reason)
+        }
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Set(Setting.Wake(0x10000)))) }
+        val sleep = Body.Sleep(Sleeping.WAKE_MAX, 2, Sleeping.RESTING, 0xFFFF_FFFFL, 0xFFFF)
+        val bytes = Codec.encode(Frame(0, sleep))
+        assertEquals(12, bytes.size)
+        assertEquals(sleep, Codec.decode(bytes).body)
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(bytes, 14) }.reason)
+        val bob = Address(ByteArray(Address.LENGTH) { 7 })
+        val contact = Codec.encode(Frame(0, Body.Contact(bob, 1, "Bob", 900)))
+        assertEquals(Body.Contact(bob, 1, "Bob", 900), Codec.decode(contact).body)
+        assertEquals(Body.Contact(bob, 1, "Bob"), Codec.decode(contact, 14).body)
+    }
+
     /** The node's own fix and the receiver setting are version 8's, and a fix's signed fields build and read back at their ends. */
     @Test
     fun theNodesOwnFixIsVersion8s() {
@@ -424,6 +445,8 @@ class CompanionVectorsTest {
                 5 -> Setting.Cards(f.int("value"))
                 6 -> Setting.CardName(f.str("value"))
                 7 -> Setting.Receiver(f.int("value"))
+                8 -> Setting.Wake(f.int("value"))
+                9 -> Setting.Listen(f.int("value"))
                 else -> fail("setting ${f.int("setting")}")
             },
         )
@@ -468,7 +491,7 @@ class CompanionVectorsTest {
             if (f.containsKey("most")) f.int("most") else null,
             if (f.containsKey("pairing")) f.int("pairing") else null,
         )
-        "CONTACT" -> Body.Contact(f.addr("address"), f.int("session"), f.str("name"))
+        "CONTACT" -> Body.Contact(f.addr("address"), f.int("session"), f.str("name"), if (f.containsKey("wake")) f.int("wake") else null)
         "CONTACT_GONE" -> Body.ContactGone(f.addr("address"))
         "MESSAGE" -> Body.Message(
             f.long("id"), f.addr("contact"), f.long("time"), f.int("flags"), f.int("state"), f.int("reason"),
@@ -508,6 +531,7 @@ class CompanionVectorsTest {
             f.int("receiver"), f.int("source"), f.int("lat"), f.int("lon"), f.int("altitude"), f.int("accuracy"),
             f.long("age"), f.int("satellites"),
         )
+        "SLEEP" -> Body.Sleep(f.int("wake"), f.int("listen"), f.int("state"), f.long("keeper"), f.int("retry"))
         else -> fail("no frame named $name")
     }
 }

@@ -227,6 +227,10 @@ private fun ChatTitle(state: NodeState, peer: Peer, name: String) {
             1 -> stringResource(R.string.session_yes) to extra.good
             0 -> stringResource(R.string.session_no) to MaterialTheme.colorScheme.onSurfaceVariant
             else -> stringResource(R.string.chat_not_contact) to MaterialTheme.colorScheme.onSurfaceVariant
+        }.let { (text, color) ->
+            // A contact that said it sleeps (version 15): messages to it wait for it to wake.
+            val wake = state.records.contacts[peer.address]?.wake ?: 0
+            if (wake == 0) text to color else text + " · " + stringResource(R.string.contact_sleeps, spanText(wake.toLong())) to color
         }
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -271,7 +275,13 @@ private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {
                         }
                     }
                 }
-                val status = listOfNotNull(timeText(context, timeOf(item)).ifEmpty { null }, stateText(context, item))
+                // Sent to a contact that sleeps: its keeper holds it until the contact wakes.
+                val held = item is Body.Message && item.state == MessageState.SENT &&
+                    (state.records.contacts[item.contact]?.wake ?: 0) != 0
+                val status = listOfNotNull(
+                    timeText(context, timeOf(item)).ifEmpty { null },
+                    if (held) stringResource(R.string.state_held) else stateText(context, item),
+                )
                 if (status.isNotEmpty()) {
                     Text(
                         status.joinToString(" · "),
