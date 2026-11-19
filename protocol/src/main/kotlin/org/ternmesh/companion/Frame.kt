@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 14: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 15: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -9,8 +9,8 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 13 is this with routing ids made from the address itself, not from the key blinded from it (RoutingIds), version 12 is version 13 without signed images (`UPDATE_BEGIN`'s `signature`) and `WIPE`, version 11 is version 12 without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 14
+    /** The version this client speaks. Version 14 is this without sleeping (`SET` 8 and 9, `SLEEP`, and `CONTACT`'s `wake`), version 13 is this with routing ids made from the address itself, not from the key blinded from it (RoutingIds), version 12 is version 13 without signed images (`UPDATE_BEGIN`'s `signature`) and `WIPE`, version 11 is version 12 without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 15
     /** `SET` 3's power that asks for the most the node may transmit at, which it works out (version 10). */
     const val POWER_MOST = -128
     const val MAX_FRAME = 180
@@ -84,6 +84,7 @@ object Companion {
         0x06 -> 9
         0x36 -> 12
         0x37 -> 13
+        0x95 -> 15
         else -> 0
     }
 
@@ -91,6 +92,7 @@ object Companion {
     fun settingSince(setting: Int): Int = when (setting) {
         5, 6 -> 6
         7 -> 8
+        8, 9 -> 15
         else -> 0
     }
 }
@@ -242,6 +244,36 @@ sealed interface Setting {
 
     /** 1 to run the node's satellite receiver, 0 to turn it off. Only ever what the user asked for. */
     data class Receiver(val on: Int) : Setting { override val number get() = 7 }
+
+    /**
+     * How long the node, as a leaf, lets pass between its polls when it sleeps, in seconds: 0 not
+     * to sleep, or [Sleeping.WAKE_MIN] to [Sleeping.WAKE_MAX] (version 15). Only ever what the user
+     * asked for.
+     */
+    data class Wake(val seconds: Int) : Setting { override val number get() = 8 }
+
+    /** How long a sleeping node listens after each poll, in seconds, [Sleeping.LISTEN_MIN] to 255 (version 15). */
+    data class Listen(val seconds: Int) : Setting { override val number get() = 9 }
+}
+
+/** Sleeping leaves' numbers (draft/sleeping.md), and `SLEEP`'s `state` (version 15). */
+object Sleeping {
+    const val WAKE_MIN = 300
+    const val WAKE_MAX = 3600
+    const val LISTEN_MIN = 2
+    const val LISTEN_MAX = 255
+
+    /** It listens all the time: not set to sleep, or a relay. */
+    const val AWAKE = 0
+
+    /** It sleeps, kept by `keeper`. */
+    const val ASLEEP = 1
+
+    /** It is to sleep, but has no relay it can take as keeper yet. */
+    const val WAITING = 2
+
+    /** It is to sleep, but the relays it could take did not answer its polls; it tries `keeper` again in `retry` seconds. */
+    const val RESTING = 3
 }
 
 /** A `FIX`'s `receiver`: what the node's satellite receiver is doing. */
@@ -294,7 +326,7 @@ object MessageState {
     const val RECEIVED = 4
 }
 
-/** What a frame says: every frame of version 14. [since] is the least version that defines it. */
+/** What a frame says: every frame of version 15. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String) {
     /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
     open val since: Int get() = Companion.since(type)
@@ -458,8 +490,12 @@ sealed class Body(val type: Int, val typeName: String) {
         val pairing: Int? = null,
     ) : Body(0x80, "SELF")
 
-    /** An address the user saved, with a name. [session] is 1 if the node shares one with it. */
-    data class Contact(val address: Address, val session: Int, val name: String) : Body(0x81, "CONTACT")
+    /**
+     * An address the user saved, with a name. [session] is 1 if the node shares one with it. [wake]
+     * is how long the contact said it sleeps between wakes, in seconds, 0 if it does not or said
+     * nothing; null below version 15.
+     */
+    data class Contact(val address: Address, val session: Int, val name: String, val wake: Int? = null) : Body(0x81, "CONTACT")
 
     data class ContactGone(val address: Address) : Body(0x82, "CONTACT_GONE")
 
@@ -609,6 +645,14 @@ sealed class Body(val type: Int, val typeName: String) {
         /** Whether it is a fix at all. */
         val has: Boolean get() = source != FixSource.NONE
     }
+
+    /**
+     * Whether the node sleeps (version 15): [wake] and [listen] in seconds as `SET` 8 and 9 set them,
+     * [wake] 0 for not to sleep; [state] a [Sleeping] state; [keeper] the keeper's routing id when
+     * asleep, the relay it will try again when resting, else 0; [retry] seconds until it does.
+     */
+    data class Sleep(val wake: Int, val listen: Int, val state: Int, val keeper: Long, val retry: Int) :
+        Body(0x95, "SLEEP")
 }
 
 internal object Hex {

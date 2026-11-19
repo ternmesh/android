@@ -88,6 +88,7 @@ import org.ternmesh.companion.Pairing
 import org.ternmesh.companion.ReceiverState
 import org.ternmesh.companion.Setting
 import org.ternmesh.companion.Signed
+import org.ternmesh.companion.Sleeping
 import org.ternmesh.companion.install
 import org.ternmesh.companion.UpdateBy
 import org.ternmesh.companion.updateBy
@@ -566,6 +567,13 @@ fun RadioScreen(repository: NodeRepository, state: NodeState, back: () -> Unit) 
             }
         }
 
+        // Sleeping is version 15's: a node of version 14 or earlier says nothing of it, and has no section.
+        state.records.sleep?.takeIf { canSleep(state) }?.let { sleep ->
+            SectionHeader(stringResource(R.string.sleep_section))
+            SettingsGroup { SleepSettings(repository, state, s, sleep) }
+            Footnote(stringResource(if (s.role == 1) R.string.sleep_relay_explained else R.string.sleep_explained))
+        }
+
         SectionHeader(stringResource(R.string.power))
         SettingsGroup {
             NumberSetting(
@@ -768,6 +776,86 @@ private fun PasskeyDialog(onDismiss: () -> Unit, set: (Long) -> Unit) {
 
 /** Whether the node can be asked for the most it may transmit at: `SET` 3's -128 is version 10's. */
 fun canSendAtTheMost(state: NodeState) = (state.version ?: 0) >= 10
+
+/** Whether the node can be set to sleep, and says whether it does: `SET` 8 and 9 and `SLEEP` are version 15's. */
+fun canSleep(state: NodeState) = (state.version ?: 0) >= 15
+
+/** The wakes offered, in seconds: from `WAKE_MIN` to `WAKE_MAX`. */
+private val WAKES = listOf(300, 600, 900, 1800, 3600)
+
+/** The wake turning sleep on starts with. */
+private const val WAKE_FIRST = 600
+
+/**
+ * Sleeping, for a leaf: on or off, how often it wakes, how long it listens, and what it does now.
+ * Turning it on asks first, since messages to the node then wait for it to wake.
+ */
+@Composable
+private fun SleepSettings(repository: NodeRepository, state: NodeState, self: Body.Self, sleep: Body.Sleep) {
+    val context = LocalContext.current
+    val report = rememberReport()
+    var asking by remember { mutableStateOf(false) }
+    var choosing by remember { mutableStateOf(false) }
+    val on = sleep.wake != 0
+    SettingsRow(
+        stringResource(R.string.sleep_on),
+        subtitle = sleepText(context, state, self, sleep),
+        trailing = {
+            Switch(checked = on, onCheckedChange = {
+                if (it) asking = true else repository.submit(Body.Set(Setting.Wake(0)), report)
+            })
+        },
+    )
+    if (on) {
+        GroupDivider()
+        Box {
+            SettingsRow(
+                stringResource(R.string.sleep_wake),
+                value = context.getString(R.string.sleep_every, spanText(sleep.wake.toLong())),
+                onClick = { choosing = true },
+            )
+            DropdownMenu(expanded = choosing, onDismissRequest = { choosing = false }) {
+                for (w in WAKES) {
+                    DropdownMenuItem(
+                        text = { Text(context.getString(R.string.sleep_every, spanText(w.toLong()))) },
+                        onClick = { choosing = false; repository.submit(Body.Set(Setting.Wake(w)), report) },
+                    )
+                }
+            }
+        }
+        GroupDivider()
+        NumberSetting(stringResource(R.string.sleep_listen), "${sleep.listen}", unit = "s") { text ->
+            text.toIntOrNull()?.takeIf { it in Sleeping.LISTEN_MIN..Sleeping.LISTEN_MAX }
+                ?.let { repository.submit(Body.Set(Setting.Listen(it)), report) }
+        }
+    }
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            title = { Text(stringResource(R.string.sleep_ask_title)) },
+            text = { Text(stringResource(R.string.sleep_ask_explained, spanText(WAKE_FIRST.toLong()))) },
+            confirmButton = {
+                TextButton(onClick = { asking = false; repository.submit(Body.Set(Setting.Wake(WAKE_FIRST)), report) }) {
+                    Text(stringResource(R.string.sleep_ask_confirm))
+                }
+            },
+            dismissButton = { TextButton(onClick = { asking = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+}
+
+/** What a sleeping node does now, as `SLEEP`'s `state` says, its keeper named where the app can. */
+private fun sleepText(context: android.content.Context, state: NodeState, self: Body.Self, sleep: Body.Sleep): String {
+    fun relay(id: Long) = Conversations.nameOf(state.records, id) ?: Conversations.cardOf(state.records, id)?.name?.ifEmpty { null }
+        ?: routingText(id)
+    return when {
+        self.role == 1 -> context.getString(R.string.sleep_state_relay)
+        sleep.state == Sleeping.ASLEEP -> context.getString(R.string.sleep_state_asleep, relay(sleep.keeper))
+        sleep.state == Sleeping.WAITING -> context.getString(R.string.sleep_state_waiting)
+        sleep.state == Sleeping.RESTING -> context.getString(R.string.sleep_state_resting, relay(sleep.keeper), spanText(sleep.retry.toLong()))
+        else -> context.getString(R.string.sleep_state_awake)
+    }
+}
 
 /** Whether the node can be turned off from the app: `OFF` is version 9's. */
 fun canTurnOff(state: NodeState) = (state.version ?: 0) >= 9

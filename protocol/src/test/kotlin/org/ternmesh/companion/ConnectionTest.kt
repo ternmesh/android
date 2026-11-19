@@ -27,10 +27,11 @@ class ConnectionTest {
         val link = Link(Connection(now = { 0 }, wallTime = { setTime.time }))
         val answers = link.replay(frames)
 
-        assertEquals(29, answers.size)
-        // SHARE_GROUP asks for a precision past 24, SET 5 and SET 7 for a value neither 0 nor 1, and
-        // the last JOIN_LINK hands the node a join code whose check fails.
-        assertEquals(List(4) { Outcome.Refused(ErrorCode.REFUSED) }, answers.filter { it !is Outcome.Answered })
+        assertEquals(34, answers.size)
+        // SHARE_GROUP asks for a precision past 24, SET 5 and SET 7 for a value neither 0 nor 1, the
+        // last JOIN_LINK hands the node a join code whose check fails, and SET 8 and 9 ask for a wake
+        // and a listen below the least.
+        assertEquals(List(6) { Outcome.Refused(ErrorCode.REFUSED) }, answers.filter { it !is Outcome.Answered })
         assertEquals(Outcome.Answered(Body.Ok), answers.last(), "OFF is answered before the node turns off")
         val shown = answers.firstNotNullOf { (it as? Outcome.Answered)?.body as? Body.Link }
         assertEquals(JoinCode(GroupId.fromHex("c8eafadc0857a696")!!, "Ridge walkers"), JoinCode.read(shown.link))
@@ -50,6 +51,8 @@ class ConnectionTest {
         assertEquals(MessageState.DELIVERED, r.items[18L]?.state)
         assertEquals(MessageState.SENT, r.items[20L]?.state)
         assertEquals(1, r.neighbours.size)
+        assertEquals(Body.Sleep(600, 4, Sleeping.ASLEEP, r.neighbours.keys.single(), 0), r.sleep, "the node sleeps, kept by its neighbour")
+        assertEquals(0, r.self?.role, "a leaf")
         assertEquals(1, link.events.count { it is ConnectionEvent.News && it.body is Body.Asked })
         val bob = Codec.decode(frames.first { it.str("type") == "POSITION" }.bytes("frame")).body as Body.Position
         assertEquals(mapOf(bob.contact to bob), r.positions, "Bob's position is held")
@@ -550,7 +553,7 @@ class ConnectionTest {
         node.answerOne()
         node.answerOne()
         node.sent.removeFirst() // SYNC
-        node.news(Body.Contact(Node.BOB, 1, "Bob"))
+        node.news(Body.Contact(Node.BOB, 1, "Bob", 0))
         node.answerSync()
         assertEquals(1, node.connection.records.contacts.size)
 
@@ -570,7 +573,7 @@ class ConnectionTest {
         val node = synced(Node.message(10, MessageState.DELIVERED))
         node.connection.resync()
         node.sent.removeFirst() // SYNC
-        node.news(Body.Contact(Node.BOB, 1, "Bob"))
+        node.news(Body.Contact(Node.BOB, 1, "Bob", 0))
         node.answerSync()
         assertEquals(1, node.connection.records.contacts.size)
 
@@ -744,8 +747,8 @@ class ConnectionTest {
         node.answerOne()
         node.answerOne()
         node.sent.removeFirst()
-        node.news(Body.Contact(Node.BOB, 1, "Bob"))
-        node.news(Body.Contact(Node.CAROL, 0, "Carol"))
+        node.news(Body.Contact(Node.BOB, 1, "Bob", 0))
+        node.news(Body.Contact(Node.CAROL, 0, "Carol", 0))
         node.news(Body.Group(Node.HUT, "Hut"))
         node.news(Body.Neighbour(7, 1, 20, 3))
         node.news(Node.message(3, MessageState.RECEIVED))
@@ -753,7 +756,7 @@ class ConnectionTest {
 
         node.connection.resync()
         node.sent.removeFirst()
-        node.news(Body.Contact(Node.BOB, 1, "Bob"))
+        node.news(Body.Contact(Node.BOB, 1, "Bob", 0))
         node.answerSync()
         val r = node.connection.records
         assertEquals(setOf(Node.BOB), r.contacts.keys)

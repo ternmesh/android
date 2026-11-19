@@ -8,7 +8,9 @@
 // them in is read all the same.
 //
 // A `SELF` is kept as it came: without `cards` and `card_name` from a connection that spoke version
-// 5 or earlier, and read back so.
+// 5 or earlier, and read back so; a `CONTACT` likewise, without `wake` from one of version 14 or
+// earlier. Whether the node sleeps (`SLEEP`) is not kept: like the fix, every sync sends it, and its
+// `retry` counts down.
 //
 //   "TRNR", the format (1), syncedVersion (0xFF for none), 1 if missedSince is set, missedSince as a
 //   big-endian u32; then, to the end, one byte n and n bytes of a frame of seq 0, for each record.
@@ -78,14 +80,17 @@ object RecordsFile {
     /**
      * One record's frame, read as this client's version reads it; a `SELF` that is not one of
      * version 11 as version 10's, keeping its most, one that is not that as version 9's, keeping its
-     * cards, and one that is not that either as version 5's. `SELF` is all that differs between the
-     * versions' records.
+     * cards, and one that is not that either as version 5's; and a `CONTACT` without `wake` as version
+     * 14's. `SELF` and `CONTACT` are all that differ between the versions' records.
      */
     private fun record(frame: ByteArray): Body = try {
         Codec.decode(frame).body
     } catch (e: DecodeException) {
-        if (frame.firstOrNull() != 0x80.toByte()) throw e
-        listOf(10, 9).firstNotNullOfOrNull { v -> runCatching { Codec.decode(frame, v).body }.getOrNull() }
-            ?: Codec.decode(frame, 5).body
+        when (frame.firstOrNull()) {
+            0x81.toByte() -> Codec.decode(frame, 14).body
+            0x80.toByte() -> listOf(10, 9).firstNotNullOfOrNull { v -> runCatching { Codec.decode(frame, v).body }.getOrNull() }
+                ?: Codec.decode(frame, 5).body
+            else -> throw e
+        }
     }
 }

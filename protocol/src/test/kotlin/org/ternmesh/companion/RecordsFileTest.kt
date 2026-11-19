@@ -26,9 +26,10 @@ class RecordsFileTest {
         }
     }
 
-    /** The records a file keeps: all but positions, sharing, cards and the node's fix, which the next sync sends whole. */
+    /** The records a file keeps: all but positions, sharing, cards, the node's fix and its sleeping, which the next sync sends whole. */
     private fun kept(r: Records) = r.copy().apply {
         fix = null
+        sleep = null
         cards.clear()
         positions.clear()
         groupPositions.clear()
