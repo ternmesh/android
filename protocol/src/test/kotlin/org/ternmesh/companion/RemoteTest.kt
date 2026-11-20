@@ -161,7 +161,7 @@ class RemoteTest {
 
         remote.sync()
         answer(Body.Sleep(900, 5, Sleeping.AWAKE, 0, 0))
-        answer(Body.Synced(0, 1))
+        answer(Body.Synced(1))
         assertEquals(0, remote.wake)
         assertEquals(Companion.MESH_ANSWER_WAIT_MS, remote.answerWaitMs)
     }
