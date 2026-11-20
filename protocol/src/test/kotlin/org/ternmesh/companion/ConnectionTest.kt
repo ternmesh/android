@@ -105,6 +105,123 @@ class ConnectionTest {
         assertEquals(1, told.count { it is Body.GroupForgotten })
     }
 
+    /**
+     * Managing (version 17): the client's node refuses an owner that is not a contact and one neither
+     * 0 nor 1, and takes Bob; it refuses a `MANAGE` to itself and one of nothing. Then the client
+     * manages Bob's node over the mesh: `HELLO`, a sync of its own state in two answers, a power set
+     * on trial and the `PING` that confirms it, sent only once the node has had time to restart to
+     * apply it, a `SEND` refused as not over the mesh, and a restart.
+     * Every inner request is the [Remote]'s, byte for byte, and each answer is unpacked from `MANAGED`.
+     *
+     * The vectors' connection asks for no sync after `HELLO`; the one this connection asks for is
+     * answered by hand, as a node holding nothing answers it, and puts each request after it one
+     * `seq` later.
+     */
+    @Test
+    fun managingANodeOverTheMesh() {
+        val frames = vectors.list("manage")
+        val requests = frames.filter { it.str("from") == "client" }.map { Codec.decode(it.bytes("frame")).body }
+        val manages = requests.filterIsInstance<Body.Manage>()
+        val bob = manages[2].to
+        val inner = manages.drop(2).map { Codec.decode(it.request).body }
+        assertEquals(listOf("HELLO", "SYNC", "SET", "PING", "SEND", "RESTART"), inner.map { it.typeName })
+
+        var time = 0L
+        val connection = Connection(now = { time }, wallTime = null)
+        val out = ArrayDeque<ByteArray>()
+        val news = mutableListOf<Body>()
+        var remote: Remote? = null
+        connection.send = { out.addLast(it) }
+        connection.onEvent = { e ->
+            if (e is ConnectionEvent.News) {
+                news += e.body
+                remote?.receive(e.body)
+            }
+        }
+        connection.open()
+        val local = mutableListOf<Outcome>()
+        for (body in requests.filterIsInstance<Body.Owner>() + manages.take(2)) connection.submit(body) { local += it }
+
+        val refs = ArrayDeque(manages.drop(2).map { it.ref })
+        val r = Remote(bob, manage = { body, then -> connection.submit(body, then) }, now = { time }, newRef = { refs.removeFirst() })
+        remote = r
+        val events = mutableListOf<RemoteEvent>()
+        r.onEvent = { events += it }
+        val outcomes = mutableListOf<Outcome>()
+        r.open { outcomes += it }
+        r.submit(inner[2]) { outcomes += it }
+        r.submit(inner[4]) { outcomes += it }
+        r.submit(inner[5]) {
+            outcomes += it
+            connection.submit(Body.Restart) { o -> local += o }
+        }
+
+        var shift = 0
+        for (f in frames) {
+            val bytes = f.bytes("frame")
+            if (f.str("from") == "client") {
+                if (shift == 0 && out.firstOrNull()?.get(0) == 0x02.toByte()) {
+                    val sync = out.removeFirst()
+                    connection.receive(Codec.encode(Frame(sync[1].toInt() and 0xFF, Body.Synced(0))))
+                    shift = 1
+                }
+                if (out.isEmpty() && r.settleUntil != null) {
+                    // The PING after the power waits for the node to restart, and nothing goes before then.
+                    assertEquals(Remote.SETTLE_MS, r.nextDeadline)
+                    time = Remote.SETTLE_MS - 1
+                    r.tick()
+                    assertEquals(0, out.size)
+                    time = Remote.SETTLE_MS
+                    r.tick()
+                }
+                val expected = bytes.copyOf().also { it[1] = ((it[1] + shift) and 0xFF).toByte() }
+                assertEquals(Hex.encode(expected), out.removeFirstOrNull()?.let(Hex::encode), f.str("type"))
+            } else {
+                val answer = Companion.isAnswer(bytes[0].toInt() and 0xFF)
+                connection.receive(if (answer) bytes.copyOf().also { it[1] = ((it[1] + shift) and 0xFF).toByte() } else bytes)
+            }
+        }
+        assertEquals(0, out.size)
+        assertFalse(r.busy)
+
+        assertEquals(
+            listOf(
+                Outcome.Refused(ErrorCode.NOT_A_CONTACT), Outcome.Refused(ErrorCode.REFUSED), Outcome.Answered(Body.Ok),
+                Outcome.Refused(ErrorCode.BAD_ADDRESS), Outcome.Refused(ErrorCode.REFUSED), Outcome.Answered(Body.Ok),
+            ),
+            local,
+        )
+        assertEquals(1, connection.records.contacts[bob]?.owner, "Bob is an owner of the client's node")
+        assertEquals(
+            listOf(Outcome.Answered(Body.Synced(9)), Outcome.Answered(Body.Ok), Outcome.Refused(ErrorCode.NOT_OVER_THE_MESH), Outcome.Answered(Body.Ok)),
+            outcomes,
+        )
+        assertEquals(17, r.agreed)
+        assertEquals(RemoteEvent.Ready(17, r.firmware!!), events.first { it is RemoteEvent.Ready })
+        assertEquals(6, events.count { it == RemoteEvent.Trying(1) }, "each request delivered at its first try")
+        assertEquals(listOf(MessageState.SENT, MessageState.DELIVERED), events.filterIsInstance<RemoteEvent.Carried>().map { it.state }.distinct())
+        assertEquals(1, events.count { it == RemoteEvent.Synced })
+        assertEquals(listOf(RemoteEvent.Trial(Companion.TRIAL_MS), RemoteEvent.Confirmed), events.filter { it is RemoteEvent.Trial || it == RemoteEvent.Confirmed })
+        assertNull(r.trialUntil, "the PING confirmed the power")
+
+        val held = r.records
+        assertEquals(bob, held.self?.address, "the managed node's own state, apart from the client's node's")
+        assertEquals(1, held.self?.role)
+        assertEquals(0, held.self?.locked)
+        val owner = held.contacts.values.single()
+        assertEquals(1, owner.owner, "its one contact is its owner, the client's node")
+        assertEquals(3, held.neighbours.size)
+        assertTrue(held.airtime != null && held.power != null && held.fix != null && held.sleep != null)
+        assertEquals(ReceiverState.NONE, held.fix?.receiver)
+        assertEquals(emptyMap(), held.items)
+
+        val changed = news.filterIsInstance<Body.OwnerChanged>().single()
+        assertEquals(bob, changed.from)
+        assertEquals(1, changed.owner)
+        assertEquals(0, changed.by, "made one over a link, at the node")
+        assertEquals(7, news.count { it is Body.Managed }, "one answer to each request but the sync, which takes two")
+    }
+
     /** A client of version 0 that holds messages through 17 asks only for those after them, and sets no clock when it has none to give. */
     @Test
     fun olderVersion0() {
@@ -152,12 +269,13 @@ class ConnectionTest {
      * Clients of versions 3 and 4 are sent no position and no sharing, one of version 5 no card and
      * a `SELF` without the cards' fields, one of version 6 its card, one of version 7 no fix, and one
      * of version 8 its fix, and one of version 11 no `update`; one of version 12 is refused an unsigned
-     * update, and one of version 15 may not forget. None sends the request, or the
-     * setting, its version does not define: it fails here, with nothing on the link.
+     * update, one of version 15 may not forget, and one of version 16 is told nothing of owners and
+     * may not make one. None sends the request, or the setting, its version does not define: it
+     * fails here, with nothing on the link.
      */
     @Test
-    fun olderVersions3To8And11To15AndTheRequestEachMustNotSend() {
-        for (version in (3..8) + 11 + 12 + 15) {
+    fun olderVersions3To8And11To16AndTheRequestEachMustNotSend() {
+        for (version in (3..8) + 11 + 12 + 15 + 16) {
             val frames = vectors.list("older").first { it.int("version") == version }.list("frames")
             val link = Link(Connection(version = version, now = { 0 }, wallTime = null))
             val answers = link.replay(frames.dropLast(2))
@@ -174,6 +292,8 @@ class ConnectionTest {
             assertEquals(version >= 6, link.connection.records.self?.cards != null)
             assertEquals(version >= 6, link.connection.records.self?.cardName != null)
             assertEquals(version >= 8, link.connection.records.fix != null)
+            assertEquals(null, link.connection.records.self?.locked)
+            assertTrue(link.connection.records.contacts.values.all { it.owner == null })
 
             val refused = Codec.decode(frames[frames.size - 2].bytes("frame"), version + 1).body
             assertEquals(version + 1, refused.since)
@@ -582,7 +702,7 @@ class ConnectionTest {
         node.answerOne()
         node.answerOne()
         node.sent.removeFirst() // SYNC
-        node.news(Body.Contact(Node.BOB, 1, "Bob", 0))
+        node.news(Body.Contact(Node.BOB, 1, "Bob", 0, 0))
         node.answerSync()
         assertEquals(1, node.connection.records.contacts.size)
 
@@ -602,7 +722,7 @@ class ConnectionTest {
         val node = synced(Node.message(10, MessageState.DELIVERED))
         node.connection.resync()
         node.sent.removeFirst() // SYNC
-        node.news(Body.Contact(Node.BOB, 1, "Bob", 0))
+        node.news(Body.Contact(Node.BOB, 1, "Bob", 0, 0))
         node.answerSync()
         assertEquals(1, node.connection.records.contacts.size)
 
@@ -776,8 +896,8 @@ class ConnectionTest {
         node.answerOne()
         node.answerOne()
         node.sent.removeFirst()
-        node.news(Body.Contact(Node.BOB, 1, "Bob", 0))
-        node.news(Body.Contact(Node.CAROL, 0, "Carol", 0))
+        node.news(Body.Contact(Node.BOB, 1, "Bob", 0, 0))
+        node.news(Body.Contact(Node.CAROL, 0, "Carol", 0, 0))
         node.news(Body.Group(Node.HUT, "Hut"))
         node.news(Body.Neighbour(7, 1, 20, 3))
         node.news(Node.message(3, MessageState.RECEIVED))
@@ -785,7 +905,7 @@ class ConnectionTest {
 
         node.connection.resync()
         node.sent.removeFirst()
-        node.news(Body.Contact(Node.BOB, 1, "Bob", 0))
+        node.news(Body.Contact(Node.BOB, 1, "Bob", 0, 0))
         node.answerSync()
         val r = node.connection.records
         assertEquals(setOf(Node.BOB), r.contacts.keys)

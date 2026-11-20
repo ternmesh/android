@@ -11,10 +11,14 @@ import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
 import org.ternmesh.app.node.Problem
 import org.ternmesh.app.node.percent
+import org.ternmesh.companion.Address
+import org.ternmesh.companion.Body
+import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.DfuFailure
 import org.ternmesh.companion.Item
 import org.ternmesh.companion.MessageState
 import org.ternmesh.companion.Outcome
+import org.ternmesh.companion.Records
 
 fun phaseText(context: Context, state: NodeState): String = context.getString(
     when (state.phase) {
@@ -58,6 +62,8 @@ fun errorText(context: Context, code: Int): String = when (code) {
     10 -> context.getString(R.string.error_10)
     11 -> context.getString(R.string.error_11)
     12 -> context.getString(R.string.error_12)
+    13 -> context.getString(R.string.error_13)
+    14 -> context.getString(R.string.error_14)
     else -> context.getString(R.string.error_other, code)
 }
 
@@ -137,4 +143,23 @@ fun dfuText(context: Context, why: DfuFailure?): String = when (why) {
     DfuFailure.NoAnswer -> context.getString(R.string.dfu_no_answer)
     DfuFailure.Cancelled -> context.getString(R.string.dfu_cancelled)
     DfuFailure.Lost, null -> context.getString(R.string.dfu_lost)
+}
+
+/** What the app calls the node at [address]: the user's name for the contact, "your node" for its own, or its short code. */
+fun nodeName(context: Context, records: Records, address: Address): String = when {
+    address == records.self?.address -> context.getString(R.string.your_node)
+    else -> records.contacts[address]?.name?.ifEmpty { null } ?: Conversations.short(address.toString())
+}
+
+/** An `OWNER_CHANGED` in a sentence: who was made an owner of which node, or is no longer one, and how. */
+fun ownerChangedText(context: Context, records: Records, notice: Body.OwnerChanged): String {
+    val who = nodeName(context, records, notice.contact).replaceFirstChar { it.uppercase() }
+    val node = nodeName(context, records, notice.from)
+    val id = when {
+        notice.owner == 1 && notice.by == 0 -> R.string.owner_made_at_node
+        notice.owner == 1 -> R.string.owner_made_over_mesh
+        notice.by == 0 -> R.string.owner_removed_at_node
+        else -> R.string.owner_removed_over_mesh
+    }
+    return context.getString(id, who, node)
 }

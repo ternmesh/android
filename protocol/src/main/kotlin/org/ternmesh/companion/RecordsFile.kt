@@ -8,8 +8,9 @@
 // them in is read all the same.
 //
 // A `SELF` is kept as it came: without `cards` and `card_name` from a connection that spoke version
-// 5 or earlier, and read back so; a `CONTACT` likewise, without `wake` from one of version 14 or
-// earlier. Whether the node sleeps (`SLEEP`) is not kept: like the fix, every sync sends it, and its
+// 5 or earlier, and read back so, and without `locked` from one of version 16 or earlier; a
+// `CONTACT` likewise, without `wake` from one of version 14 or earlier, and without `owner` from one
+// of version 16 or earlier. Whether the node sleeps (`SLEEP`) is not kept: like the fix, every sync sends it, and its
 // `retry` counts down.
 //
 //   "TRNR", the format (1), syncedVersion (0xFF for none), 1 if missedSince is set, missedSince as a
@@ -65,7 +66,9 @@ object RecordsFile {
             } catch (e: DecodeException) {
                 return Records()
             }
-            if (!Companion.isNews(body.type) || body is Body.Asked || body is Body.State || body.typeName.endsWith("_GONE")) {
+            if (!Companion.isNews(body.type) || body is Body.Asked || body is Body.State || body is Body.Managed ||
+                body is Body.OwnerChanged || body.typeName.endsWith("_GONE")
+            ) {
                 return Records()
             }
             records.apply(body)
@@ -79,16 +82,17 @@ object RecordsFile {
 
     /**
      * One record's frame, read as this client's version reads it; a `SELF` that is not one of
-     * version 11 as version 10's, keeping its most, one that is not that as version 9's, keeping its
-     * cards, and one that is not that either as version 5's; and a `CONTACT` without `wake` as version
-     * 14's. `SELF` and `CONTACT` are all that differ between the versions' records.
+     * version 17 as version 16's, keeping its pairing, one that is not that as version 10's, keeping
+     * its most, one that is not that as version 9's, keeping its cards, and one that is not that
+     * either as version 5's; and a `CONTACT` without `owner` as version 16's, and one without `wake`
+     * either as version 14's. `SELF` and `CONTACT` are all that differ between the versions' records.
      */
     private fun record(frame: ByteArray): Body = try {
         Codec.decode(frame).body
     } catch (e: DecodeException) {
         when (frame.firstOrNull()) {
-            0x81.toByte() -> Codec.decode(frame, 14).body
-            0x80.toByte() -> listOf(10, 9).firstNotNullOfOrNull { v -> runCatching { Codec.decode(frame, v).body }.getOrNull() }
+            0x81.toByte() -> runCatching { Codec.decode(frame, 16).body }.getOrNull() ?: Codec.decode(frame, 14).body
+            0x80.toByte() -> listOf(16, 10, 9).firstNotNullOfOrNull { v -> runCatching { Codec.decode(frame, v).body }.getOrNull() }
                 ?: Codec.decode(frame, 5).body
             else -> throw e
         }

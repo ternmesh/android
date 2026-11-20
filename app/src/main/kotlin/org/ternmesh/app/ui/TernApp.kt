@@ -219,7 +219,7 @@ internal fun TernApp(
                     val back: () -> Unit = { nav.popBackStack() }
                     composable(Tab.CHATS.route) { ChatsScreen(repository, state, toNode) { nav.navigate(chatRoute(it)) } }
                     composable(Tab.PEOPLE.route) {
-                        PeopleScreen(repository, state, incoming, taken, toNode) { nav.navigate(chatRoute(it)) }
+                        PeopleScreen(repository, state, incoming, taken, toNode, manage = { nav.navigate(manageRoute(it)) }) { nav.navigate(chatRoute(it)) }
                     }
                     composable(Tab.MAP.route) { MapScreen(repository, state, toNode) }
                     composable(Tab.NODE.route) { NodeScreen(repository, state) { nav.navigate(it.route) } }
@@ -229,6 +229,10 @@ internal fun TernApp(
                     composable(NodePage.PRIVACY.route) { PrivacyScreen(repository, state, back) }
                     composable(NodePage.PIN.route) { PinScreen(repository, state, back) }
                     composable(NodePage.ABOUT.route) { AboutScreen(repository, state, back) }
+                    composable("manage/{address}") { entry ->
+                        val address = entry.arguments?.getString("address")?.let(Address::fromHex)
+                        if (address != null) ManageScreen(repository, state, address, back)
+                    }
                     composable("chat/{peer}") { entry ->
                         val peer = entry.arguments?.getString("peer")?.let(Notifier::peer)
                         if (peer != null) ChatScreen(repository, state, peer) { nav.popBackStack() }
@@ -241,6 +245,9 @@ internal fun TernApp(
 
 fun chatRoute(peer: Peer) = "chat/${Notifier.key(peer)}"
 
+/** The Manage screen of the node at [address], managed over the mesh. */
+fun manageRoute(address: Address) = "manage/$address"
+
 /** Where the link is, unless it is simply up. */
 @Composable
 private fun LinkBanner(repository: NodeRepository, state: NodeState) {
@@ -251,6 +258,10 @@ private fun LinkBanner(repository: NodeRepository, state: NodeState) {
             Column(Modifier.weight(1f)) {
                 Text(phaseText(context, state), style = MaterialTheme.typography.labelLarge)
                 state.problem?.let { Text(problemText(context, it), style = MaterialTheme.typography.bodySmall) }
+                if (state.lockedOut) {
+                    Text(stringResource(R.string.bluetooth_locked_title), style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.bluetooth_locked_explained), style = MaterialTheme.typography.bodySmall)
+                }
                 if (state.phase == Phase.DISCONNECTED) {
                     Text(stringResource(R.string.disconnected_explained), style = MaterialTheme.typography.bodySmall)
                 }

@@ -103,6 +103,27 @@ class RecordsFileTest {
             syncedVersion = 11
         }
         assertEquals(eleven, RecordsFile.decode(RecordsFile.encode(eleven)))
+        val seventeen = Records().apply {
+            apply(Body.Self(alice, 1, "US915", 22, 1_790_000_000, 1, "Alice · hut warden", 1, Pairing.DEFAULT, 1))
+            syncedVersion = 17
+        }
+        assertEquals(seventeen, RecordsFile.decode(RecordsFile.encode(seventeen)))
+    }
+
+    /** A `CONTACT` is kept as it came too: without `owner` from version 16, without `wake` from 14, and with both from 17. */
+    @Test
+    fun aContactOfAnEarlierVersionIsKept() {
+        for ((version, contact) in listOf(
+            14 to Body.Contact(bob, 1, "Bob"),
+            16 to Body.Contact(bob, 1, "Bob", 900),
+            17 to Body.Contact(bob, 1, "Bob", 0, 1),
+        )) {
+            val r = Records().apply {
+                apply(contact)
+                syncedVersion = version
+            }
+            assertEquals(r, RecordsFile.decode(RecordsFile.encode(r)), "$version")
+        }
     }
 
     /** What cannot be read whole starts again from nothing, and a sync from 0 refills it. */
@@ -118,6 +139,11 @@ class RecordsFileTest {
         assertEquals(empty, RecordsFile.decode(good.copyOf().also { it[6] = 2 }), "a missed flag neither 0 nor 1")
         val notARecord = Codec.encode(Frame(0, Body.Ok))
         assertEquals(empty, RecordsFile.decode(good + byteArrayOf(notARecord.size.toByte()) + notARecord), "an answer is no record")
+        // Nor is what a managed node answered, or a notice that its owners changed: they happened, and are not held.
+        val managed = Codec.encode(Frame(0, Body.Managed(bob, byteArrayOf(2, 0x40, 1))))
+        assertEquals(empty, RecordsFile.decode(good + byteArrayOf(managed.size.toByte()) + managed), "MANAGED is no record")
+        val changed = Codec.encode(Frame(0, Body.OwnerChanged(bob, alice, 1, 0)))
+        assertEquals(empty, RecordsFile.decode(good + byteArrayOf(changed.size.toByte()) + changed), "OWNER_CHANGED is no record")
     }
 
     @Test

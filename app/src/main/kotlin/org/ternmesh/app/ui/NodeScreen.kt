@@ -173,6 +173,16 @@ fun NodeScreen(repository: NodeRepository, state: NodeState, go: (NodePage) -> U
                     onClick = { go(NodePage.PRIVACY) },
                 )
             }
+            // SELF says whether Bluetooth is locked from a node of version 17.
+            if (self?.locked == 1) {
+                GroupDivider()
+                SettingsRow(
+                    stringResource(R.string.bluetooth_locked_title),
+                    icon = TernIcons.Lock, tint = extra.warn,
+                    subtitle = stringResource(R.string.bluetooth_locked_explained),
+                    chevron = false,
+                )
+            }
             self?.let { s ->
                 GroupDivider()
                 SettingsRow(
@@ -410,7 +420,7 @@ private fun HeroButton(icon: ImageVector, text: String, modifier: Modifier = Mod
 
 /** A screen the dashboard opens: its bar, and its content scrolling under it. */
 @Composable
-private fun NodeSubScreen(title: String, back: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+internal fun NodeSubScreen(title: String, back: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxSize()) {
         SubScreenBar(title, back)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 24.dp), content = content)
@@ -597,7 +607,7 @@ fun RadioScreen(repository: NodeRepository, state: NodeState, back: () -> Unit) 
 }
 
 @Composable
-private fun RoleChoice(title: String, tag: String, explained: String, selected: Boolean, choose: () -> Unit) {
+internal fun RoleChoice(title: String, tag: String, explained: String, selected: Boolean, choose: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().selectable(selected = selected, role = Role.RadioButton, onClick = { if (!selected) choose() })
             .padding(horizontal = 6.dp, vertical = 10.dp),
@@ -664,7 +674,42 @@ fun PinScreen(repository: NodeRepository, state: NodeState, back: () -> Unit) {
             }
         }
         Footnote(stringResource(R.string.passkey_takes_effect))
+
+        // SET 10 and SELF's locked are version 17's. Locked, the node takes nothing more over
+        // Bluetooth, so this phone can lock it but not unlock it.
+        if (canManage(state) && s.locked != null) {
+            var asking by remember { mutableStateOf(false) }
+            SectionHeader(stringResource(R.string.lock_section))
+            SettingsGroup {
+                SettingsRow(
+                    stringResource(R.string.lock_bluetooth),
+                    subtitle = stringResource(if (s.locked == 1) R.string.lock_bluetooth_on else R.string.lock_bluetooth_off),
+                    trailing = { Switch(checked = s.locked == 1, enabled = s.locked != 1, onCheckedChange = { if (it) asking = true }) },
+                )
+            }
+            Footnote(stringResource(R.string.lock_this_explained))
+            if (asking) {
+                LockDialog(state.node?.shown ?: stringResource(R.string.unnamed_device), onDismiss = { asking = false }) {
+                    repository.submit(Body.Set(Setting.Lock(1)), report)
+                }
+            }
+        }
     }
+}
+
+/** Whether the node can be managed over the mesh, have owners and lock its Bluetooth: version 17's. */
+fun canManage(state: NodeState) = (state.version ?: 0) >= 17
+
+/** Asks before locking a node's Bluetooth, saying first, as the specification has a client say, who alone can unlock it. */
+@Composable
+internal fun LockDialog(name: String, onDismiss: () -> Unit, lock: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.lock_ask_title, name)) },
+        text = { Text(stringResource(R.string.lock_ask_explained)) },
+        confirmButton = { TextButton(onClick = { onDismiss(); lock() }) { Text(stringResource(R.string.lock_ask_confirm)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }
 
 /** The node's firmware and updating it, and the little else there is to know about it. */
@@ -1185,7 +1230,7 @@ fun ForgetDialog(node: ChosenNode, onDismiss: () -> Unit, forget: () -> Unit) {
 
 /** A number typed in and set: [label] says what it is now, or what to type. */
 @Composable
-private fun NumberSetting(label: String?, initial: String, unit: String? = null, password: Boolean = false, done: (String) -> Unit) {
+internal fun NumberSetting(label: String?, initial: String, unit: String? = null, password: Boolean = false, done: (String) -> Unit) {
     var text by remember(initial) { mutableStateOf(initial) }
     Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(

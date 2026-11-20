@@ -29,4 +29,5 @@ tasks.test {
     System.getenv("TERN_SHARING_VECTORS")?.let { systemProperty("tern.sharing.vectors", it) }
     System.getenv("TERN_GROUPS_VECTORS")?.let { systemProperty("tern.groups.vectors", it) }
     System.getenv("TERN_ROUTING_VECTORS")?.let { systemProperty("tern.routing.vectors", it) }
+    System.getenv("TERN_MANAGING_VECTORS")?.let { systemProperty("tern.managing.vectors", it) }
 }
