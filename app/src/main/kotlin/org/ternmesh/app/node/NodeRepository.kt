@@ -163,6 +163,8 @@ data class Managed(
     val dialog: Boolean = false,
     /** When the message carrying the request was delivered, on the elapsed clock; null before. */
     val deliveredAt: Long? = null,
+    /** When the app's own node took the request (`QUEUED`), on the elapsed clock; null before. */
+    val queuedAt: Long? = null,
     /** What the last answer said of the app's node: an owner, not one (`ERROR` 15), or null before either. */
     val owner: Boolean? = null,
     /** When a setting on trial goes back, on the elapsed clock, unless the node hears again; null when none is on trial. */
@@ -801,7 +803,7 @@ class NodeRepository(private val context: Context) {
             val m = s.managed?.takeIf { it.address == r.to } ?: return@update s
             s.copy(
                 managed = when (e) {
-                    is RemoteEvent.Trying -> m.copy(attempt = e.attempt, carried = null, reason = 0, wait = 0, failed = null, deliveredAt = null)
+                    is RemoteEvent.Trying -> m.copy(attempt = e.attempt, carried = null, reason = 0, wait = 0, failed = null, deliveredAt = null, queuedAt = null)
                     is RemoteEvent.Carried -> m.copy(
                         carried = e.state, reason = e.reason, wait = e.wait,
                         deliveredAt = if (e.state == MessageState.DELIVERED) m.deliveredAt ?: SystemClock.elapsedRealtime() else null,
@@ -810,6 +812,7 @@ class NodeRepository(private val context: Context) {
                     RemoteEvent.Confirmed -> m.copy(trialUntil = null, confirmed = true)
                     RemoteEvent.Synced -> m.copy(synced = true)
                     is RemoteEvent.Owner -> m.copy(owner = e.owner)
+                    RemoteEvent.Queued -> m.copy(queuedAt = SystemClock.elapsedRealtime())
                     is RemoteEvent.Ready -> m
                 },
             )

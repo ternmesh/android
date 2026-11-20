@@ -181,4 +181,13 @@ class RemoteTest {
         remote.tick()
         assertEquals(Outcome.NoAnswer, result)
     }
+
+    /** The app's own node taking the request is passed on: it may be all that is heard while a keeper holds it. */
+    @Test
+    fun queuedIsPassedOn() {
+        val events = mutableListOf<RemoteEvent>()
+        remote.onEvent = { events += it }
+        remote.submit(Body.Hello(Companion.VERSION))
+        assertEquals(listOf(RemoteEvent.Trying(1), RemoteEvent.Queued), events)
+    }
 }

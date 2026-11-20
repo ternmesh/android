@@ -83,4 +83,26 @@ class ManagingViewsTest {
         compose.setContent { TernTheme { ManagingBanner(state(m)) {} } }
         compose.onNodeWithText("No answer from Hilltop.").assertIsDisplayed()
     }
+
+    /**
+     * A check of a node whose contact says it sleeps, taken by the app's node and with no STATE yet,
+     * as a keeper holding it leaves it: held until it wakes, not still being handed over.
+     */
+    @Test
+    fun aCheckHeldForASleepingNodeSaysSo() {
+        val m = Managed(
+            hilltop, checking = true, dialog = true, asking = Body.Hello(17), attempt = 1,
+            wake = 300, queuedAt = android.os.SystemClock.elapsedRealtime(),
+        )
+        compose.setContent { TernTheme { CheckOwnerDialog(state(m), hilltop, hide = {}, cancel = {}, retry = {}, manage = {}) } }
+        compose.onNodeWithText("Held until Hilltop wakes (every 5 min)…").assertIsDisplayed()
+    }
+
+    /** Not yet taken by the app's node: still being handed over. */
+    @Test
+    fun notYetQueuedIsBeingHandedOver() {
+        val m = Managed(hilltop, checking = true, dialog = true, asking = Body.Hello(17), attempt = 1, wake = 300)
+        compose.setContent { TernTheme { CheckOwnerDialog(state(m), hilltop, hide = {}, cancel = {}, retry = {}, manage = {}) } }
+        compose.onNodeWithText("Handing it to your node…").assertIsDisplayed()
+    }
 }

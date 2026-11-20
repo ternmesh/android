@@ -326,17 +326,21 @@ internal fun ManageProgress(m: Managed, name: String, stop: (() -> Unit)?, modif
             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             Column {
                 if (asking != null) {
-                    // Once delivered, the step changes with time alone: a node not known to sleep may be.
+                    // Once queued or delivered, the step changes with time alone: a node not known to sleep may be.
                     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-                    LaunchedEffect(m.deliveredAt) {
+                    val from = m.deliveredAt ?: m.queuedAt
+                    LaunchedEffect(from) {
                         now = SystemClock.elapsedRealtime()
-                        while (m.deliveredAt != null) {
+                        while (from != null) {
                             delay(1_000)
                             now = SystemClock.elapsedRealtime()
                         }
                     }
-                    val since = m.deliveredAt?.let { now - it }
-                    val step = ManageStep.of(m.carried, m.reason, m.wait, m.wake, since)
+                    val step = ManageStep.of(
+                        m.carried, m.reason, m.wait, m.wake,
+                        sinceDeliveredMs = m.deliveredAt?.let { now - it },
+                        sinceQueuedMs = m.queuedAt?.let { now - it },
+                    )
                     Text(manageStepText(context, step, name))
                     val what = listOfNotNull(
                         askingText(context, asking),

@@ -111,4 +111,12 @@ class ManageWordsTest {
         assertNull(managingText(context, asking.copy(managed = asking.managed!!.copy(asking = null))))
         assertNull(managingText(context, NodeState(records = records)))
     }
+
+    /** Taken by the app's node, no STATE yet: waiting to go; then, a while on and not known to sleep, maybe asleep. */
+    @Test
+    fun queuedTexts() {
+        assertEquals("Waiting to go…", manageStepText(context, ManageStep.of(null, sinceQueuedMs = 1_000), "Hilltop"))
+        assertEquals("Held until Hilltop wakes (every 5 min)…", manageStepText(context, ManageStep.of(null, wake = 300, sinceQueuedMs = 1_000), "Hilltop"))
+        assertEquals("Waiting for Hilltop. It may be asleep.", manageStepText(context, ManageStep.of(null, sinceQueuedMs = 30_000), "Hilltop"))
+    }
 }

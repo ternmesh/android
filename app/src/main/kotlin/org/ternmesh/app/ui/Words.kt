@@ -171,6 +171,7 @@ fun ownerChangedText(context: Context, records: Records, notice: Body.OwnerChang
 /** What a request to [node], managed over the mesh, waits for now: [step], from its message's `STATE`. */
 fun manageStepText(context: Context, step: ManageStep, node: String): String = when (step) {
     ManageStep.Starting -> context.getString(R.string.manage_step_starting)
+    ManageStep.Queued -> context.getString(R.string.manage_step_waiting)
     ManageStep.FirstContact -> context.getString(R.string.manage_step_first_contact, node)
     ManageStep.FindingRoute -> context.getString(R.string.manage_step_route)
     is ManageStep.Airtime -> {

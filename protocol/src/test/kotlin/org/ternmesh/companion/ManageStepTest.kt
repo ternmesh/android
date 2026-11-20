@@ -63,4 +63,21 @@ class ManageStepTest {
         assertFalse(ManageStep.waitsForWake(ManageStep.Held(300)))
         assertFalse(ManageStep.waitsForWake(ManageStep.MaybeAsleep))
     }
+
+    /**
+     * Taken by the app's own node, and no STATE yet: a keeper holding it for a sleeping node says
+     * nothing until the node wakes. Known to sleep, it is held; not known, after 20 s it may be asleep.
+     */
+    @Test
+    fun queuedAndNoStateYet() {
+        assertEquals(ManageStep.Starting, ManageStep.of(null, wake = 300), "not yet taken by the app's node")
+        assertEquals(ManageStep.Held(300), ManageStep.of(null, wake = 300, sinceQueuedMs = 0))
+        assertEquals(ManageStep.Queued, ManageStep.of(null, wake = null, sinceQueuedMs = 19_999))
+        assertEquals(ManageStep.MaybeAsleep, ManageStep.of(null, wake = null, sinceQueuedMs = 20_000))
+        assertEquals(ManageStep.MaybeAsleep, ManageStep.of(null, wake = 0, sinceQueuedMs = 300_000))
+        // Once the node says where it is, its STATE is what counts.
+        assertEquals(ManageStep.Sent, ManageStep.of(MessageState.SENT, wake = null, sinceQueuedMs = 300_000))
+        // A contact's wake, with no sync yet, is enough to know it sleeps.
+        assertEquals(ManageStep.Held(300), ManageStep.of(null, wake = ManageStep.sleeps(null, 300), sinceQueuedMs = 1_000))
+    }
 }

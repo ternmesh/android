@@ -96,6 +96,12 @@ sealed interface RemoteEvent {
     data class Trying(val attempt: Int) : RemoteEvent
 
     /**
+     * The client's own node took the request (`QUEUED`). A keeper holding it for a node that
+     * sleeps sends no `STATE` until the node wakes, so this may be all that is heard for a while.
+     */
+    data object Queued : RemoteEvent
+
+    /**
      * Where the message carrying the request is, as its `STATE` says: a [MessageState], and while
      * it waits, [reason] and [wait] as a message's are.
      */
@@ -314,7 +320,10 @@ class Remote(
         manage(Body.Manage(newRef(), to, f.frame)) { outcome ->
             if (inFlight !== f) return@manage
             when {
-                outcome is Outcome.Answered && outcome.body is Body.Queued -> f.id = outcome.body.id
+                outcome is Outcome.Answered && outcome.body is Body.Queued -> {
+                    f.id = outcome.body.id
+                    onEvent(RemoteEvent.Queued)
+                }
                 // The client's own node refused it, or could not be asked: nothing went.
                 outcome is Outcome.Answered -> finish(f, Outcome.NoAnswer)
                 else -> finish(f, outcome)
@@ -489,8 +498,11 @@ class Remote(
  * that carries it, and nothing more. Whether the node sleeps is [ManageStep.sleeps]'s.
  */
 sealed interface ManageStep {
-    /** Handed to the client's own node, which has not yet said where it is. */
+    /** Handed to the client's own node, which has not yet taken it (`QUEUED`). */
     data object Starting : ManageStep
+
+    /** Taken by the client's own node, which has not yet said where it is. */
+    data object Queued : ManageStep
 
     /** Waiting for a session: first contact with the managed node is under way. */
     data object FirstContact : ManageStep
@@ -527,10 +539,24 @@ sealed interface ManageStep {
          * The step a message's [state], a [MessageState] or null before any, with its [reason] and
          * [wait], says it is at. Once delivered, a node that sleeps [wake] seconds between wakes has
          * it held by its keeper until it wakes; and one not known to sleep, [sinceDeliveredMs] after
-         * delivery with no answer, may be asleep.
+         * delivery with no answer, may be asleep. Before any `STATE`, [sinceQueuedMs] is how long
+         * since the client's own node took it, null if it has not: a keeper holding it for a node
+         * that sleeps says nothing until the node wakes, so it is read the same way.
          */
-        fun of(state: Int?, reason: Int = 0, wait: Int = 0, wake: Int? = null, sinceDeliveredMs: Long? = null): ManageStep = when (state) {
-            null -> Starting
+        fun of(
+            state: Int?,
+            reason: Int = 0,
+            wait: Int = 0,
+            wake: Int? = null,
+            sinceDeliveredMs: Long? = null,
+            sinceQueuedMs: Long? = null,
+        ): ManageStep = when (state) {
+            null -> when {
+                sinceQueuedMs == null -> Starting
+                wake != null && wake > 0 -> Held(wake)
+                sinceQueuedMs >= HELD_AFTER_MS -> MaybeAsleep
+                else -> Queued
+            }
             MessageState.WAITING -> when (reason) {
                 1 -> FindingRoute
                 2 -> FirstContact
