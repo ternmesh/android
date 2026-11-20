@@ -6,8 +6,15 @@ package org.ternmesh.companion
 import java.security.MessageDigest
 
 object Sharing {
-    /** The link's start: the address follows it in base32. */
+    /** The link's start as a QR code holds it, upper-case for the code's alphanumeric set: the address follows it in base32. */
     const val LINK = "HTTPS://TERNMESH.ORG/A/"
+
+    /**
+     * The same start lower-case, for a link shown or sent as text. Android verifies an app link
+     * only for a lower-case scheme and host, so it is this form that opens the app when tapped;
+     * every reader takes the scheme, host and path letter in either case, so it reads the same.
+     */
+    const val TAPPABLE = "https://ternmesh.org/a/"
 
     private const val BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" // RFC 4648, section 6
     private const val BASE32_LENGTH = 52
@@ -22,6 +29,9 @@ object Sharing {
 
     /** The link a QR code holds, all of it in the code's alphanumeric set. */
     fun link(address: Address): String = LINK + base32(address.toByteArray())
+
+    /** The link as text to tap, copy or send: [TAPPABLE] and the same base32, upper-case. */
+    fun tappable(address: Address): String = TAPPABLE + base32(address.toByteArray())
 
     /**
      * The address in a link or in the text form, or null for anything else. Either case is

@@ -75,5 +75,5 @@ fun rememberScanner(found: (String) -> Unit): () -> Unit {
     }
 }
 
-/** Offers the address's link to whatever the person picks to send it with. */
-fun shareLink(context: Context, address: Address) = shareText(context, Sharing.link(address))
+/** Offers the address's link to whatever the person picks to send it with, lower-case so that tapping it opens the app. */
+fun shareLink(context: Context, address: Address) = shareText(context, Sharing.tappable(address))
