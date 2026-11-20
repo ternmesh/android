@@ -257,7 +257,7 @@ internal fun TernApp(
                     composable(Tab.MAP.route) { MapScreen(repository, state, toNode) }
                     composable(Tab.NODE.route) { NodeScreen(repository, state) { nav.navigate(it.route) } }
                     composable(NodePage.ADDRESS.route) { AddressScreen(state, back) }
-                    composable(NodePage.NEIGHBOURS.route) { NeighboursScreen(repository, state, back) }
+                    composable(NodePage.NEIGHBOURS.route) { NeighboursScreen(repository, state, back) { nav.navigate(traceRoute(it)) } }
                     composable(NodePage.RADIO.route) { RadioScreen(repository, state, back) }
                     composable(NodePage.PRIVACY.route) { PrivacyScreen(repository, state, back) }
                     composable(NodePage.PIN.route) { PinScreen(repository, state, back) }
@@ -268,7 +268,22 @@ internal fun TernApp(
                     }
                     composable("chat/{peer}") { entry ->
                         val peer = entry.arguments?.getString("peer")?.let(Notifier::peer)
-                        if (peer != null) ChatScreen(repository, state, peer) { nav.popBackStack() }
+                        if (peer != null) {
+                            ChatScreen(
+                                repository, state, peer, back = { nav.popBackStack() },
+                                trace = { nav.navigate(traceRoute(it)) },
+                                rangeTest = { nav.navigate(rangeRoute(it)) },
+                            )
+                        }
+                    }
+                    composable("trace/{id}") { entry ->
+                        val id = entry.arguments?.getString("id")?.takeIf { it.length == 8 }?.toLongOrNull(16)
+                        if (id != null) TraceScreen(repository, state, id, back)
+                    }
+                    composable(NodePage.RANGE.route) { RangeTestScreen(repository, state, null, back) }
+                    composable("range/{address}") { entry ->
+                        val address = entry.arguments?.getString("address")?.let(Address::fromHex)
+                        RangeTestScreen(repository, state, address, back)
                     }
                 }
             }

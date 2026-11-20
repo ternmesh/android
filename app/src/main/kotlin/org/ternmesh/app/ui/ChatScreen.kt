@@ -1,7 +1,9 @@
 // One conversation: its messages and invites oldest first, where each sent one is and, while it
-// waits, what for; and a box to write in that counts what the protocol counts, UTF-8 bytes.
+// waits, what for, and from a node of version 18 how each went, with the details behind a tap; and
+// a box to write in that counts what the protocol counts, UTF-8 bytes.
 package org.ternmesh.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
@@ -40,6 +42,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +57,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -75,11 +79,19 @@ import org.ternmesh.companion.Peer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: () -> Unit) {
+fun ChatScreen(
+    repository: NodeRepository,
+    state: NodeState,
+    peer: Peer,
+    back: () -> Unit,
+    trace: (Long) -> Unit = {},
+    rangeTest: (org.ternmesh.companion.Address) -> Unit = {},
+) {
     val conversation = remember(state.records, peer) { Conversations.of(state.records, peer) }
     val list = rememberLazyListState()
     var menu by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<ChatDialog?>(null) }
+    var details by remember { mutableStateOf<Item?>(null) }
     val report = rememberReport()
     val canShare = hasPositions(state) && when (peer) {
         is Peer.Contact -> state.records.contacts[peer.address] != null
@@ -137,6 +149,24 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
                             if (canForget(state, conversation)) {
                                 DropdownMenuItem(text = { Text(stringResource(R.string.delete_chat)) }, onClick = { menu = false; dialog = ChatDialog.FORGET })
                             }
+                            // TRACE is version 18's: a node of version 17 is not asked, and says why not.
+                            val id = state.records.routingIdOf(peer.address)
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(stringResource(R.string.trace_route))
+                                        if (!canTrace(state)) {
+                                            Text(stringResource(R.string.trace_needs_update), style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    }
+                                },
+                                enabled = canTrace(state) && id != null,
+                                onClick = {
+                                    menu = false
+                                    if (id != null) trace(id)
+                                },
+                            )
+                            DropdownMenuItem(text = { Text(stringResource(R.string.range_test)) }, onClick = { menu = false; rangeTest(peer.address) })
                         }
                     }
                 }
@@ -149,7 +179,10 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
             verticalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            items(conversation.items, key = { it.id }) { item -> Bubble(repository, state, item) }
+            items(conversation.items, key = { it.id }) { item ->
+                // How it went, from a node of version 18: tapping says all of it.
+                Bubble(repository, state, item, open = if (canTrace(state)) ({ details = item }) else null)
+            }
             items(state.unanswered.filter { it.peer == peer }, key = { "u${it.ref}" }) { u ->
                 Card(Modifier.padding(horizontal = 12.dp)) {
                     Column(Modifier.padding(12.dp)) {
@@ -238,6 +271,30 @@ fun ChatScreen(repository: NodeRepository, state: NodeState, peer: Peer, back: (
         ChatDialog.JOIN_CODE -> if (peer is Peer.Group) JoinCodeDialog(repository, peer.group, conversation.name) { dialog = null }
         null -> {}
     }
+    details?.let { item -> RouteSheet(state, item) { details = null } }
+}
+
+/** Everything the node said of how [item] went, in plain words, over the conversation. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RouteSheet(state: NodeState, item: Item, dismiss: () -> Unit) {
+    val context = LocalContext.current
+    val (facts, notes) = routeFacts(context, state.records, state.relayNames, item, state.records.routes[item.id])
+    ModalBottomSheet(onDismissRequest = dismiss) {
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 32.dp)) {
+            Text(stringResource(R.string.route_details), style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.size(12.dp))
+            for ((label, value) in facts) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    Text(value, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                }
+            }
+            for (note in notes) {
+                Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp))
+            }
+        }
+    }
 }
 
 private enum class ChatDialog { RENAME, INVITE, END_SESSION, LEAVE, SHARE, JOIN_CODE, FORGET }
@@ -318,7 +375,7 @@ private fun ChatTitle(state: NodeState, peer: Peer, name: String) {
 }
 
 @Composable
-private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {
+private fun Bubble(repository: NodeRepository, state: NodeState, item: Item, open: (() -> Unit)?) {
     val context = LocalContext.current
     val mine = item.state != MessageState.RECEIVED
     val report = rememberReport()
@@ -326,8 +383,11 @@ private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {
     val shape = if (mine) RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp) else RoundedCornerShape(20.dp, 20.dp, 20.dp, 6.dp)
     val container = if (mine) LocalTernColors.current.mine else MaterialTheme.colorScheme.surfaceContainerHigh
     val content = if (mine) LocalTernColors.current.onMine else MaterialTheme.colorScheme.onSurface
-    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = if (mine) Alignment.CenterEnd else Alignment.CenterStart) {
-        Surface(shape = shape, color = container, contentColor = content, modifier = Modifier.widthIn(max = 300.dp)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
+        Surface(
+            shape = shape, color = container, contentColor = content,
+            modifier = Modifier.widthIn(max = 300.dp).then(if (open != null) Modifier.clip(shape).clickable(onClick = open) else Modifier),
+        ) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
                 if (item is Body.GroupMessage && !mine) {
                     // The writer's routing id is what it claimed, not a proof: a contact's name it
@@ -366,6 +426,17 @@ private fun Bubble(repository: NodeRepository, state: NodeState, item: Item) {
                     )
                 }
             }
+        }
+        // How it went: direct or through relays, and how well heard, under the bubble.
+        routeLine(context, state.records, state.relayNames, item, state.records.routes[item.id])?.let { line ->
+            Text(
+                line,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 300.dp).padding(horizontal = 8.dp, vertical = 2.dp),
+            )
         }
     }
 }

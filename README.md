@@ -64,6 +64,23 @@ changed (`OWNER_CHANGED`), the app says who, of which node, and whether at the n
 the chats and in a notification, and keeps the last 20 on disk until the user dismisses them. A node whose Bluetooth is locked is shown so; the app can lock its own
 node, after saying only USB or an owner can unlock it.
 
+From a node of version 18 the app shows how each message went (`ROUTE`), in a line under it: one
+received came direct or across so many hops, at what SNR; a group message at most so many, since its
+writer hides how far off it is; one sent went direct or via a neighbour, named where the app can, and
+once delivered, how many hops its acknowledgement came back and the round trip. Tapping a message
+shows every field in words. "Trace route", in a contact's menu and beside each neighbour, traces the
+way frames go to that node and back (`TRACE`, `TRACED`): who answered, or how far it got, and each
+node out and back with how well it heard the one before, saying that a trace shows how frames went
+just then and that relays on the way can misreport it. A node no contact names can be given a name on
+the phone, from the trace or the neighbours, and is shown by it, or by its eight hex digits. A node of
+version 17 is not asked: the menu says to update its firmware, and messages have no line.
+
+A range test, from a contact's menu or the node's dashboard, sends a contact "range #1", "range #2"
+and on, every 30 to 60 s, while its screen is open and kept on, and logs each with where the phone
+was, whether it was delivered and, from version 18, its hops, SNR, RSSI, round trip and first
+neighbour. A ping due while the node is not connected is logged as not sent, and one the node did not
+answer for is found by its text once a sync shows it went. The log is shared as CSV.
+
 It shows who is about: the presence cards the node has heard from the nodes near it, each with
 the name its sender claims beside its short code, and a contact made from one only when the user
 asks. The node's own card is off until the user turns it on, and the switch says what that puts
@@ -195,8 +212,8 @@ says a board.
 | `protocol/src/main/kotlin/org/ternmesh/companion/Conversations.kt` | The records as conversations, and how far a `READ` may reach without marking another conversation's messages read. |
 | `protocol/src/test/` | The conformance section of the specification, as a client: the codec against every vector, the connection as the client in `exchange`, `older`, `unknown_to_older` and `bootloader`, the updater as the client in `update`, every case of `signatures`, and every id and no-id of `routing.json`; and the DFU client against a bootloader played by hand. |
 | `app/src/main/kotlin/org/ternmesh/app/link/` | Bluetooth LE: scanning for the node's service, and the GATT link (an MTU of at least 183, passkey pairing, one frame per write and per notification); and `BootloaderLink.kt`, finding an nRF52840 node's bootloader and the link the DFU client writes over. |
-| `app/src/main/kotlin/org/ternmesh/app/node/` | The node the app drives: the link, the connection over it and the records on disk (`NodeRepository`), the foreground service that keeps it while the app is closed, message notifications, downloading firmware and checking it before it is sent (`Firmware.kt`), and the phone's location given to the node while it shares (`LocationFeed.kt`). |
-| `app/src/main/kotlin/org/ternmesh/app/ui/` | The screens, in Jetpack Compose: choosing a node, then four tabs: chats (and one conversation), people (contacts, and who is near), the map (and sharing a position), and the node, a dashboard with a screen for each thing about it. `Theme`, `TernIcons` and `Components` are what they share. Every word they show is in `res/values/strings.xml`. |
+| `app/src/main/kotlin/org/ternmesh/app/node/` | The node the app drives: the link, the connection over it and the records on disk (`NodeRepository`), the foreground service that keeps it while the app is closed, message notifications, downloading firmware and checking it before it is sent (`Firmware.kt`), the phone's location given to the node while it shares (`LocationFeed.kt`), and a range test's pings and their log, with the phone's own fixes (`RangeTest.kt`, `PhoneFixes.kt`). |
+| `app/src/main/kotlin/org/ternmesh/app/ui/` | The screens, in Jetpack Compose: choosing a node, then four tabs: chats (and one conversation), people (contacts, and who is near), the map (and sharing a position), and the node, a dashboard with a screen for each thing about it; and a trace and the range test (`RouteScreens.kt`, worded in `RouteWords.kt`). `Theme`, `TernIcons` and `Components` are what they share. Every word they show is in `res/values/strings.xml`. |
 
 The vectors' `group_ids` are run against the join code reader, which works out the id of the
 group a code is for, so that the app can say whether the node holds it already.

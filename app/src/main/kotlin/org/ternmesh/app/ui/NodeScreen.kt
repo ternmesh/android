@@ -116,6 +116,7 @@ enum class NodePage(val route: String) {
     PRIVACY("node/privacy"),
     PIN("node/pin"),
     ABOUT("node/about"),
+    RANGE("range"),
 }
 
 /** Each kind of setting's colour, so that it is found by colour as well as by name. */
@@ -150,6 +151,15 @@ fun NodeScreen(repository: NodeRepository, state: NodeState, go: (NodePage) -> U
                 value = r.neighbours.size.let { if (it == 0) stringResource(R.string.node_heard_none) else pluralStringResource(R.plurals.node_heard_count, it, it) },
                 onClick = { go(NodePage.NEIGHBOURS) },
             )
+            // Numbered messages to a contact while the user moves, each logged with where the phone was.
+            if (r.contacts.isNotEmpty()) {
+                GroupDivider()
+                SettingsRow(
+                    stringResource(R.string.range_test),
+                    icon = TernIcons.Pin, tint = RowTint.nearby,
+                    onClick = { go(NodePage.RANGE) },
+                )
+            }
             self?.let { s ->
                 GroupDivider()
                 SettingsRow(
@@ -480,22 +490,26 @@ fun AddressScreen(state: NodeState, back: () -> Unit) {
 }
 
 /**
- * The nodes the node hears, by a contact's name or by what a card held from it claims, each with
- * its role, when it was last heard, and how well, in bars and in dB.
+ * The nodes the node hears, by a contact's name, the name the user gave it on this phone, or what a
+ * card held from it claims, each with its role, when it was last heard, and how well, in bars and
+ * in dB; from a node of version 18, each with Trace. One with no name is given one on tapping it.
  */
 @Composable
-fun NeighboursScreen(repository: NodeRepository, state: NodeState, back: () -> Unit) {
+fun NeighboursScreen(repository: NodeRepository, state: NodeState, back: () -> Unit, trace: (Long) -> Unit = {}) {
     val r = state.records
     var choosing by remember { mutableStateOf<Body.Card?>(null) }
+    var naming by remember { mutableStateOf<Long?>(null) }
     NodeSubScreen(stringResource(R.string.node_nearby_nodes), back) {
         val neighbours = r.neighbours.values.sortedBy { it.heard }
         if (neighbours.isEmpty()) EmptyState(stringResource(R.string.nearby_empty_title), stringResource(R.string.neighbours_none))
         var unnamed = false
         for (n in neighbours) {
-            val name = Conversations.nameOf(r, n.routingId)
-            // Not a contact's: named by the card the node holds from it, as what it claims, if any.
+            val contact = Conversations.contactOf(r, n.routingId)
+            // Not a contact's: named by the user, on this phone, or else by the card the node holds
+            // from it, as what it claims, if any.
+            val name = Conversations.nameOf(r, n.routingId) ?: state.relayNames[n.routingId]?.takeIf { contact == null }
             val card = if (name == null) Conversations.cardOf(r, n.routingId) else null
-            if (name == null && card == null && Conversations.contactOf(r, n.routingId) == null) unnamed = true
+            if (name == null && card == null && contact == null) unnamed = true
             val line = listOf(
                 stringResource(if (n.role == 1) R.string.role_relay_short else R.string.role_leaf_short),
                 stringResource(R.string.heard_ago, spanText(n.heard.toLong())),
@@ -518,8 +532,12 @@ fun NeighboursScreen(repository: NodeRepository, state: NodeState, back: () -> U
                 },
                 subtitle = line,
                 signal = n.snrQuarterDb,
-                // Tapping a card asks about making a contact, as tapping it among the people near does.
-                onClick = card?.let { c -> { choosing = c } },
+                trailing = if (canTrace(state)) ({
+                    TextButton(onClick = { trace(n.routingId) }, enabled = state.phase == Phase.READY) { Text(stringResource(R.string.neighbour_trace)) }
+                }) else null,
+                // Tapping a card asks about making a contact, as tapping it among the people near does;
+                // tapping one no contact has, and no card names, names it on this phone.
+                onClick = card?.let { c -> { choosing = c } } ?: if (contact == null) ({ naming = n.routingId }) else null,
             )
         }
         // Neither a contact's, even one without a name, nor a card's: why it is only a number.
@@ -527,6 +545,7 @@ fun NeighboursScreen(repository: NodeRepository, state: NodeState, back: () -> U
         Footnote(stringResource(R.string.signal_explained), Modifier.padding(top = 4.dp))
     }
     choosing?.let { card -> MakeContactFromCard(repository, card) { choosing = null } }
+    naming?.let { id -> NameRelayDialog(repository, state, id) { naming = null } }
 }
 
 /** Where the node is, which it transmits by; whether it passes on others' frames; and how loud. */
