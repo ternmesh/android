@@ -180,7 +180,7 @@ class CompanionVectorsTest {
     fun pairingIsVersion11s() {
         val ada = Address(ByteArray(32) { 0xAD.toByte() })
         val eleven = Codec.encode(Frame(0, Body.Self(ada, 1, "US915", 22, 0, 0, "", 1, Pairing.DEFAULT)))
-        assertEquals(Body.Self(ada, 1, "US915", 22, 0, 0, "", 1, Pairing.DEFAULT), Codec.decode(eleven).body)
+        assertEquals(Body.Self(ada, 1, "US915", 22, 0, 0, "", 1, Pairing.DEFAULT), Codec.decode(eleven, 16).body)
         assertEquals(Body.Self(ada, 1, "US915", 22, 0, 0, "", 1), Codec.decode(eleven, 10).body)
         val ten = Codec.encode(Frame(0, Body.Self(ada, 1, "US915", 22, 0, 0, "", 1)))
         assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(ten) }.reason)
@@ -301,8 +301,44 @@ class CompanionVectorsTest {
         assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(bytes, 14) }.reason)
         val bob = Address(ByteArray(Address.LENGTH) { 7 })
         val contact = Codec.encode(Frame(0, Body.Contact(bob, 1, "Bob", 900)))
-        assertEquals(Body.Contact(bob, 1, "Bob", 900), Codec.decode(contact).body)
+        assertEquals(Body.Contact(bob, 1, "Bob", 900), Codec.decode(contact, 16).body)
         assertEquals(Body.Contact(bob, 1, "Bob"), Codec.decode(contact, 14).body)
+    }
+
+    /**
+     * Managing is version 17's: `MANAGE`, `OWNER`, `RESTART`, `SET` 10, `MANAGED`, `OWNER_CHANGED`,
+     * `CONTACT`'s `owner` after its `wake`, and `SELF`'s `locked` after its `pairing`.
+     */
+    @Test
+    fun managingIsVersion17s() {
+        val bob = Address(ByteArray(Address.LENGTH) { 7 })
+        val ada = Address(ByteArray(Address.LENGTH) { 0xAD.toByte() })
+        val lock = Body.Set(Setting.Lock(1))
+        assertEquals(17, lock.since)
+        assertEquals("05030a01", Hex.encode(Codec.encode(Frame(3, lock))))
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(Codec.encode(Frame(3, lock)), 16) }.reason)
+        for (body in listOf(
+            Body.Manage(1, bob, byteArrayOf(3, 1)), Body.Owner(bob, 1), Body.Restart,
+            Body.Managed(bob, byteArrayOf(2, 0x40, 1)), Body.OwnerChanged(bob, ada, 0, 1),
+        )) {
+            val bytes = Codec.encode(Frame(1, body))
+            assertEquals(17, body.since, body.typeName)
+            assertEquals(body, Codec.decode(bytes).body)
+            assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(bytes, 16) }.reason, body.typeName)
+        }
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Manage(1, bob, ByteArray(Companion.REQUEST_MAX + 1)))) }
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Managed(bob, ByteArray(Companion.ANSWER_MAX + 1)))) }
+
+        val contact = Codec.encode(Frame(0, Body.Contact(bob, 1, "Bob", 0, 1)))
+        assertEquals(Body.Contact(bob, 1, "Bob", 0, 1), Codec.decode(contact).body)
+        assertEquals(Body.Contact(bob, 1, "Bob", 0), Codec.decode(contact, 16).body)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, Body.Contact(bob, 1, "Bob", owner = 1))) }
+        val self = Body.Self(ada, 1, "EU868", 14, 0, 0, "", 0, Pairing.SET, 1)
+        val seventeen = Codec.encode(Frame(0, self))
+        assertEquals(self, Codec.decode(seventeen).body)
+        assertEquals(self.copy(locked = null), Codec.decode(seventeen, 16).body)
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(Codec.encode(Frame(0, self.copy(locked = null)))) }.reason)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, self.copy(pairing = null))) }
     }
 
     /** The node's own fix and the receiver setting are version 8's, and a fix's signed fields build and read back at their ends. */
@@ -447,6 +483,7 @@ class CompanionVectorsTest {
                 7 -> Setting.Receiver(f.int("value"))
                 8 -> Setting.Wake(f.int("value"))
                 9 -> Setting.Listen(f.int("value"))
+                10 -> Setting.Lock(f.int("value"))
                 else -> fail("setting ${f.int("setting")}")
             },
         )
@@ -454,6 +491,8 @@ class CompanionVectorsTest {
         "READ" -> Body.Read(f.long("through"))
         "FORGET" -> Body.Forget(f.addr("contact"), f.long("through"))
         "FORGET_GROUP" -> Body.ForgetGroup(f.gid("group"), f.long("through"))
+        "MANAGE" -> Body.Manage(f.long("ref"), f.addr("to"), f.bytes("request"))
+        "OWNER" -> Body.Owner(f.addr("address"), f.int("owner"))
         "SAVE_CONTACT" -> Body.SaveContact(f.addr("address"), f.str("name"))
         "REMOVE_CONTACT" -> Body.RemoveContact(f.addr("address"))
         "END_SESSION" -> Body.EndSession(f.addr("address"))
@@ -470,6 +509,7 @@ class CompanionVectorsTest {
         "UPDATE_END" -> Body.UpdateEnd
         "UPDATE_BOOTLOADER" -> Body.UpdateBootloader
         "WIPE" -> Body.Wipe
+        "RESTART" -> Body.Restart
         "SET_POSITION" -> Body.SetPosition(f.int("lat"), f.int("lon"), f.int("altitude"), f.int("accuracy"), f.int("age"))
         "SHARE" -> Body.Share(f.addr("contact"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"))
         "SHARE_GROUP" -> Body.ShareGroup(f.gid("group"), f.int("precision"), f.int("fields"), f.int("interval"), f.int("minutes"))
@@ -492,8 +532,13 @@ class CompanionVectorsTest {
             if (f.containsKey("card_name")) f.str("card_name") else null,
             if (f.containsKey("most")) f.int("most") else null,
             if (f.containsKey("pairing")) f.int("pairing") else null,
+            if (f.containsKey("locked")) f.int("locked") else null,
         )
-        "CONTACT" -> Body.Contact(f.addr("address"), f.int("session"), f.str("name"), if (f.containsKey("wake")) f.int("wake") else null)
+        "CONTACT" -> Body.Contact(
+            f.addr("address"), f.int("session"), f.str("name"),
+            if (f.containsKey("wake")) f.int("wake") else null,
+            if (f.containsKey("owner")) f.int("owner") else null,
+        )
         "CONTACT_GONE" -> Body.ContactGone(f.addr("address"))
         "MESSAGE" -> Body.Message(
             f.long("id"), f.addr("contact"), f.long("time"), f.int("flags"), f.int("state"), f.int("reason"),
@@ -536,6 +581,8 @@ class CompanionVectorsTest {
         "SLEEP" -> Body.Sleep(f.int("wake"), f.int("listen"), f.int("state"), f.long("keeper"), f.int("retry"))
         "FORGOTTEN" -> Body.Forgotten(f.addr("contact"), f.long("through"))
         "GROUP_FORGOTTEN" -> Body.GroupForgotten(f.gid("group"), f.long("through"))
+        "MANAGED" -> Body.Managed(f.addr("from"), f.bytes("answer"))
+        "OWNER_CHANGED" -> Body.OwnerChanged(f.addr("from"), f.addr("contact"), f.int("owner"), f.int("by"))
         else -> fail("no frame named $name")
     }
 }

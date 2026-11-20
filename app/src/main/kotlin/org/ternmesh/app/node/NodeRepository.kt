@@ -28,6 +28,7 @@ import org.ternmesh.app.link.BootloaderScan
 import org.ternmesh.app.link.LinkFailure
 import org.ternmesh.app.link.LinkState
 import org.ternmesh.app.ui.outcomeText
+import org.ternmesh.companion.Address
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.BootloaderState
 import org.ternmesh.companion.BootloaderUpdater
@@ -38,14 +39,18 @@ import org.ternmesh.companion.ConnectionEvent
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.DfuPackage
 import org.ternmesh.companion.DfuState
+import org.ternmesh.companion.ErrorCode
 import org.ternmesh.companion.Install
 import org.ternmesh.companion.Item
 import org.ternmesh.companion.Manifest
 import org.ternmesh.companion.MessageState
 import org.ternmesh.companion.Outcome
+import org.ternmesh.companion.OwnerNotices
 import org.ternmesh.companion.Peer
 import org.ternmesh.companion.Records
 import org.ternmesh.companion.RecordsFile
+import org.ternmesh.companion.Remote
+import org.ternmesh.companion.RemoteEvent
 import org.ternmesh.companion.Signatures
 import org.ternmesh.companion.Signed
 import org.ternmesh.companion.UpdateBy
@@ -126,6 +131,34 @@ sealed interface Problem {
  */
 data class Unanswered(val ref: Long, val peer: Peer, val text: String, val after: Long)
 
+/**
+ * A node the user manages over the mesh (version 17), as far as it has answered: its own state
+ * from its last sync over the mesh, apart from the app's own node's.
+ */
+data class Managed(
+    val address: Address,
+    val records: Records = Records(),
+    /** The managed node's version and firmware, once it has answered `HELLO`. */
+    val version: Int? = null,
+    val firmware: String? = null,
+    /** The request on its way, or waiting for its answer; null when none is. */
+    val asking: Body? = null,
+    /** Which try this is, from 1 to [Remote.TRIES]. */
+    val attempt: Int = 0,
+    /** Where the message carrying it is, a [MessageState]; null before the node has said. */
+    val carried: Int? = null,
+    /** When a setting on trial goes back, on the elapsed clock, unless the node hears again; null when none is on trial. */
+    val trialUntil: Long? = null,
+    /** Until when the next request waits for the node to restart to apply a role or a power, on the elapsed clock; null when none waits. */
+    val settleUntil: Long? = null,
+    /** The last setting on trial was confirmed, and stays. */
+    val confirmed: Boolean = false,
+    /** What the last request came to, when it did not simply work: shown until the next. */
+    val failed: Outcome? = null,
+    /** Whether a sync over the mesh has finished since managing began. */
+    val synced: Boolean = false,
+)
+
 /** A node erased with `WIPE`: [name] as the user knew it; [bondRemoved] if the phone forgot its bond too. */
 data class Wiped(val name: String?, val bondRemoved: Boolean)
 
@@ -150,6 +183,12 @@ data class NodeState(
     val wiped: Wiped? = null,
     /** First contacts the node refused, newest last, until the user deals with them. */
     val asked: List<Body.Asked> = emptyList(),
+    /** Nodes that said their owners changed (`OWNER_CHANGED`, version 17), newest last, until the user dismisses them; kept on disk, the last [OwnerNotices.KEPT]. */
+    val ownerChanges: List<Body.OwnerChanged> = emptyList(),
+    /** The node refused its sync with `ERROR` 14: its Bluetooth is locked, and it takes nothing over it but `HELLO` and `PING`. */
+    val lockedOut: Boolean = false,
+    /** The node managed over the mesh from the Manage screen, while it is open. */
+    val managed: Managed? = null,
     val unanswered: List<Unanswered> = emptyList(),
     /** Every node the app keeps records of, most recently chosen first. */
     val known: List<ChosenNode> = emptyList(),
@@ -229,6 +268,9 @@ class NodeRepository(private val context: Context) {
     /** The `through` of the READ last sent, so the same one is not sent again and again. */
     private var readSent = 0L
 
+    /** The node managed over the mesh, while the Manage screen is open. */
+    private var remote: Remote? = null
+
     init {
         link.onState = ::linkState
         link.onFrame = { frame ->
@@ -249,7 +291,7 @@ class NodeRepository(private val context: Context) {
             update {
                 it.copy(
                     node = node, phase = phase, records = connection.records.copy(),
-                    unanswered = loadUnanswered(address), asked = loadAsked(address),
+                    unanswered = loadUnanswered(address), asked = loadAsked(address), ownerChanges = loadOwnerChanges(address),
                 )
             }
         }
@@ -276,7 +318,7 @@ class NodeRepository(private val context: Context) {
             update {
                 NodeState(
                     node = node, records = connection.records.copy(), unanswered = loadUnanswered(node.address),
-                    asked = loadAsked(node.address),
+                    asked = loadAsked(node.address), ownerChanges = loadOwnerChanges(node.address),
                 )
             }
         }
@@ -342,6 +384,7 @@ class NodeRepository(private val context: Context) {
 
     /** Drops the link and the node, keeping its records on disk in case it is chosen again. */
     fun leave() {
+        stopManaging()
         stopUpdate()
         handler.removeCallbacksAndMessages(null)
         link.disconnect()
@@ -364,6 +407,7 @@ class NodeRepository(private val context: Context) {
         file(address).delete()
         unansweredPrefs.edit().remove(address).apply()
         askedPrefs.edit().remove(address).apply()
+        ownersFile(address).delete()
         knownPrefs.edit().remove(address).apply()
         labelPrefs.edit().remove(address).apply()
         setupPrefs.edit().remove(address).apply()
@@ -572,6 +616,120 @@ class NodeRepository(private val context: Context) {
                 ?: return@mapNotNull null
             Unanswered(ref, peer, text, parts[4].toLongOrNull() ?: 0)
         }.sortedBy { it.ref }
+
+    /**
+     * Starts managing the node at [address] over the mesh (version 17): says `HELLO` to it, then asks
+     * for its own state. It answers only if it holds this app's node as one of its owners.
+     */
+    fun manage(address: Address) {
+        if (remote?.to == address) return
+        remote?.close()
+        val r = Remote(address, manage = { body, then -> submit(body, then) }, now = SystemClock::elapsedRealtime)
+        remote = r
+        r.onEvent = { e -> remoteEvent(r, e) }
+        update { it.copy(managed = Managed(address)) }
+        r.open { outcome -> remoteDone(r, outcome) }
+        publishRemote(r)
+        scheduleTick()
+    }
+
+    /** Asks the managed node for its own state again. */
+    fun syncManaged() {
+        val r = remote ?: return
+        r.sync { outcome -> remoteDone(r, outcome) }
+        publishRemote(r)
+        scheduleTick()
+    }
+
+    /**
+     * Asks [body] of the managed node, over the mesh. A `SET` that is answered is on trial, and the
+     * `PING` that confirms it follows by itself. [then] hears what came of it.
+     */
+    fun askManaged(body: Body, then: (Outcome) -> Unit = {}) {
+        val r = remote ?: return then(Outcome.Closed)
+        r.submit(body) { outcome ->
+            remoteDone(r, outcome)
+            then(outcome)
+        }
+        publishRemote(r)
+        scheduleTick()
+    }
+
+    /** The Manage screen closed: whatever was asked and not answered is given up on. */
+    fun stopManaging() {
+        val r = remote ?: return
+        remote = null
+        r.close()
+        update { it.copy(managed = null) }
+        scheduleTick()
+    }
+
+    private fun remoteEvent(r: Remote, e: RemoteEvent) {
+        if (remote !== r) return
+        update { s ->
+            val m = s.managed?.takeIf { it.address == r.to } ?: return@update s
+            s.copy(
+                managed = when (e) {
+                    is RemoteEvent.Trying -> m.copy(attempt = e.attempt, carried = null, failed = null)
+                    is RemoteEvent.Carried -> m.copy(carried = e.state)
+                    is RemoteEvent.Trial -> m.copy(trialUntil = e.until, confirmed = false)
+                    RemoteEvent.Confirmed -> m.copy(trialUntil = null, confirmed = true)
+                    RemoteEvent.Synced -> m.copy(synced = true)
+                    is RemoteEvent.Ready -> m
+                },
+            )
+        }
+        publishRemote(r)
+    }
+
+    private fun remoteDone(r: Remote, outcome: Outcome) {
+        if (remote !== r) return
+        update { s ->
+            val m = s.managed?.takeIf { it.address == r.to } ?: return@update s
+            s.copy(managed = m.copy(failed = outcome.takeIf { it !is Outcome.Answered }))
+        }
+        publishRemote(r)
+        scheduleTick()
+    }
+
+    /** What the screens are shown of the managed node: its records and what it is asked, as of now. */
+    private fun publishRemote(r: Remote) {
+        if (remote !== r) return
+        update { s ->
+            val m = s.managed?.takeIf { it.address == r.to } ?: return@update s
+            s.copy(
+                managed = m.copy(
+                    records = r.records.copy(), version = r.nodeVersion, firmware = r.firmware, asking = r.asking,
+                    trialUntil = r.trialUntil, settleUntil = r.settleUntil, attempt = if (r.asking == null) 0 else m.attempt,
+                ),
+            )
+        }
+    }
+
+    fun dismissOwnerChange(c: Body.OwnerChanged) = setOwnerChanges { it - c }
+
+    /**
+     * The node does not keep an `OWNER_CHANGED`, and a sync does not send it again, so the app keeps
+     * each on disk, the last [OwnerNotices.KEPT], until the user dismisses it.
+     */
+    private fun setOwnerChanges(change: (List<Body.OwnerChanged>) -> List<Body.OwnerChanged>) {
+        update { it.copy(ownerChanges = change(it.ownerChanges).takeLast(OwnerNotices.KEPT)) }
+        val address = _state.value.node?.address ?: return
+        val f = ownersFile(address)
+        if (_state.value.ownerChanges.isEmpty()) {
+            f.delete()
+            return
+        }
+        f.parentFile?.mkdirs()
+        val tmp = File(f.path + ".tmp")
+        tmp.writeBytes(OwnerNotices.encode(_state.value.ownerChanges))
+        tmp.renameTo(f)
+    }
+
+    private fun loadOwnerChanges(address: String): List<Body.OwnerChanged> =
+        ownersFile(address).takeIf { it.exists() }?.let { OwnerNotices.decode(it.readBytes()) } ?: emptyList()
+
+    private fun ownersFile(address: String) = File(context.filesDir, "records/${address.replace(':', '-')}.owners")
 
     fun dismissAsked(a: Body.Asked) = setAsked { list -> list.filter { it.address != a.address } }
 
@@ -1130,7 +1288,7 @@ class NodeRepository(private val context: Context) {
             is ConnectionEvent.Ready -> {
                 update {
                     it.copy(
-                        phase = Phase.SYNCING, version = e.version, firmware = e.firmware, board = e.board,
+                        phase = Phase.SYNCING, lockedOut = false, version = e.version, firmware = e.firmware, board = e.board,
                         release = e.release, updatedBy = e.update, problem = null,
                     )
                 }
@@ -1138,12 +1296,13 @@ class NodeRepository(private val context: Context) {
             }
             is ConnectionEvent.News -> news(e.body)
             ConnectionEvent.Synced -> {
-                update { it.copy(phase = Phase.READY) }
+                update { it.copy(phase = Phase.READY, lockedOut = false) }
                 resumeIfStillFor()
                 save()
                 viewing?.let(::markRead)
             }
-            is ConnectionEvent.SyncRefused -> {}
+            // A node whose Bluetooth is locked takes nothing over it but HELLO and PING: it says so here.
+            is ConnectionEvent.SyncRefused -> if (e.code == ErrorCode.LOCKED) update { it.copy(lockedOut = true) }
             is ConnectionEvent.Refused -> {
                 link.disconnect()
                 update { it.copy(phase = Phase.STOPPED, problem = Problem.Refused(e.code)) }
@@ -1162,6 +1321,22 @@ class NodeRepository(private val context: Context) {
     private fun news(body: Body) {
         if (body is Body.Asked) {
             setAsked { list -> list.filter { it.address != body.address } + body }
+            return
+        }
+        // A request to the node managed over the mesh: where its message is, and what came back.
+        if (body is Body.State || body is Body.Managed) {
+            remote?.let { r ->
+                r.receive(body)
+                publishRemote(r)
+                scheduleTick()
+            }
+            if (body is Body.Managed) return
+        }
+        if (body is Body.OwnerChanged) {
+            // Someone at a node, or one of its owners, changed who may manage it: the user may not
+            // have, and is told, here and in a notification.
+            setOwnerChanges { OwnerNotices.add(it, body) }
+            notifier.ownerChanged(connection.records, body)
             return
         }
         if (body is Body.Forgotten) forgotten(Peer.Contact(body.contact), body.through)
@@ -1209,12 +1384,16 @@ class NodeRepository(private val context: Context) {
 
     private val tick = Runnable {
         connection.tick()
+        remote?.let { r ->
+            r.tick()
+            publishRemote(r)
+        }
         scheduleTick()
     }
 
     private fun scheduleTick() {
         handler.removeCallbacks(tick)
-        val at = connection.nextDeadline ?: return
+        val at = listOfNotNull(connection.nextDeadline, remote?.nextDeadline).minOrNull() ?: return
         handler.postDelayed(tick, maxOf(0, at - SystemClock.elapsedRealtime()))
     }
 

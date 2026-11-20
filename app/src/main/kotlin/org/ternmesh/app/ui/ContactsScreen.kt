@@ -68,6 +68,7 @@ fun PeopleScreen(
     incoming: Address?,
     taken: () -> Unit,
     toNode: () -> Unit,
+    manage: (Address) -> Unit = {},
     open: (Peer) -> Unit,
 ) {
     var nearby by rememberSaveable { mutableStateOf(false) }
@@ -94,7 +95,7 @@ fun PeopleScreen(
             ) { Text(if (near > 0) stringResource(R.string.people_nearby_count, near) else stringResource(R.string.people_nearby)) }
         }
         Box(Modifier.weight(1f).padding(top = 6.dp)) {
-            if (nearby) NearbyList(repository, state, open) else ContactsList(repository, state, incoming, taken, open)
+            if (nearby) NearbyList(repository, state, open) else ContactsList(repository, state, incoming, taken, manage, open)
         }
     }
 }
@@ -105,6 +106,7 @@ private fun ContactsList(
     state: NodeState,
     incoming: Address?,
     taken: () -> Unit,
+    manage: (Address) -> Unit,
     open: (Peer) -> Unit,
 ) {
     val contacts = remember(state.records) { state.records.contacts.values.sortedBy { it.name.lowercase() } }
@@ -122,7 +124,10 @@ private fun ContactsList(
     }
     var renaming by remember { mutableStateOf<Body.Contact?>(null) }
     var removing by remember { mutableStateOf<Body.Contact?>(null) }
+    var owning by remember { mutableStateOf<Body.Contact?>(null) }
     val report = rememberReport()
+    // Owners, and managing a node over the mesh, are version 17's: a node of 16 or earlier offers neither.
+    val managing = canManage(state)
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
@@ -134,7 +139,10 @@ private fun ContactsList(
                 PersonRow(
                     avatar = { Avatar(name, key = c.address.toString()) },
                     title = { Text(name, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)) },
-                    subtitle = stringResource(if (c.session == 1) R.string.session_yes else R.string.session_no),
+                    subtitle = listOfNotNull(
+                        stringResource(if (c.session == 1) R.string.session_yes else R.string.session_no),
+                        stringResource(R.string.owner_tag).takeIf { c.owner == 1 },
+                    ).joinToString(" · "),
                     signal = neighbour?.snrQuarterDb,
                     trailing = {
                         Box {
@@ -144,6 +152,17 @@ private fun ContactsList(
                                 DropdownMenuItem(text = { Text(stringResource(R.string.show_code)) }, onClick = { menu = false; showing = c })
                                 DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = { menu = false; shareLink(context, c.address) })
                                 DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { menu = false; renaming = c })
+                                if (managing) {
+                                    DropdownMenuItem(text = { Text(stringResource(R.string.manage)) }, onClick = { menu = false; manage(c.address) })
+                                    if (c.owner == 1) {
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.remove_owner)) }, onClick = {
+                                            menu = false
+                                            repository.submit(Body.Owner(c.address, 0), report)
+                                        })
+                                    } else {
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.make_owner)) }, onClick = { menu = false; owning = c })
+                                    }
+                                }
                                 DropdownMenuItem(text = { Text(stringResource(R.string.remove)) }, onClick = { menu = false; removing = c })
                             }
                         }
@@ -168,6 +187,21 @@ private fun ContactsList(
         }
     }
     showing?.let { c -> CodeDialog(c) { showing = null } }
+    owning?.let { c ->
+        // Only ever what the user asked for, once told what an owner can do.
+        AlertDialog(
+            onDismissRequest = { owning = null },
+            title = { Text(stringResource(R.string.make_owner_title, c.name.ifEmpty { Conversations.short(c.address.toString()) })) },
+            text = { Text(stringResource(R.string.make_owner_explained, Companion.OWNERS)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    owning = null
+                    repository.submit(Body.Owner(c.address, 1), report)
+                }) { Text(stringResource(R.string.make_owner)) }
+            },
+            dismissButton = { TextButton(onClick = { owning = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
     removing?.let { c ->
         // A client that offers to forget while it removes sends both, the forgetting first.
         val conversation = Conversations.of(state.records, Peer.Contact(c.address))

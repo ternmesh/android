@@ -85,6 +85,9 @@ fun ChatsScreen(repository: NodeRepository, state: NodeState, toNode: () -> Unit
                 }
             }
             if (query.isBlank()) items(state.asked, key = { "asked:${it.address}" }) { a -> AskedCard(repository, state, a) }
+            if (query.isBlank()) {
+                items(state.ownerChanges, key = { "owner:${it.from}:${it.contact}:${it.owner}:${it.by}" }) { c -> OwnerChangedCard(repository, state, c) }
+            }
             if (conversations.isEmpty()) {
                 item { EmptyState(stringResource(R.string.chats_empty_title), stringResource(R.string.chats_empty)) }
             } else if (shown.isEmpty()) {
@@ -248,6 +251,22 @@ private fun AskedCard(repository: NodeRepository, state: NodeState, a: Body.Aske
             repository.submit(Body.SaveContact(a.address, name)) { o ->
                 report(o)
                 if (o is Outcome.Answered) repository.dismissAsked(a)
+            }
+        }
+    }
+}
+
+/** A node said who its owners are changed: the user may not have, and may want to look. */
+@Composable
+private fun OwnerChangedCard(repository: NodeRepository, state: NodeState, c: Body.OwnerChanged) {
+    val context = LocalContext.current
+    Card(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            Text(stringResource(R.string.owners_changed_title), style = MaterialTheme.typography.titleSmall)
+            Text(ownerChangedText(context, state.records, c))
+            Text(stringResource(R.string.owners_changed_hint), style = MaterialTheme.typography.bodySmall)
+            Row {
+                TextButton(onClick = { repository.dismissOwnerChange(c) }) { Text(stringResource(R.string.dismiss)) }
             }
         }
     }

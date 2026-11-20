@@ -51,6 +51,7 @@ object Codec {
                     is Setting.Receiver -> w.u8(s.on)
                     is Setting.Wake -> w.u16(s.seconds)
                     is Setting.Listen -> w.u8(s.seconds)
+                    is Setting.Lock -> w.u8(s.locked)
                 }
             }
             is Body.Send -> {
@@ -62,6 +63,15 @@ object Codec {
             is Body.Forget -> {
                 w.addr(b.contact)
                 w.u32(b.through)
+            }
+            is Body.Manage -> {
+                w.u32(b.ref)
+                w.addr(b.to)
+                w.bytes(b.request, Companion.REQUEST_MAX)
+            }
+            is Body.Owner -> {
+                w.addr(b.address)
+                w.u8(b.owner)
             }
             is Body.SaveContact -> {
                 w.addr(b.address)
@@ -100,7 +110,7 @@ object Codec {
                 w.u32(b.offset)
                 w.bytes(b.data, Companion.UPDATE_CHUNK)
             }
-            Body.UpdateEnd, Body.UpdateBootloader, Body.Wipe -> {}
+            Body.UpdateEnd, Body.UpdateBootloader, Body.Wipe, Body.Restart -> {}
             is Body.SetPosition -> {
                 w.i32(b.lat)
                 w.i32(b.lon)
@@ -151,14 +161,18 @@ object Codec {
                 }
                 // Version 10's, after them, and version 11's after that.
                 if (b.most != null) w.u8(b.most) else require(b.pairing == null) { "SELF has pairing only after most" }
-                if (b.pairing != null) w.u8(b.pairing)
+                if (b.pairing != null) w.u8(b.pairing) else require(b.locked == null) { "SELF has locked only after pairing" }
+                // Version 17's, after that.
+                if (b.locked != null) w.u8(b.locked)
             }
             is Body.Contact -> {
                 w.addr(b.address)
                 w.u8(b.session)
                 w.str(b.name, Companion.NAME_MAX)
                 // Version 15's.
-                if (b.wake != null) w.u16(b.wake)
+                if (b.wake != null) w.u16(b.wake) else require(b.owner == null) { "CONTACT has owner only after wake" }
+                // Version 17's.
+                if (b.owner != null) w.u8(b.owner)
             }
             is Body.ContactGone -> w.addr(b.address)
             is Body.Message -> {
@@ -274,6 +288,16 @@ object Codec {
                 w.gid(b.group)
                 w.u32(b.through)
             }
+            is Body.Managed -> {
+                w.addr(b.from)
+                w.bytes(b.answer, Companion.ANSWER_MAX)
+            }
+            is Body.OwnerChanged -> {
+                w.addr(b.from)
+                w.addr(b.contact)
+                w.u8(b.owner)
+                w.u8(b.by)
+            }
         }
         val out = w.toByteArray()
         require(out.size <= Companion.MAX_FRAME) { "${b.typeName} is ${out.size} bytes, more than a frame holds" }
@@ -310,6 +334,7 @@ object Codec {
                     7 -> Setting.Receiver(r.u8())
                     8 -> Setting.Wake(r.u16())
                     9 -> Setting.Listen(r.u8())
+                    10 -> Setting.Lock(r.u8())
                     else -> throw DecodeException(Unreadable.UNDEFINED)
                 },
             )
@@ -317,6 +342,8 @@ object Codec {
             0x10 -> Body.Send(r.u32(), r.addr(), r.str(Companion.TEXT_MAX))
             0x11 -> Body.Read(r.u32())
             0x12 -> Body.Forget(r.addr(), r.u32())
+            0x13 -> Body.Manage(r.u32(), r.addr(), r.bytes(Companion.REQUEST_MAX))
+            0x14 -> Body.Owner(r.addr(), r.u8())
             0x18 -> Body.SaveContact(r.addr(), r.str(Companion.NAME_MAX))
             0x19 -> Body.RemoveContact(r.addr())
             0x1A -> Body.EndSession(r.addr())
@@ -334,6 +361,7 @@ object Codec {
             0x32 -> Body.UpdateEnd
             0x36 -> Body.UpdateBootloader
             0x37 -> Body.Wipe
+            0x38 -> Body.Restart
             0x33 -> Body.SetPosition(r.i32(), r.i32(), r.i16(), r.u16(), r.u16())
             0x34 -> Body.Share(r.addr(), r.u8(), r.u8(), r.u16(), r.u16())
             0x35 -> Body.ShareGroup(r.gid(), r.u8(), r.u8(), r.u16(), r.u16())
@@ -369,12 +397,15 @@ object Codec {
                     val cards = r.u8()
                     val cardName = r.str(Companion.CARD_NAME_MAX)
                     val most = if (version >= 10) r.u8() else null
-                    Body.Self(address, role, region, power, time, cards, cardName, most, if (version >= 11) r.u8() else null)
+                    val pairing = if (version >= 11) r.u8() else null
+                    Body.Self(address, role, region, power, time, cards, cardName, most, pairing, if (version >= 17) r.u8() else null)
                 } else {
                     Body.Self(address, role, region, power, time)
                 }
             }
-            0x81 -> Body.Contact(r.addr(), r.u8(), r.str(Companion.NAME_MAX), if (version >= 15) r.u16() else null)
+            0x81 -> Body.Contact(
+                r.addr(), r.u8(), r.str(Companion.NAME_MAX), if (version >= 15) r.u16() else null, if (version >= 17) r.u8() else null,
+            )
             0x82 -> Body.ContactGone(r.addr())
             0x83 -> Body.Message(
                 r.u32(), r.addr(), r.u32(), r.u8(), r.u8(), r.u8(), r.u16(), r.str(Companion.TEXT_MAX),
@@ -403,6 +434,8 @@ object Codec {
             0x95 -> Body.Sleep(r.u16(), r.u8(), r.u8(), r.u32(), r.u16())
             0x96 -> Body.Forgotten(r.addr(), r.u32())
             0x97 -> Body.GroupForgotten(r.gid(), r.u32())
+            0x98 -> Body.Managed(r.addr(), r.bytes(Companion.ANSWER_MAX))
+            0x99 -> Body.OwnerChanged(r.addr(), r.addr(), r.u8(), r.u8())
             else -> throw DecodeException(Unreadable.UNDEFINED)
         }
         return Frame(seq, body)

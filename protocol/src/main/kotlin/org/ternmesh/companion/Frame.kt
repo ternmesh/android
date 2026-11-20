@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 16: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 17: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -9,8 +9,8 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 15 is this without forgetting (`FORGET`, `FORGET_GROUP`, `FORGOTTEN` and `GROUP_FORGOTTEN`), version 14 is version 15 without sleeping (`SET` 8 and 9, `SLEEP`, and `CONTACT`'s `wake`), version 13 is this with routing ids made from the address itself, not from the key blinded from it (RoutingIds), version 12 is version 13 without signed images (`UPDATE_BEGIN`'s `signature`) and `WIPE`, version 11 is version 12 without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 16
+    /** The version this client speaks. Version 16 is this without managing (`MANAGE`, `OWNER`, `RESTART`, `SET` 10, `MANAGED`, `OWNER_CHANGED`, `CONTACT`'s `owner` and `SELF`'s `locked`), version 15 is version 16 without forgetting (`FORGET`, `FORGET_GROUP`, `FORGOTTEN` and `GROUP_FORGOTTEN`), version 14 is version 15 without sleeping (`SET` 8 and 9, `SLEEP`, and `CONTACT`'s `wake`), version 13 is this with routing ids made from the address itself, not from the key blinded from it (RoutingIds), version 12 is version 13 without signed images (`UPDATE_BEGIN`'s `signature`) and `WIPE`, version 11 is version 12 without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 17
     /** `SET` 3's power that asks for the most the node may transmit at, which it works out (version 10). */
     const val POWER_MOST = -128
     const val MAX_FRAME = 180
@@ -60,6 +60,19 @@ object Companion {
     /** The fewest `FORGOTTEN` and `GROUP_FORGOTTEN` records a node keeps (version 16). */
     const val FORGOTTEN_KEPT = 16
 
+    /** A `MANAGE`'s `request`, and a `MANAGED`'s `answer`, at most (version 17). */
+    const val REQUEST_MAX = 128
+    const val ANSWER_MAX = 128
+
+    /** The owners a node holds, at most (version 17). */
+    const val OWNERS = 4
+
+    /** How long a client waits for an answer over the mesh, once its request is delivered (version 17). */
+    const val MESH_ANSWER_WAIT_MS = 120_000L
+
+    /** How long a `SET` over the mesh is on trial after it is answered, before the node takes it back unless an owner asks it something more. */
+    const val TRIAL_MS = 900_000L
+
     /** The least time between two `ASKED`s for one address, or two of `NEIGHBOUR`, `AIRTIME` or `POWER`, or two `FIX`es for a fix that moved. */
     const val QUIET_MS = 10_000L
 
@@ -89,6 +102,7 @@ object Companion {
         0x37 -> 13
         0x95 -> 15
         0x12, 0x28, 0x96, 0x97 -> 16
+        0x13, 0x14, 0x38, 0x98, 0x99 -> 17
         else -> 0
     }
 
@@ -97,6 +111,7 @@ object Companion {
         5, 6 -> 6
         7 -> 8
         8, 9 -> 15
+        10 -> 17
         else -> 0
     }
 }
@@ -185,8 +200,14 @@ object ErrorCode {
      */
     const val NOT_AN_IMAGE = 11
 
-    /** Not a contact: `SHARE` names an address the node does not hold as one. */
+    /** Not a contact: `SHARE` or `OWNER` names an address the node does not hold as one. */
     const val NOT_A_CONTACT = 12
+
+    /** Not over the mesh: a request a managed node does not act on when its owner asks over the mesh (version 17). */
+    const val NOT_OVER_THE_MESH = 13
+
+    /** Locked: the node's Bluetooth is locked, and it acts on nothing over it but `HELLO` and `PING` (version 17). */
+    const val LOCKED = 14
 }
 
 /**
@@ -258,6 +279,13 @@ sealed interface Setting {
 
     /** How long a sleeping node listens after each poll, in seconds, [Sleeping.LISTEN_MIN] to 255 (version 15). */
     data class Listen(val seconds: Int) : Setting { override val number get() = 9 }
+
+    /**
+     * 1 to lock the node's Bluetooth, 0 to unlock it (version 17): locked, it acts on nothing a
+     * client sends over Bluetooth but `HELLO` and `PING`, and only USB or one of its owners over the
+     * mesh can unlock it. Only ever what the user asked for, after being told so.
+     */
+    data class Lock(val locked: Int) : Setting { override val number get() = 10 }
 }
 
 /** Sleeping leaves' numbers (draft/sleeping.md), and `SLEEP`'s `state` (version 15). */
@@ -330,7 +358,7 @@ object MessageState {
     const val RECEIVED = 4
 }
 
-/** What a frame says: every frame of version 15. [since] is the least version that defines it. */
+/** What a frame says: every frame of version 17. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String) {
     /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
     open val since: Int get() = Companion.since(type)
@@ -360,6 +388,28 @@ sealed class Body(val type: Int, val typeName: String) {
      * the user asked for, with [through] the greatest `id` they were shown in it.
      */
     data class Forget(val contact: Address, val through: Long) : Body(0x12, "FORGET")
+
+    /**
+     * Send [request], one companion request frame, to the node at [to] over the mesh, to manage it
+     * (version 17). [ref] is as for `SEND`. Answered `QUEUED`; `STATE` news with that `id` says what
+     * became of it on the air, and the node's answer comes back as `MANAGED`.
+     */
+    class Manage(val ref: Long, val to: Address, request: ByteArray) : Body(0x13, "MANAGE") {
+        private val bytes = request.copyOf()
+
+        val request: ByteArray get() = bytes.copyOf()
+
+        override fun equals(other: Any?) = other is Manage && ref == other.ref && to == other.to && bytes.contentEquals(other.bytes)
+        override fun hashCode() = (31 * ref.hashCode() + to.hashCode()) * 31 + bytes.contentHashCode()
+        override fun toString() = "Manage(ref=$ref, to=$to, request=${Hex.encode(bytes)})"
+    }
+
+    /**
+     * Make the contact [address] one of the node's owners, with [owner] 1, or not one, with 0
+     * (version 17). An owner can change the node's settings and who it takes, from anywhere on the
+     * mesh: only ever what the user asked for, after being told so.
+     */
+    data class Owner(val address: Address, val owner: Int) : Body(0x14, "OWNER")
     data class SaveContact(val address: Address, val name: String) : Body(0x18, "SAVE_CONTACT")
     data class RemoveContact(val address: Address) : Body(0x19, "REMOVE_CONTACT")
     data class EndSession(val address: Address) : Body(0x1A, "END_SESSION")
@@ -436,6 +486,9 @@ sealed class Body(val type: Int, val typeName: String) {
      */
     data object Wipe : Body(0x37, "WIPE")
 
+    /** Restart the node, which it answers with `OK` before it does: every connection drops (version 17). */
+    data object Restart : Body(0x38, "RESTART")
+
     /**
      * The client's own position: [lat] and [lon] in 10⁻⁷ degree, north and east positive;
      * [altitude] in metres, [Companion.NO_ALTITUDE] for none; [accuracy] in metres, 0 for none;
@@ -490,7 +543,8 @@ sealed class Body(val type: Int, val typeName: String) {
      * [cardName] the name they carry; both are null below version 6, from either end. [most] is 1
      * if [power] is the most the node may transmit at, as it works it out, and 0 if it is a power it
      * was given; null below version 10. [pairing] is how the node pairs: [Pairing.SCREEN],
-     * [Pairing.DEFAULT] or [Pairing.SET]; null below version 11.
+     * [Pairing.DEFAULT] or [Pairing.SET]; null below version 11. [locked] is 1 while the node's
+     * Bluetooth is locked; null below version 17.
      */
     data class Self(
         val address: Address,
@@ -502,14 +556,17 @@ sealed class Body(val type: Int, val typeName: String) {
         val cardName: String? = null,
         val most: Int? = null,
         val pairing: Int? = null,
+        val locked: Int? = null,
     ) : Body(0x80, "SELF")
 
     /**
      * An address the user saved, with a name. [session] is 1 if the node shares one with it. [wake]
      * is how long the contact said it sleeps between wakes, in seconds, 0 if it does not or said
-     * nothing; null below version 15.
+     * nothing; null below version 15. [owner] is 1 if the contact is one of the node's owners, who
+     * may manage it over the mesh; null below version 17.
      */
-    data class Contact(val address: Address, val session: Int, val name: String, val wake: Int? = null) : Body(0x81, "CONTACT")
+    data class Contact(val address: Address, val session: Int, val name: String, val wake: Int? = null, val owner: Int? = null) :
+        Body(0x81, "CONTACT")
 
     data class ContactGone(val address: Address) : Body(0x82, "CONTACT_GONE")
 
@@ -677,6 +734,27 @@ sealed class Body(val type: Int, val typeName: String) {
 
     /** How much of [group]'s conversation the user has forgotten: every group message to it whose `id` is [through] or less. */
     data class GroupForgotten(val group: GroupId, val through: Long) : Body(0x97, "GROUP_FORGOTTEN")
+
+    /**
+     * What the node at [from] answered a `MANAGE` with (version 17): companion frames, each after a
+     * `u8` length, which [Managing.unpack] takes apart. Not a record: a sync does not send it again.
+     */
+    class Managed(val from: Address, answer: ByteArray) : Body(0x98, "MANAGED") {
+        private val bytes = answer.copyOf()
+
+        val answer: ByteArray get() = bytes.copyOf()
+
+        override fun equals(other: Any?) = other is Managed && from == other.from && bytes.contentEquals(other.bytes)
+        override fun hashCode() = 31 * from.hashCode() + bytes.contentHashCode()
+        override fun toString() = "Managed(from=$from, answer=${Hex.encode(bytes)})"
+    }
+
+    /**
+     * The node at [from] said its owners changed (version 17): [contact] is one now if [owner] is 1,
+     * and no longer one if 0; [by] is 0 if that was done at the node, over USB or Bluetooth, and 1
+     * if by one of its owners over the mesh. Not a record: a sync does not send it again.
+     */
+    data class OwnerChanged(val from: Address, val contact: Address, val owner: Int, val by: Int) : Body(0x99, "OWNER_CHANGED")
 }
 
 internal object Hex {
