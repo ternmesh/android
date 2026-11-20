@@ -327,9 +327,10 @@ internal fun ManageProgress(m: Managed, name: String, stop: (() -> Unit)?, modif
                 if (asking != null) {
                     // Once delivered, the step changes with time alone: a node not known to sleep may be.
                     val now by produceState(SystemClock.elapsedRealtime(), m.deliveredAt) {
+                        value = SystemClock.elapsedRealtime()
                         while (m.deliveredAt != null) {
-                            value = SystemClock.elapsedRealtime()
                             delay(1_000)
+                            value = SystemClock.elapsedRealtime()
                         }
                     }
                     val since = m.deliveredAt?.let { now - it }
