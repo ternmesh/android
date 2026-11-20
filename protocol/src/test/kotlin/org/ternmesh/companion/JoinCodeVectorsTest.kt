@@ -38,6 +38,23 @@ class JoinCodeVectorsTest {
     }
 
     @Test
+    fun theTappableLinkIsTheLinkLowerCaseButForItsBase32() {
+        assertEquals(JoinCode.LINK.lowercase(), JoinCode.TAPPABLE)
+        for (c in v.list("join_codes")) {
+            val link = c.str("link")
+            val code = JoinCode.read(link)
+            val tappable = JoinCode.tappable(link)
+            assertEquals("https://ternmesh.org/g#" + link.substring(JoinCode.LINK.length), tappable)
+            assertEquals(code, JoinCode.read(tappable), tappable)
+            assertEquals(code, JoinCode.read(link.lowercase()), "all of it lower-case")
+            assertEquals(tappable, JoinCode.tappable(tappable))
+            assertEquals(tappable, JoinCode.tappable("HTTPS://ternmesh.ORG/g#" + link.substring(JoinCode.LINK.length)), "mixed case")
+        }
+        assertEquals("not a join code", JoinCode.tappable("not a join code"))
+        assertEquals("", JoinCode.tappable(""))
+    }
+
+    @Test
     fun anythingElseIsNoJoinCode() {
         for (c in v.list("bad_join_codes")) assertNull(JoinCode.read(c.str("link")), c.str("why"))
         assertNull(JoinCode.read(""))

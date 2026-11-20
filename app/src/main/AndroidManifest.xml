@@ -48,7 +48,9 @@
                  (draft/groups.md), opened here rather than in a browser once ternmesh.org's
                  assetlinks.json names this app. The path's letter is either case: a QR code holds
                  it upper-case. A join code is all after the path's #, which Android hands on in
-                 the intent's data. -->
+                 the intent's data but does not match on. Links the app shows, copies or shares as
+                 text are lower-case (Sharing.TAPPABLE, JoinCode.TAPPABLE) so that this filter is
+                 the one they meet. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

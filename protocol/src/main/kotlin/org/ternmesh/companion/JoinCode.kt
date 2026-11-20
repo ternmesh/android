@@ -13,8 +13,14 @@ import javax.crypto.spec.SecretKeySpec
 /** What a join code says, but for the secret: the group it is for, and what whoever made it calls the group, a suggestion. */
 data class JoinCode(val group: GroupId, val name: String) {
     companion object {
-        /** The link's start: the code follows it in base32. */
+        /** The link's start as a QR code holds it, and as the node writes it: the code follows it in base32. */
         const val LINK = "HTTPS://TERNMESH.ORG/G#"
+
+        /**
+         * The same start lower-case, for a link shown or sent as text: Android verifies an app
+         * link only for a lower-case scheme and host, so this form opens the app when tapped.
+         */
+        const val TAPPABLE = "https://ternmesh.org/g#"
 
         private const val SECRET = 16
         private const val CODE_MIN = SECRET + 2
@@ -51,6 +57,17 @@ data class JoinCode(val group: GroupId, val name: String) {
                 code.fill(0)
             }
         }
+
+        /**
+         * A join code's link as text to tap, copy or send: its start lower-case, the base32 as it
+         * was. Anything that does not start like a join code is given back as it is.
+         */
+        fun tappable(link: String): String =
+            if (link.length >= LINK.length && Sharing.asciiUpper(link.substring(0, LINK.length)) == LINK) {
+                TAPPABLE + link.substring(LINK.length)
+            } else {
+                link
+            }
 
         /** A group's id from its secret: Expand(G, "tern v0 group id", 8), HKDF-Expand with SHA-256. */
         internal fun groupId(secret: ByteArray): GroupId {

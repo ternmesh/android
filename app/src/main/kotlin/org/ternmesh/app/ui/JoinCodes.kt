@@ -71,6 +71,9 @@ fun JoinCodeDialog(repository: NodeRepository, group: GroupId, name: String, onD
         )
         return
     }
+    // The code holds the link upper-case, as the node wrote it; as text it is lower-case, which is
+    // the form that opens the app when tapped.
+    val tappable = JoinCode.tappable(shown)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.join_code)) },
@@ -78,14 +81,14 @@ fun JoinCodeDialog(repository: NodeRepository, group: GroupId, name: String, onD
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 QrCode(shown, Modifier.fillMaxWidth())
                 Text(stringResource(R.string.join_code_explained, name), style = MaterialTheme.typography.bodySmall)
-                SelectionContainer { Text(shown, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+                SelectionContainer { Text(tappable, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
                 Row {
                     TextButton(onClick = {
                         context.getSystemService(ClipboardManager::class.java)
-                            .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.join_code_link, name), shown))
+                            .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.join_code_link, name), tappable))
                         say(context.getString(R.string.copied))
                     }) { Text(stringResource(R.string.copy)) }
-                    TextButton(onClick = { shareText(context, shown) }) { Text(stringResource(R.string.share)) }
+                    TextButton(onClick = { shareText(context, tappable) }) { Text(stringResource(R.string.share)) }
                 }
             }
         },

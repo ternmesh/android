@@ -34,6 +34,19 @@ class SharingVectorsTest {
     }
 
     @Test
+    fun theTappableLinkIsTheLinkLowerCaseButForItsBase32() {
+        assertEquals(Sharing.LINK.lowercase(), Sharing.TAPPABLE)
+        for (c in v.list("cases")) {
+            val a = c.addr("address")
+            val tappable = Sharing.tappable(a)
+            assertEquals("https://ternmesh.org/a/" + c.str("base32"), tappable)
+            assertEquals(Sharing.link(a).substring(Sharing.LINK.length), tappable.substring(Sharing.TAPPABLE.length))
+            assertEquals(a, Sharing.read(tappable))
+            assertEquals(a, Sharing.read(Sharing.link(a).lowercase()), "all of it lower-case")
+        }
+    }
+
+    @Test
     fun refusedReadsNothing() {
         for (r in v.getValue("refused").jsonArray) assertNull(Sharing.read(r.jsonPrimitive.content), r.toString())
     }
