@@ -647,6 +647,11 @@
     <string name="route_sent_direct">Sent direct</string>
     <string name="route_sent_via">Sent via %1$s</string>
     <string name="route_try">try %1$d</string>
+    <string name="route_reply_direct">reply direct</string>
+    <plurals name="route_reply_hops">
+        <item quantity="one">reply %1$d hop</item>
+        <item quantity="other">reply %1$d hops</item>
+    </plurals>
     <string name="route_last_direct">Last tried direct</string>
     <string name="route_last_via">Last tried via %1$s</string>
     <plurals name="route_tries">
@@ -697,6 +702,8 @@
     <string name="trace_keeper">Answered by %1$s, which keeps %2$s\'s messages while it sleeps: that\'s as far as they go until it wakes</string>
     <string name="trace_no_route">Got as far as %1$s, which has no route to %2$s</string>
     <string name="trace_not_answered">No answer in time. %1$s may be out of reach, or a relay on the way may not pass traces on.</string>
+    <string name="trace_not_answered_leaf">No answer from %1$s.</string>
+    <string name="trace_leaf_hint">Handhelds (leaves) answer traces only from nodes they have a secure session with.</string>
     <string name="trace_not_begun">Not begun: your node has no route to %1$s</string>
     <string name="trace_other">Ended (%1$d)</string>
     <string name="trace_a_relay">a relay</string>

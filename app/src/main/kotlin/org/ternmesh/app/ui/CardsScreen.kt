@@ -116,8 +116,8 @@ fun NearbyList(repository: NodeRepository, state: NodeState, open: (Peer) -> Uni
     choosing?.let { card -> MakeContactFromCard(repository, card) { choosing = null } }
 }
 
-/** A routing id as two groups of four hex digits, as a person reads one out. */
-internal fun routingText(id: Long): String = "%08x".format(id).let { "${it.substring(0, 4)} ${it.substring(4)}" }
+/** A routing id as eight hex digits, one word, as the firmware's log and the trace show it. */
+internal fun routingText(id: Long): String = "%08x".format(id)
 
 /** One person or node in a list: avatar, name and a tag, a line under it, and its signal. */
 @Composable

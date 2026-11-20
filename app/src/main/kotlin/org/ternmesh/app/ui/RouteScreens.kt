@@ -102,6 +102,10 @@ fun TraceScreen(repository: NodeRepository, state: NodeState, to: Long, back: ()
     }
     NodeSubScreen(stringResource(R.string.trace_title, target), back) {
         Footnote(stringResource(R.string.trace_explained, target))
+        // A leaf with no session with this node drops the trace: said before it runs, not only after.
+        if (leafWithoutSession(r, to) && run?.traced == null) {
+            Footnote(stringResource(R.string.trace_leaf_hint), Modifier.padding(top = 4.dp))
+        }
         if (!canTrace(state)) {
             Footnote(stringResource(R.string.trace_needs_update), Modifier.padding(top = 8.dp))
             return@NodeSubScreen

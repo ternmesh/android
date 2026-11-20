@@ -543,6 +543,10 @@ fun NeighboursScreen(repository: NodeRepository, state: NodeState, back: () -> U
         // Neither a contact's, even one without a name, nor a card's: why it is only a number.
         if (unnamed) Footnote(stringResource(R.string.neighbour_no_card), Modifier.padding(top = 8.dp))
         Footnote(stringResource(R.string.signal_explained), Modifier.padding(top = 4.dp))
+        // A leaf answers traces only from a node it shares a session with: said before Trace is pressed.
+        if (canTrace(state) && neighbours.any { leafWithoutSession(r, it.routingId) }) {
+            Footnote(stringResource(R.string.trace_leaf_hint), Modifier.padding(top = 4.dp))
+        }
     }
     choosing?.let { card -> MakeContactFromCard(repository, card) { choosing = null } }
     naming?.let { id -> NameRelayDialog(repository, state, id) { naming = null } }

@@ -70,7 +70,8 @@ fun routeLine(context: Context, records: Records, names: Map<Long, String>, item
     when (item.state) {
         MessageState.DELIVERED -> {
             parts += if (direct) context.getString(R.string.route_delivered_direct) else context.getString(R.string.route_delivered_via, via)
-            if (route.hops > 0 && !(direct && route.hops == 1)) parts += context.resources.getQuantityString(R.plurals.route_hops, route.hops, route.hops)
+            // The hops are the acknowledgement's, back: not how the message went out.
+            if (route.hops > 0 && !(direct && route.hops == 1)) parts += replyText(context, route.hops)
             if (route.took > 0) parts += tookText(context, route.took)
         }
         MessageState.NOT_DELIVERED -> {
@@ -84,6 +85,21 @@ fun routeLine(context: Context, records: Records, names: Map<Long, String>, item
     }
     return parts.joinToString(" · ")
 }
+
+/** How many hops a sent message's acknowledgement came back: "reply direct", "reply 2 hops". */
+private fun replyText(context: Context, hops: Int): String =
+    if (hops == 1) context.getString(R.string.route_reply_direct) else context.resources.getQuantityString(R.plurals.route_reply_hops, hops, hops)
+
+/**
+ * Whether the node with routing id [id] is one a trace from this node will not be answered by: a
+ * neighbour that is a leaf, which answers traces only from a node it shares a session with, and
+ * shares none with this one. A leaf that is not a neighbour is not known to be one.
+ */
+fun leafWithoutSession(records: Records, id: Long): Boolean =
+    isLeaf(records, id) && Conversations.contactOf(records, id)?.session != 1
+
+/** Whether the node with routing id [id] is a neighbour the node hears as a leaf. */
+fun isLeaf(records: Records, id: Long): Boolean = records.neighbours[id]?.role == 0
 
 /** The routing id of where [item] was sent: its contact's. */
 private fun destinationOf(records: Records, item: Item): Long? = when (item) {
@@ -152,7 +168,12 @@ fun traceResultText(context: Context, records: Records, names: Map<Long, String>
         TraceResult.ANSWERED -> context.getString(R.string.trace_answered, target)
         TraceResult.KEEPER -> context.getString(R.string.trace_keeper, answerer ?: context.getString(R.string.trace_a_relay), target)
         TraceResult.NO_ROUTE -> context.getString(R.string.trace_no_route, answerer ?: context.getString(R.string.trace_a_relay), target)
-        TraceResult.NOT_ANSWERED -> context.getString(R.string.trace_not_answered, target)
+        // A leaf drops a trace from a node it shares no session with, on purpose: say so, not that it may be out of reach.
+        TraceResult.NOT_ANSWERED -> if (isLeaf(records, traced.to)) {
+            context.getString(R.string.trace_not_answered_leaf, target) + " " + context.getString(R.string.trace_leaf_hint)
+        } else {
+            context.getString(R.string.trace_not_answered, target)
+        }
         TraceResult.NOT_BEGUN -> context.getString(R.string.trace_not_begun, target)
         else -> context.getString(R.string.trace_other, traced.result)
     }

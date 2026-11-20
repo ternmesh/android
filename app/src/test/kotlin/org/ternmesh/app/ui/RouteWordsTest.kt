@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -73,10 +74,12 @@ class RouteWordsTest {
 
     @Test
     fun sentViaARelayOrDirect() {
-        assertEquals("Delivered via Hilltop · 2 hops · 19.6 s", line(sent(MessageState.DELIVERED), Body.Route(17, 2, 22, -98, relay, 2, 19_640)))
-        assertEquals("Delivered via 1d2e 3f40 · 2 hops · 3.1 s", line(sent(MessageState.DELIVERED), Body.Route(17, 2, 22, -98, relay, 1, 3_120), emptyMap()))
+        assertEquals("Delivered via Hilltop · reply 2 hops · 19.6 s", line(sent(MessageState.DELIVERED), Body.Route(17, 2, 22, -98, relay, 2, 19_640)))
+        assertEquals("Delivered via 1d2e3f40 · reply 2 hops · 3.1 s", line(sent(MessageState.DELIVERED), Body.Route(17, 2, 22, -98, relay, 1, 3_120), emptyMap()))
         assertEquals("Delivered direct · 1.2 s", line(sent(MessageState.DELIVERED), Body.Route(17, 1, 30, -60, bobs, 1, 1_200)))
-        assertEquals("Delivered direct · 2 hops · 1.2 s", line(sent(MessageState.DELIVERED), Body.Route(17, 2, 30, -60, bobs, 1, 1_200)))
+        assertEquals("Delivered direct · reply 2 hops · 1.2 s", line(sent(MessageState.DELIVERED), Body.Route(17, 2, 30, -60, bobs, 1, 1_200)))
+        // Out through a relay, and the acknowledgement straight back: the hop is the reply's, not the message's.
+        assertEquals("Delivered via Hilltop · reply direct · 0.3 s", line(sent(MessageState.DELIVERED), Body.Route(17, 1, 30, -60, relay, 1, 300)))
         assertEquals("Sent via Hilltop", line(sent(MessageState.SENT), Body.Route(17, 0, 0, 0, relay, 1, 0)))
         assertEquals("Sent via Hilltop · try 2", line(sent(MessageState.SENT), Body.Route(17, 0, 0, 0, relay, 2, 0)))
         assertEquals("Sent direct", line(sent(MessageState.WAITING), Body.Route(17, 0, 0, 0, bobs, 1, 0)))
@@ -110,7 +113,7 @@ class RouteWordsTest {
         assertEquals("your node", routingName(context, records, names, records.routingIdOf(ada)!!))
         assertEquals("Bob", routingName(context, records, names, bobs))
         assertEquals("Hilltop", routingName(context, records, names, relay))
-        assertEquals("3031 3233", routingLabel(context, records, names, 0x30313233))
+        assertEquals("one word, as the trace shows it", "30313233", routingLabel(context, records, names, 0x30313233))
     }
 
     @Test
@@ -132,7 +135,36 @@ class RouteWordsTest {
             traceResultText(context, records, names, none, "Hilltop"),
         )
         val never = Body.Traced(22, 0x30313233, TraceResult.NOT_BEGUN, 0, 0, 0, ByteArray(0))
-        assertEquals("Not begun: your node has no route to 3031 3233", traceResultText(context, records, names, never, "3031 3233"))
+        assertEquals("Not begun: your node has no route to 30313233", traceResultText(context, records, names, never, "30313233"))
+    }
+
+    /** A leaf answers a trace only from a node it shares a session with: a trace to one that goes unanswered says so. */
+    @Test
+    fun aLeafWithNoSessionDropsTraces() {
+        val leaf = 0x0A0B0C0DL
+        val r = Records().apply {
+            apply(Body.Self(ada, 1, "EU868", 14, 0))
+            apply(Body.Contact(bob, 0, "Bob"))
+            apply(Body.Neighbour(leaf, 0, 20, 5))
+            apply(Body.Neighbour(relay, 1, 20, 5))
+            speaking = 18
+        }
+        val bobs = r.routingIdOf(bob)!!
+        r.apply(Body.Neighbour(bobs, 0, 24, 3))
+        assertTrue("a leaf neighbour, no contact", leafWithoutSession(r, leaf))
+        assertTrue("a leaf contact, but no session", leafWithoutSession(r, bobs))
+        assertFalse("a relay answers anyone", leafWithoutSession(r, relay))
+        assertFalse("not a neighbour: not known to be a leaf", leafWithoutSession(r, 0x30313233))
+        r.apply(Body.Contact(bob, 1, "Bob"))
+        assertFalse("a session: it answers", leafWithoutSession(r, bobs))
+
+        val none = Body.Traced(21, leaf, TraceResult.NOT_ANSWERED, 0, 0, 0, ByteArray(0))
+        assertEquals(
+            "No answer from 0a0b0c0d. Handhelds (leaves) answer traces only from nodes they have a secure session with.",
+            traceResultText(context, r, emptyMap(), none, "0a0b0c0d"),
+        )
+        val far = Body.Traced(22, relay, TraceResult.NOT_ANSWERED, 0, 0, 0, ByteArray(0))
+        assertTrue(traceResultText(context, r, emptyMap(), far, "Hilltop").startsWith("No answer in time."))
     }
 
     @Test
