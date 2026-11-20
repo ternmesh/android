@@ -162,6 +162,10 @@ class Remote(
     /** The version both ends speak, once the managed node has said its own. */
     val agreed: Int? get() = nodeVersion?.let { minOf(it, version) }
 
+    /** When the last sync over the mesh finished, on [now]'s clock; null before one has. */
+    var syncedAt: Long? = null
+        private set
+
     /** When the `SET` on trial is taken back, on [now]'s clock, unless the node hears again; null when none is. */
     var trialUntil: Long? = null
         private set
@@ -230,9 +234,13 @@ class Remote(
     /**
      * Asks for the node's state, before anything else asked; and says `HELLO` first, unless the node
      * has answered one from this client already, which holds until it answers `ERROR` 6. [then]
-     * hears what came of the sync, or of a `HELLO` that failed.
+     * hears what came of the sync, or of a `HELLO` that failed. A node whose state came less than
+     * [FRESH_MS] ago, or is on its way, is not asked again: opening its screen once more, as when
+     * the app comes back to the front, costs a sleeping node no wake. [then] hears nothing then.
      */
     fun open(then: (Outcome) -> Unit = {}) {
+        if (syncing()) return
+        if (nodeVersion != null && syncedAt?.let { now() - it < FRESH_MS } == true) return
         queue.removeAll { it.body is Body.Hello }
         if (nodeVersion != null) {
             queue.addFirst(Pending(Body.Sync(0), then))
@@ -246,8 +254,17 @@ class Remote(
         pump()
     }
 
-    /** Asks the node for its own state again: itself, its contacts and neighbours, its airtime, power, fix and sleep. */
-    fun sync(then: (Outcome) -> Unit = {}) = submit(Body.Sync(0), then)
+    /**
+     * Asks the node for its own state again: itself, its contacts and neighbours, its airtime, power,
+     * fix and sleep. Not while a sync is already on its way or waiting: [then] hears nothing then.
+     */
+    fun sync(then: (Outcome) -> Unit = {}) {
+        if (syncing()) return
+        submit(Body.Sync(0), then)
+    }
+
+    /** Whether a sync is on its way, or waiting to go. */
+    private fun syncing() = syncFlight != null || queue.any { it.body is Body.Sync }
 
     /**
      * Asks [body] of the managed node. One its version, or this client's, does not define is not
@@ -447,6 +464,7 @@ class Remote(
                 newsFrom = body.news ?: 0
                 syncFlight = null
                 if (records.finishSync(agreed ?: version)) {
+                    syncedAt = now()
                     // Its own word on whether it sleeps is better than any the app had; a node of
                     // version 14 or earlier, which sends no SLEEP, does not.
                     wake = sleepsFor(records.sleep)
@@ -500,6 +518,9 @@ class Remote(
 
         /** How long after such a `SET` is answered the next request waits: a node can acknowledge nothing for about 30 s after it starts. */
         const val SETTLE_MS = 45_000L
+
+        /** How long a node's state from its last sync stands, before opening it asks for it again: [sync] asks at any time. */
+        const val FRESH_MS = 600_000L
 
         /** How long a request waits for its answer, from each step its message takes, to a node that may sleep for all the client knows. */
         const val UNKNOWN_WAIT_MS = 600_000L

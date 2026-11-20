@@ -850,7 +850,7 @@ class NodeRepository(private val context: Context) {
                 managed = m.copy(
                     records = r.records.copy(), version = r.nodeVersion, firmware = r.firmware, asking = r.asking,
                     trialUntil = r.trialUntil, settleUntil = r.settleUntil, attempt = if (r.asking == null) 0 else m.attempt,
-                    wake = r.wake?.takeIf { it > 0 },
+                    wake = r.wake?.takeIf { it > 0 }, synced = m.synced || r.syncedAt != null,
                 ),
             )
         }

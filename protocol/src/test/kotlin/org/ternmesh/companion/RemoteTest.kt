@@ -232,5 +232,31 @@ class RemoteTest {
         assertEquals(Body.Ping, last().body)
         assertEquals(3, sent.size)
     }
+
+    /**
+     * Opened again, as when the Manage screen is made again after the app comes back to the front: a
+     * state that came less than ten minutes ago, or one on its way, is not asked for again. "Ask
+     * again" asks at any time, but not twice at once.
+     */
+    @Test
+    fun openingAgainSoonAsksNothing() {
+        remote.open()
+        answer(info)
+        answer(Body.Synced(0))
+        assertEquals(2, sent.size)
+        time += 15_000
+        remote.open()
+        assertEquals(2, sent.size, "synced 15 s ago")
+        time += Remote.FRESH_MS
+        remote.open()
+        assertEquals(3, sent.size, "synced over ten minutes ago")
+        assertEquals(Body.Sync(0), last().body)
+        remote.open()
+        remote.sync()
+        assertEquals(3, sent.size, "a sync on its way")
+        answer(Body.Synced(0))
+        remote.sync()
+        assertEquals(4, sent.size, "asked again by the user")
+    }
 }
 
