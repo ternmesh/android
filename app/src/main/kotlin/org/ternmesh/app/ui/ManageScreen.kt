@@ -22,7 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -326,11 +327,12 @@ internal fun ManageProgress(m: Managed, name: String, stop: (() -> Unit)?, modif
             Column {
                 if (asking != null) {
                     // Once delivered, the step changes with time alone: a node not known to sleep may be.
-                    val now by produceState(SystemClock.elapsedRealtime(), m.deliveredAt) {
-                        value = SystemClock.elapsedRealtime()
+                    var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+                    LaunchedEffect(m.deliveredAt) {
+                        now = SystemClock.elapsedRealtime()
                         while (m.deliveredAt != null) {
                             delay(1_000)
-                            value = SystemClock.elapsedRealtime()
+                            now = SystemClock.elapsedRealtime()
                         }
                     }
                     val since = m.deliveredAt?.let { now - it }
