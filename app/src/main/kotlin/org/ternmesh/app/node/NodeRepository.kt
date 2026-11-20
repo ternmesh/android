@@ -45,6 +45,7 @@ import org.ternmesh.companion.Item
 import org.ternmesh.companion.Manifest
 import org.ternmesh.companion.MessageState
 import org.ternmesh.companion.Outcome
+import org.ternmesh.companion.OwnerNotices
 import org.ternmesh.companion.Peer
 import org.ternmesh.companion.Records
 import org.ternmesh.companion.RecordsFile
@@ -182,7 +183,7 @@ data class NodeState(
     val wiped: Wiped? = null,
     /** First contacts the node refused, newest last, until the user deals with them. */
     val asked: List<Body.Asked> = emptyList(),
-    /** Nodes that said their owners changed (`OWNER_CHANGED`, version 17), newest last, until the user dismisses them. */
+    /** Nodes that said their owners changed (`OWNER_CHANGED`, version 17), newest last, until the user dismisses them; kept on disk, the last [OwnerNotices.KEPT]. */
     val ownerChanges: List<Body.OwnerChanged> = emptyList(),
     /** The node refused its sync with `ERROR` 14: its Bluetooth is locked, and it takes nothing over it but `HELLO` and `PING`. */
     val lockedOut: Boolean = false,
@@ -290,7 +291,7 @@ class NodeRepository(private val context: Context) {
             update {
                 it.copy(
                     node = node, phase = phase, records = connection.records.copy(),
-                    unanswered = loadUnanswered(address), asked = loadAsked(address),
+                    unanswered = loadUnanswered(address), asked = loadAsked(address), ownerChanges = loadOwnerChanges(address),
                 )
             }
         }
@@ -317,7 +318,7 @@ class NodeRepository(private val context: Context) {
             update {
                 NodeState(
                     node = node, records = connection.records.copy(), unanswered = loadUnanswered(node.address),
-                    asked = loadAsked(node.address),
+                    asked = loadAsked(node.address), ownerChanges = loadOwnerChanges(node.address),
                 )
             }
         }
@@ -406,6 +407,7 @@ class NodeRepository(private val context: Context) {
         file(address).delete()
         unansweredPrefs.edit().remove(address).apply()
         askedPrefs.edit().remove(address).apply()
+        ownersFile(address).delete()
         knownPrefs.edit().remove(address).apply()
         labelPrefs.edit().remove(address).apply()
         setupPrefs.edit().remove(address).apply()
@@ -704,7 +706,30 @@ class NodeRepository(private val context: Context) {
         }
     }
 
-    fun dismissOwnerChange(c: Body.OwnerChanged) = update { s -> s.copy(ownerChanges = s.ownerChanges - c) }
+    fun dismissOwnerChange(c: Body.OwnerChanged) = setOwnerChanges { it - c }
+
+    /**
+     * The node does not keep an `OWNER_CHANGED`, and a sync does not send it again, so the app keeps
+     * each on disk, the last [OwnerNotices.KEPT], until the user dismisses it.
+     */
+    private fun setOwnerChanges(change: (List<Body.OwnerChanged>) -> List<Body.OwnerChanged>) {
+        update { it.copy(ownerChanges = change(it.ownerChanges).takeLast(OwnerNotices.KEPT)) }
+        val address = _state.value.node?.address ?: return
+        val f = ownersFile(address)
+        if (_state.value.ownerChanges.isEmpty()) {
+            f.delete()
+            return
+        }
+        f.parentFile?.mkdirs()
+        val tmp = File(f.path + ".tmp")
+        tmp.writeBytes(OwnerNotices.encode(_state.value.ownerChanges))
+        tmp.renameTo(f)
+    }
+
+    private fun loadOwnerChanges(address: String): List<Body.OwnerChanged> =
+        ownersFile(address).takeIf { it.exists() }?.let { OwnerNotices.decode(it.readBytes()) } ?: emptyList()
+
+    private fun ownersFile(address: String) = File(context.filesDir, "records/${address.replace(':', '-')}.owners")
 
     fun dismissAsked(a: Body.Asked) = setAsked { list -> list.filter { it.address != a.address } }
 
@@ -1310,7 +1335,7 @@ class NodeRepository(private val context: Context) {
         if (body is Body.OwnerChanged) {
             // Someone at a node, or one of its owners, changed who may manage it: the user may not
             // have, and is told, here and in a notification.
-            update { s -> s.copy(ownerChanges = s.ownerChanges.filter { it != body } + body) }
+            setOwnerChanges { OwnerNotices.add(it, body) }
             notifier.ownerChanged(connection.records, body)
             return
         }

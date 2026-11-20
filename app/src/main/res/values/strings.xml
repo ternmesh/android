@@ -566,6 +566,7 @@
     <string name="bluetooth_locked">Locked</string>
     <string name="bluetooth_unlocked">Unlocked</string>
     <string name="manage_settings">Settings</string>
+    <string name="manage_sleep_explained">Asleep, it turns its radio off and wakes now and then to ask a nearby relay for what came for it, requests from you included. So while it sleeps, each answer can take as long as it sleeps.</string>
     <string name="manage_settings_explained">A change made over the mesh is on trial for 15 minutes: the node goes back to how it was unless it hears from you again. Tern confirms it for you. Region and passkey can only be changed at the node.</string>
     <string name="manage_trial">On trial. Confirming…</string>
     <string name="manage_confirmed">Confirmed: the setting stays.</string>

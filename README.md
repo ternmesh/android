@@ -41,14 +41,14 @@ messages and their notifications. The contact, its session and the group are kep
 
 From a node of version 17 the app manages another node over the mesh (`MANAGE`), if that node has
 made the app's node one of its owners: "Manage" in a contact's menu shows that node's own state from a
-sync over the mesh, and changes its role, power, presence card, receiver and Bluetooth lock, who its
-owners are, and restarts it. Region and passkey are changed only at the node. Each request goes one at
+sync over the mesh, and changes its role, power, presence card and its name, receiver, sleep (how often
+it wakes and how long it listens) and Bluetooth lock, who its owners are, and restarts it. Region and passkey are changed only at the node. Each request goes one at
 a time, is tried again up to three times when not delivered, and waits two minutes for its answer once
 delivered. A change made over the mesh is on trial, and the app confirms it with a `PING` at once, or 45
-seconds later for a role or a power, which the node restarts to apply. In the app's own node, a
+seconds later for a role or a power, which the node restarts to apply; the rest restart nothing. In the app's own node, a
 contact can be made an owner (`OWNER`), after saying what an owner can do. When a node says its owners
 changed (`OWNER_CHANGED`), the app says who, of which node, and whether at the node or over the mesh, in
-the chats and in a notification. A node whose Bluetooth is locked is shown so; the app can lock its own
+the chats and in a notification, and keeps the last 20 on disk until the user dismisses them. A node whose Bluetooth is locked is shown so; the app can lock its own
 node, after saying only USB or an owner can unlock it.
 
 It shows who is about: the presence cards the node has heard from the nodes near it, each with

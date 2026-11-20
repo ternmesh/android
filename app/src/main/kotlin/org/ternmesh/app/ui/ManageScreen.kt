@@ -168,16 +168,6 @@ fun ManageScreen(repository: NodeRepository, state: NodeState, address: Address,
                     },
                 )
             }
-            self.cards?.let { cards ->
-                GroupDivider()
-                SettingsRow(
-                    stringResource(R.string.card_on),
-                    subtitle = stringResource(if (cards == 1) R.string.card_on_yes else R.string.card_on_no),
-                    trailing = {
-                        Switch(checked = cards == 1, enabled = !busy, onCheckedChange = { ask(Body.Set(Setting.Cards(if (it) 1 else 0))) })
-                    },
-                )
-            }
             r.fix?.takeIf { it.receiver != ReceiverState.NONE }?.let { fix ->
                 GroupDivider()
                 SettingsRow(
@@ -190,6 +180,19 @@ fun ManageScreen(repository: NodeRepository, state: NodeState, address: Address,
                 )
             }
         }
+        // Its presence card and its sleep, with the controls and limits the app's own node has.
+        // Neither restarts the node, so the PING that confirms each goes at once.
+        if (self.cards != null && self.cardName != null) {
+            SectionHeader(stringResource(R.string.card_section))
+            SettingsGroup { PresenceCard(self) { ask(Body.Set(it)) } }
+        }
+        // SLEEP comes from a node of version 15: below it, there is no section.
+        r.sleep?.let { sleep ->
+            SectionHeader(stringResource(R.string.sleep_section))
+            SettingsGroup { SleepSettings(r, self, sleep) { ask(Body.Set(it)) } }
+            Footnote(stringResource(if (self.role == 1) R.string.sleep_relay_explained else R.string.manage_sleep_explained))
+        }
+
         // A change over the mesh is on trial until the node hears again: say where that stands.
         val trial = when {
             m.trialUntil != null && (m.asking != null || m.settleUntil != null) -> stringResource(R.string.manage_trial)

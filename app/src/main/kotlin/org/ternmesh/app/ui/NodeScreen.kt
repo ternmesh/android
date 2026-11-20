@@ -86,6 +86,7 @@ import org.ternmesh.companion.Install
 import org.ternmesh.companion.Offer
 import org.ternmesh.companion.Pairing
 import org.ternmesh.companion.ReceiverState
+import org.ternmesh.companion.Records
 import org.ternmesh.companion.Setting
 import org.ternmesh.companion.Signed
 import org.ternmesh.companion.Sleeping
@@ -580,7 +581,7 @@ fun RadioScreen(repository: NodeRepository, state: NodeState, back: () -> Unit) 
         // Sleeping is version 15's: a node of version 14 or earlier says nothing of it, and has no section.
         state.records.sleep?.takeIf { canSleep(state) }?.let { sleep ->
             SectionHeader(stringResource(R.string.sleep_section))
-            SettingsGroup { SleepSettings(repository, state, s, sleep) }
+            SettingsGroup { SleepSettings(state.records, s, sleep) { repository.submit(Body.Set(it), report) } }
             Footnote(stringResource(if (s.role == 1) R.string.sleep_relay_explained else R.string.sleep_explained))
         }
 
@@ -631,7 +632,10 @@ fun PrivacyScreen(repository: NodeRepository, state: NodeState, back: () -> Unit
         // SELF says cards from a node of version 6; below it there are none to turn on.
         state.records.self?.takeIf { hasCards(state) && it.cards != null }?.let { s ->
             SectionHeader(stringResource(R.string.card_section))
-            SettingsGroup { PresenceCard(repository, s) }
+            SettingsGroup {
+                val report = rememberReport()
+                PresenceCard(s) { repository.submit(Body.Set(it), report) }
+            }
             Footnote(stringResource(R.string.card_on_explained))
         }
         // FIX comes from a node of version 8, and says whether it has a receiver to turn on or off.
@@ -836,18 +840,17 @@ private const val WAKE_FIRST = 600
  * Turning it on asks first, since messages to the node then wait for it to wake.
  */
 @Composable
-private fun SleepSettings(repository: NodeRepository, state: NodeState, self: Body.Self, sleep: Body.Sleep) {
+internal fun SleepSettings(records: Records, self: Body.Self, sleep: Body.Sleep, set: (Setting) -> Unit) {
     val context = LocalContext.current
-    val report = rememberReport()
     var asking by remember { mutableStateOf(false) }
     var choosing by remember { mutableStateOf(false) }
     val on = sleep.wake != 0
     SettingsRow(
         stringResource(R.string.sleep_on),
-        subtitle = sleepText(context, state, self, sleep),
+        subtitle = sleepText(context, records, self, sleep),
         trailing = {
             Switch(checked = on, onCheckedChange = {
-                if (it) asking = true else repository.submit(Body.Set(Setting.Wake(0)), report)
+                if (it) asking = true else set(Setting.Wake(0))
             })
         },
     )
@@ -863,7 +866,7 @@ private fun SleepSettings(repository: NodeRepository, state: NodeState, self: Bo
                 for (w in WAKES) {
                     DropdownMenuItem(
                         text = { Text(context.getString(R.string.sleep_every, spanText(w.toLong()))) },
-                        onClick = { choosing = false; repository.submit(Body.Set(Setting.Wake(w)), report) },
+                        onClick = { choosing = false; set(Setting.Wake(w)) },
                     )
                 }
             }
@@ -871,7 +874,7 @@ private fun SleepSettings(repository: NodeRepository, state: NodeState, self: Bo
         GroupDivider()
         NumberSetting(stringResource(R.string.sleep_listen), "${sleep.listen}", unit = "s") { text ->
             text.toIntOrNull()?.takeIf { it in Sleeping.LISTEN_MIN..Sleeping.LISTEN_MAX }
-                ?.let { repository.submit(Body.Set(Setting.Listen(it)), report) }
+                ?.let { set(Setting.Listen(it)) }
         }
     }
     if (asking) {
@@ -880,7 +883,7 @@ private fun SleepSettings(repository: NodeRepository, state: NodeState, self: Bo
             title = { Text(stringResource(R.string.sleep_ask_title)) },
             text = { Text(stringResource(R.string.sleep_ask_explained, spanText(WAKE_FIRST.toLong()))) },
             confirmButton = {
-                TextButton(onClick = { asking = false; repository.submit(Body.Set(Setting.Wake(WAKE_FIRST)), report) }) {
+                TextButton(onClick = { asking = false; set(Setting.Wake(WAKE_FIRST)) }) {
                     Text(stringResource(R.string.sleep_ask_confirm))
                 }
             },
@@ -890,8 +893,8 @@ private fun SleepSettings(repository: NodeRepository, state: NodeState, self: Bo
 }
 
 /** What a sleeping node does now, as `SLEEP`'s `state` says, its keeper named where the app can. */
-private fun sleepText(context: android.content.Context, state: NodeState, self: Body.Self, sleep: Body.Sleep): String {
-    fun relay(id: Long) = Conversations.nameOf(state.records, id) ?: Conversations.cardOf(state.records, id)?.name?.ifEmpty { null }
+private fun sleepText(context: android.content.Context, records: Records, self: Body.Self, sleep: Body.Sleep): String {
+    fun relay(id: Long) = Conversations.nameOf(records, id) ?: Conversations.cardOf(records, id)?.name?.ifEmpty { null }
         ?: routingText(id)
     return when {
         self.role == 1 -> context.getString(R.string.sleep_state_relay)
@@ -962,8 +965,7 @@ private fun TurnOffDialog(node: ChosenNode, onDismiss: () -> Unit, turnOff: () -
  * here: being seen is theirs to choose, so the switch says plainly what turning it on puts on the air.
  */
 @Composable
-private fun PresenceCard(repository: NodeRepository, self: Body.Self) {
-    val report = rememberReport()
+internal fun PresenceCard(self: Body.Self, set: (Setting) -> Unit) {
     val on = self.cards == 1
     val current = self.cardName.orEmpty()
     var name by remember(current) { mutableStateOf(current) }
@@ -972,7 +974,7 @@ private fun PresenceCard(repository: NodeRepository, self: Body.Self) {
     SettingsRow(
         stringResource(R.string.card_on),
         subtitle = stringResource(if (on) R.string.card_on_yes else R.string.card_on_no),
-        trailing = { Switch(checked = on, onCheckedChange = { repository.submit(Body.Set(Setting.Cards(if (it) 1 else 0)), report) }) },
+        trailing = { Switch(checked = on, onCheckedChange = { set(Setting.Cards(if (it) 1 else 0)) }) },
     )
     GroupDivider()
     Text(
@@ -999,7 +1001,7 @@ private fun PresenceCard(repository: NodeRepository, self: Body.Self) {
             modifier = Modifier.weight(1f),
         )
         TextButton(
-            onClick = { repository.submit(Body.Set(Setting.CardName(name.trim())), report) },
+            onClick = { set(Setting.CardName(name.trim())) },
             enabled = !tooLong && name.trim() != current,
         ) { Text(stringResource(R.string.set)) }
     }
