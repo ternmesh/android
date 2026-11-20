@@ -28,10 +28,10 @@ class ManageStepTest {
     @Test
     fun whetherItSleeps() {
         assertEquals(900, ManageStep.sleeps(Body.Sleep(900, 5, Sleeping.ASLEEP, 7, 0), null))
-        assertNull(ManageStep.sleeps(Body.Sleep(900, 5, Sleeping.WAITING, 0, 0), 600), "to sleep, but listening all the time")
-        assertNull(ManageStep.sleeps(Body.Sleep(0, 5, Sleeping.AWAKE, 0, 0), 600))
+        assertEquals(0, ManageStep.sleeps(Body.Sleep(900, 5, Sleeping.WAITING, 0, 0), 600), "to sleep, but listening all the time")
+        assertEquals(0, ManageStep.sleeps(Body.Sleep(0, 5, Sleeping.AWAKE, 0, 0), 600))
         assertEquals(600, ManageStep.sleeps(null, 600))
-        assertNull(ManageStep.sleeps(null, 0))
+        assertNull(ManageStep.sleeps(null, 0), "a contact's 0 may be one that said nothing")
         assertNull(ManageStep.sleeps(null, null))
     }
 
@@ -48,5 +48,19 @@ class ManageStepTest {
     fun theWaitForASleepingNode() {
         assertEquals(Companion.MESH_ANSWER_WAIT_MS, Remote.waitFor(0, 5))
         assertEquals(Companion.MESH_ANSWER_WAIT_MS + 905_000, Remote.waitFor(900, 5))
+        assertEquals(600_000L, Remote.waitFor(null, 0), "not known: ten minutes")
+    }
+
+    /** Delivered to a sleeping node's keeper, it is held until the node wakes; to one not known to sleep, after 20 s, it may be asleep. */
+    @Test
+    fun heldForASleepingNode() {
+        assertEquals(ManageStep.Held(300), ManageStep.of(MessageState.DELIVERED, wake = 300))
+        assertEquals(ManageStep.Held(300), ManageStep.of(MessageState.DELIVERED, wake = 300, sinceDeliveredMs = 0))
+        assertEquals(ManageStep.Delivered, ManageStep.of(MessageState.DELIVERED, wake = null, sinceDeliveredMs = 19_999))
+        assertEquals(ManageStep.MaybeAsleep, ManageStep.of(MessageState.DELIVERED, wake = null, sinceDeliveredMs = 20_000))
+        assertEquals(ManageStep.MaybeAsleep, ManageStep.of(MessageState.DELIVERED, wake = 0, sinceDeliveredMs = 60_000))
+        assertEquals(ManageStep.Sent, ManageStep.of(MessageState.SENT, wake = 300, sinceDeliveredMs = 60_000), "only once delivered")
+        assertFalse(ManageStep.waitsForWake(ManageStep.Held(300)))
+        assertFalse(ManageStep.waitsForWake(ManageStep.MaybeAsleep))
     }
 }

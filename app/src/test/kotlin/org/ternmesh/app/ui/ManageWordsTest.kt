@@ -10,10 +10,16 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import org.ternmesh.app.node.Managed
+import org.ternmesh.app.node.NodeState
+import org.ternmesh.companion.Address
+import org.ternmesh.companion.Body
 import org.ternmesh.companion.ErrorCode
 import org.ternmesh.companion.ManageStep
 import org.ternmesh.companion.MessageState
 import org.ternmesh.companion.Outcome
+import org.ternmesh.companion.Records
+import org.ternmesh.companion.Setting
 
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35])
@@ -55,5 +61,54 @@ class ManageWordsTest {
         )
         // A code the app does not know stays a plain refusal.
         assertEquals(outcomeText(context, Outcome.Refused(99)), manageOutcomeText(context, "Hilltop", Outcome.Refused(99)))
+    }
+
+    /** Delivered to a sleeping node's keeper, it is held until the node wakes; not known to sleep, after 20 s it may be asleep. */
+    @Test
+    fun heldForASleepingNode() {
+        assertEquals("Held until Hilltop wakes (every 5 min)…", manageStepText(context, ManageStep.of(MessageState.DELIVERED, wake = 300), "Hilltop"))
+        assertEquals(
+            "Waiting for Hilltop. It may be asleep.",
+            manageStepText(context, ManageStep.of(MessageState.DELIVERED, sinceDeliveredMs = 25_000), "Hilltop"),
+        )
+        assertEquals("Delivered: waiting for Hilltop's answer…", manageStepText(context, ManageStep.of(MessageState.DELIVERED, sinceDeliveredMs = 5_000), "Hilltop"))
+    }
+
+    /** What a notification says a check came to. */
+    @Test
+    fun checkNotifications() {
+        assertEquals("You're an owner of Hilltop. Tap to manage it.", checkResultText(context, "Hilltop", true, null))
+        assertEquals("You're not an owner of Hilltop.", checkResultText(context, "Hilltop", false, Outcome.Refused(ErrorCode.NOT_AN_OWNER)))
+        assertEquals("No answer from Hilltop.", checkResultText(context, "Hilltop", null, Outcome.NoAnswer))
+        assertNull(checkResultText(context, "Hilltop", null, null))
+        assertNull(checkResultText(context, "Hilltop", null, Outcome.Closed))
+    }
+
+    /** What a notification says a request came to, once the user has left the Manage screen. */
+    @Test
+    fun manageNotifications() {
+        val ok = Outcome.Answered(Body.Ok)
+        assertEquals("Card name set on Hilltop.", manageDoneText(context, "Hilltop", Body.Set(Setting.CardName("Mast")), ok))
+        assertEquals("Sleep set on Hilltop.", manageDoneText(context, "Hilltop", Body.Set(Setting.Wake(600)), ok))
+        assertEquals("Owners changed on Hilltop.", manageDoneText(context, "Hilltop", Body.Owner(Address(ByteArray(32) { 1 }), 1), ok))
+        assertEquals("Hilltop is restarting.", manageDoneText(context, "Hilltop", Body.Restart, ok))
+        assertEquals("No answer from Hilltop.", manageDoneText(context, "Hilltop", Body.Set(Setting.Power(14)), Outcome.NoAnswer))
+        assertEquals(
+            "You're not an owner of Hilltop. Its owner can add you.",
+            manageDoneText(context, "Hilltop", Body.Restart, Outcome.Refused(ErrorCode.NOT_AN_OWNER)),
+        )
+        assertNull(manageDoneText(context, "Hilltop", Body.Restart, Outcome.Closed))
+    }
+
+    /** The service's notification, and the banner, while a check or a request is on its way. */
+    @Test
+    fun whileOnItsWay() {
+        val hilltop = Address(ByteArray(32) { 0x3D })
+        val records = Records().apply { contacts[hilltop] = Body.Contact(hilltop, 1, "Hilltop") }
+        val asking = NodeState(records = records, managed = Managed(hilltop, asking = Body.Hello(17), checking = true))
+        assertEquals("Checking whether you own Hilltop…", managingText(context, asking))
+        assertEquals("Waiting for Hilltop to answer…", managingText(context, asking.copy(managed = asking.managed!!.copy(checking = false))))
+        assertNull(managingText(context, asking.copy(managed = asking.managed!!.copy(asking = null))))
+        assertNull(managingText(context, NodeState(records = records)))
     }
 }

@@ -17,6 +17,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import org.ternmesh.app.R
 import org.ternmesh.app.TernApplication
+import org.ternmesh.app.ui.managingText
 import org.ternmesh.app.ui.phaseText
 import org.ternmesh.app.ui.updateNotificationText
 
@@ -67,10 +68,15 @@ class NodeService : Service() {
             NotificationCompat.Builder(context, Notifier.LINK)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(state.node?.shown ?: context.getString(R.string.app_name))
-                .setContentText(updateNotificationText(context, state) ?: phaseText(context, state))
+                .setContentText(updateNotificationText(context, state) ?: managingText(context, state) ?: phaseText(context, state))
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
-                .setContentIntent(Notifier.open(context, null))
+                .setContentIntent(
+                    // While a node managed over the mesh is asked something, to its check or its Manage screen.
+                    state.managed?.takeIf { managingText(context, state) != null }
+                        ?.let { Notifier.openManaging(context, it.address, manage = !it.checking) }
+                        ?: Notifier.open(context, null),
+                )
                 .build()
     }
 }

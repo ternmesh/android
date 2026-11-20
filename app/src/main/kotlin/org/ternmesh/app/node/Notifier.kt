@@ -1,7 +1,8 @@
 // A notification for each message, group message and invite the node receives while the user is
 // not looking at its conversation: one per conversation, replaced as more arrive, with a reply that
 // goes to the conversation without opening the app. And one when a node says who its owners are
-// changed (version 17), since the user may not have changed them.
+// changed (version 17), since the user may not have changed them. And one when a node managed over
+// the mesh answers, or does not, after the user has left the screen that asked it.
 package org.ternmesh.app.node
 
 import android.Manifest
@@ -19,6 +20,7 @@ import androidx.core.content.ContextCompat
 import org.ternmesh.app.R
 import org.ternmesh.app.ui.MainActivity
 import org.ternmesh.app.ui.ownerChangedText
+import org.ternmesh.companion.Address
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.Item
@@ -37,6 +39,30 @@ class Notifier(private val context: Context) {
         manager.createNotificationChannel(
             NotificationChannel(OWNERS, context.getString(R.string.channel_owners), NotificationManager.IMPORTANCE_DEFAULT),
         )
+        manager.createNotificationChannel(
+            NotificationChannel(MANAGING, context.getString(R.string.channel_managing), NotificationManager.IMPORTANCE_DEFAULT),
+        )
+    }
+
+    /**
+     * What a request to the node at [address], managed over the mesh, came to: [text]. Tapping it
+     * opens its Manage screen with [manage], or its check of whether this node owns it.
+     */
+    fun managed(address: Address, text: String, manage: Boolean) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        val n = NotificationCompat.Builder(context, MANAGING)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setAutoCancel(true)
+            .setContentIntent(openManaging(context, address, manage))
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .build()
+        NotificationManagerCompat.from(context).notify(3000 + (address.hashCode() and 0x3FFF_FFFF) % 100_000, n)
     }
 
     /** The node at the notice's `from` said who may manage it changed: one notification for each such node, replaced by the next. */
@@ -123,6 +149,10 @@ class Notifier(private val context: Context) {
         const val MESSAGES = "messages"
         const val LINK = "link"
         const val OWNERS = "owners"
+        const val MANAGING = "managing"
+
+        /** In an intent: `m:` and an address to open its Manage screen, `k:` and one to open its check. */
+        const val EXTRA_MANAGING = "managing"
         const val EXTRA_PEER = "peer"
         const val KEY_REPLY = "reply"
 
@@ -136,6 +166,15 @@ class Notifier(private val context: Context) {
             key.startsWith("c:") -> org.ternmesh.companion.Address.fromHex(key.drop(2))?.let { Peer.Contact(it) }
             key.startsWith("g:") -> org.ternmesh.companion.GroupId.fromHex(key.drop(2))?.let { Peer.Group(it) }
             else -> null
+        }
+
+        /** Opens the app at the Manage screen of the node at [address] with [manage], else at its check of whether this node owns it. */
+        fun openManaging(context: Context, address: Address, manage: Boolean): PendingIntent {
+            val key = (if (manage) "m:" else "k:") + address
+            val intent = Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(EXTRA_MANAGING, key)
+            return PendingIntent.getActivity(context, key.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
 
         /** Opens the app, at [peer]'s conversation if there is one. */

@@ -15,11 +15,13 @@ import org.ternmesh.companion.Address
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.DfuFailure
+import org.ternmesh.companion.ErrorCode
 import org.ternmesh.companion.Item
 import org.ternmesh.companion.ManageStep
 import org.ternmesh.companion.MessageState
 import org.ternmesh.companion.Outcome
 import org.ternmesh.companion.Records
+import org.ternmesh.companion.Setting
 
 fun phaseText(context: Context, state: NodeState): String = context.getString(
     when (state.phase) {
@@ -184,11 +186,70 @@ fun manageStepText(context: Context, step: ManageStep, node: String): String = w
     ManageStep.Waiting -> context.getString(R.string.manage_step_waiting)
     ManageStep.Sent -> context.getString(R.string.manage_step_sent, node)
     ManageStep.Delivered -> context.getString(R.string.manage_step_delivered, node)
+    is ManageStep.Held -> context.getString(R.string.manage_step_held, node, minutes(step.wake))
+    ManageStep.MaybeAsleep -> context.getString(R.string.manage_step_maybe_asleep, node)
     ManageStep.NotDelivered -> context.getString(R.string.manage_step_not_delivered)
 }
 
 /** That [node] sleeps [wake] seconds between wakes, and so may take that long: null for a node not known to sleep. */
 fun manageAsleepText(context: Context, node: String, wake: Int?): String? =
     wake?.takeIf { it > 0 }?.let {
-        context.getString(R.string.manage_asleep, node.replaceFirstChar { c -> c.uppercase() }, (it + 59) / 60)
+        context.getString(R.string.manage_asleep, node.replaceFirstChar { c -> c.uppercase() }, minutes(it))
     }
+
+/** Seconds as whole minutes, rounded up: a wake of 330 s is every 6 min. */
+private fun minutes(seconds: Int) = (seconds + 59) / 60
+
+/**
+ * What the service's notification, and the banner on the tabs, say of a node managed over the mesh
+ * while a request to it is on its way: checking whether this node owns it, or waiting for its
+ * answer. Null when nothing is on its way.
+ */
+fun managingText(context: Context, state: NodeState): String? {
+    val m = state.managed ?: return null
+    if (m.asking == null && m.settleUntil == null) return null
+    val name = nodeName(context, state.records, m.address)
+    return if (m.checking) context.getString(R.string.checking_owner, name) else context.getString(R.string.managing_waiting, name)
+}
+
+/** What a check of whether this node owns [name] came to, for a notification: [owner] if it answered, else [outcome]. */
+fun checkResultText(context: Context, name: String, owner: Boolean?, outcome: Outcome?): String? = when {
+    owner == true -> context.getString(R.string.owner_yes_tap, name)
+    owner == false || (outcome is Outcome.Refused && outcome.code == ErrorCode.NOT_AN_OWNER) -> context.getString(R.string.owner_no, name)
+    outcome == Outcome.NoAnswer -> context.getString(R.string.owner_no_answer, name)
+    outcome != null && outcome != Outcome.Closed -> context.getString(R.string.manage_failed, name.replaceFirstChar { it.uppercase() }, outcomeText(context, outcome))
+    else -> null
+}
+
+/** What a request the user made of [name] over the mesh came to, for a notification once they have left the Manage screen. */
+fun manageDoneText(context: Context, name: String, body: Body, outcome: Outcome): String? {
+    if (outcome == Outcome.Closed) return null
+    if (outcome !is Outcome.Answered) {
+        return when {
+            outcome is Outcome.Refused && outcome.code == ErrorCode.NOT_AN_OWNER -> context.getString(R.string.manage_not_owner, name)
+            outcome == Outcome.NoAnswer -> context.getString(R.string.owner_no_answer, name)
+            else -> context.getString(R.string.manage_failed, name.replaceFirstChar { it.uppercase() }, outcomeText(context, outcome))
+        }
+    }
+    return when (body) {
+        is Body.Set -> context.getString(
+            R.string.managed_set,
+            context.getString(
+                when (body.setting) {
+                    is Setting.Role -> R.string.managed_set_role
+                    is Setting.Power -> R.string.managed_set_power
+                    is Setting.Cards -> R.string.managed_set_cards
+                    is Setting.CardName -> R.string.managed_set_card_name
+                    is Setting.Receiver -> R.string.managed_set_receiver
+                    is Setting.Wake, is Setting.Listen -> R.string.managed_set_sleep
+                    is Setting.Lock -> R.string.managed_set_lock
+                    else -> R.string.managed_set_other
+                },
+            ),
+            name,
+        )
+        is Body.Owner -> context.getString(R.string.managed_owners, name)
+        Body.Restart -> context.getString(R.string.managed_restart, name.replaceFirstChar { it.uppercase() })
+        else -> context.getString(R.string.managed_answered, name.replaceFirstChar { it.uppercase() })
+    }
+}

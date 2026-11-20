@@ -165,4 +165,20 @@ class RemoteTest {
         assertEquals(0, remote.wake)
         assertEquals(Companion.MESH_ANSWER_WAIT_MS, remote.answerWaitMs)
     }
+
+    /** Whether the node sleeps not known, a request waits ten minutes from each step: a keeper may hold it that long. */
+    @Test
+    fun notKnowingWhetherItSleepsWaitsTenMinutes() {
+        assertNull(remote.wake)
+        assertEquals(Remote.UNKNOWN_WAIT_MS, remote.answerWaitMs)
+        var result: Outcome? = null
+        remote.submit(Body.Ping) { result = it }
+        remote.receive(Body.State(nextId - 1, MessageState.DELIVERED, 0, 0))
+        time = Remote.UNKNOWN_WAIT_MS - 1
+        remote.tick()
+        assertNull(result)
+        time = Remote.UNKNOWN_WAIT_MS
+        remote.tick()
+        assertEquals(Outcome.NoAnswer, result)
+    }
 }

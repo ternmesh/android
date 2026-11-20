@@ -86,9 +86,11 @@ fun TernApp(
     opened: () -> Unit,
     taken: () -> Unit,
     joined: () -> Unit,
+    managing: String? = null,
+    managingOpened: () -> Unit = {},
 ) {
     val state by repository.state.collectAsStateWithLifecycle()
-    TernApp(repository, state, opening, incoming, joining, opened, taken, joined)
+    TernApp(repository, state, opening, incoming, joining, opened, taken, joined, managing, managingOpened)
 }
 
 /**
@@ -105,6 +107,8 @@ internal fun TernApp(
     opened: () -> Unit = {},
     taken: () -> Unit = {},
     joined: () -> Unit = {},
+    managing: String? = null,
+    managingOpened: () -> Unit = {},
 ) {
     val nav = rememberNavController()
     val goTab: (Tab) -> Unit = { tab ->
@@ -131,6 +135,16 @@ internal fun TernApp(
         if (peer != null && state.node != null && permitted) {
             nav.navigate(chatRoute(peer)) { launchSingleTop = true }
             opened()
+        }
+    }
+    // A node managed over the mesh, from a notification: its Manage screen, or its check.
+    LaunchedEffect(managing, state.node, permitted) {
+        val address = managing?.drop(2)?.let(Address::fromHex)
+        if (address != null && state.node != null && permitted) {
+            if (managing!!.startsWith("m:")) nav.navigate(manageRoute(address)) { launchSingleTop = true } else repository.showCheck(address)
+            managingOpened()
+        } else if (managing != null && address == null) {
+            managingOpened()
         }
     }
     // A link to add: to the contacts, where the dialog takes it.
@@ -211,9 +225,28 @@ internal fun TernApp(
                     }
                 }
             }
+            // The check of whether this node owns another, from the repository's state: it outlives
+            // this activity, and the screen it was asked from.
+            val checking = state.managed?.takeIf { it.checking && it.dialog }
+            if (checking != null) {
+                CheckOwnerDialog(
+                    state, checking.address,
+                    hide = repository::hideCheck,
+                    cancel = repository::stopManaging,
+                    retry = {
+                        repository.stopManaging()
+                        repository.manage(checking.address, check = true)
+                    },
+                ) { nav.navigate(manageRoute(checking.address)) }
+            }
             Column(Modifier.fillMaxSize().padding(padding)) {
                 LinkBanner(repository, state)
                 DefaultPasskeyBanner(repository, state)
+                if (route == Tab.CHATS.route || route == Tab.PEOPLE.route) {
+                    ManagingBanner(state) { m ->
+                        if (m.checking) repository.showCheck(m.address) else nav.navigate(manageRoute(m.address))
+                    }
+                }
                 NavHost(nav, startDestination = Tab.CHATS.route, modifier = Modifier.weight(1f)) {
                     val toNode = { goTab(Tab.NODE) }
                     val back: () -> Unit = { nav.popBackStack() }

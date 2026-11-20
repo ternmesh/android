@@ -47,7 +47,13 @@ nothing). A contact's menu offers "Manage" only for those; for any other it offe
 owner", one `HELLO` over the mesh, and says it is not yours. While a request is on its way the app says
 what it waits for, from its message's `STATE`: first contact, a route, the air, delivery or the answer;
 and, for a node known to sleep, from its last sync or its contact's wake, how long that can take, and
-waits that much longer. A request can be stopped. "Manage" shows that node's own state from a
+waits that much longer; once delivered to a sleeping node's keeper, it says it is held until the
+node wakes, and after 20 s with no answer from one not known to sleep, that it may be asleep. Not
+knowing whether a node sleeps, the app waits ten minutes. A check, and a request already on its way
+when the Manage screen is left, go on until they end, whatever happens to the screen: the check's
+dialog and a banner on the Chats and People tabs come from the repository's state, the service's
+notification says what is waited for, and what it came to is a notification when the user is not
+looking, which opens Manage or the check. Only Stop or Cancel stops them. "Manage" shows that node's own state from a
 sync over the mesh, and changes its role, power, presence card and its name, receiver, sleep (how often
 it wakes and how long it listens) and Bluetooth lock, who its owners are, and restarts it. Region and passkey are changed only at the node. Each request goes one at
 a time, is tried again up to three times when not delivered, and waits two minutes for its answer once

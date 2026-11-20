@@ -4,6 +4,7 @@
 package org.ternmesh.app.ui
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -28,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import org.ternmesh.app.R
 import org.ternmesh.app.node.Managed
 import org.ternmesh.app.node.NodeRepository
@@ -51,7 +54,9 @@ import org.ternmesh.companion.Setting
 fun ManageScreen(repository: NodeRepository, state: NodeState, address: Address, back: () -> Unit) {
     DisposableEffect(address) {
         repository.manage(address)
-        onDispose { repository.stopManaging() }
+        repository.showingManage()
+        // A request already on its way goes on, and says what it came to; only Stop stops it.
+        onDispose { repository.leftManage() }
     }
     val context = LocalContext.current
     val say = LocalSay.current
@@ -320,7 +325,15 @@ internal fun ManageProgress(m: Managed, name: String, stop: (() -> Unit)?, modif
             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
             Column {
                 if (asking != null) {
-                    val step = ManageStep.of(m.carried, m.reason, m.wait)
+                    // Once delivered, the step changes with time alone: a node not known to sleep may be.
+                    val now by produceState(SystemClock.elapsedRealtime(), m.deliveredAt) {
+                        while (m.deliveredAt != null) {
+                            value = SystemClock.elapsedRealtime()
+                            delay(1_000)
+                        }
+                    }
+                    val since = m.deliveredAt?.let { now - it }
+                    val step = ManageStep.of(m.carried, m.reason, m.wait, m.wake, since)
                     Text(manageStepText(context, step, name))
                     val what = listOfNotNull(
                         askingText(context, asking),
