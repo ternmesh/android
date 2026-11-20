@@ -11,7 +11,8 @@
 // 5 or earlier, and read back so, and without `locked` from one of version 16 or earlier; a
 // `CONTACT` likewise, without `wake` from one of version 14 or earlier, and without `owner` from one
 // of version 16 or earlier. Whether the node sleeps (`SLEEP`) is not kept: like the fix, every sync sends it, and its
-// `retry` counts down.
+// `retry` counts down. How each message went (`ROUTE`, version 18) is kept, after the messages: a
+// node may keep none across a restart, and a client keeps those it holds.
 //
 //   "TRNR", the format (1), syncedVersion (0xFF for none), 1 if missedSince is set, missedSince as a
 //   big-endian u32; then, to the end, one byte n and n bytes of a frame of seq 0, for each record.
@@ -34,7 +35,7 @@ object RecordsFile {
         val m = missed ?: 0
         for (shift in intArrayOf(24, 16, 8, 0)) out.write((m shr shift).toInt() and 0xFF)
         val bodies = listOfNotNull(records.self) + records.contacts.values + records.groups.values +
-            records.ordered.map { it as Body } + records.neighbours.values +
+            records.ordered.map { it as Body } + records.routes.values.sortedBy { it.id } + records.neighbours.values +
             listOfNotNull(records.airtime, records.power)
         for (body in bodies) {
             val frame = Codec.encode(Frame(0, body))
@@ -67,7 +68,7 @@ object RecordsFile {
                 return Records()
             }
             if (!Companion.isNews(body.type) || body is Body.Asked || body is Body.State || body is Body.Managed ||
-                body is Body.OwnerChanged || body.typeName.endsWith("_GONE")
+                body is Body.OwnerChanged || body is Body.Traced || body.typeName.endsWith("_GONE")
             ) {
                 return Records()
             }

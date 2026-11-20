@@ -196,8 +196,8 @@ class ConnectionTest {
             listOf(Outcome.Answered(Body.Synced(9)), Outcome.Answered(Body.Ok), Outcome.Refused(ErrorCode.NOT_OVER_THE_MESH), Outcome.Answered(Body.Ok)),
             outcomes,
         )
-        assertEquals(17, r.agreed)
-        assertEquals(RemoteEvent.Ready(17, r.firmware!!), events.first { it is RemoteEvent.Ready })
+        assertEquals(Companion.VERSION, r.agreed)
+        assertEquals(RemoteEvent.Ready(Companion.VERSION, r.firmware!!), events.first { it is RemoteEvent.Ready })
         assertEquals(6, events.count { it == RemoteEvent.Trying(1) }, "each request delivered at its first try")
         assertEquals(listOf(MessageState.SENT, MessageState.DELIVERED), events.filterIsInstance<RemoteEvent.Carried>().map { it.state }.distinct())
         assertEquals(1, events.count { it == RemoteEvent.Synced })
@@ -220,6 +220,51 @@ class ConnectionTest {
         assertEquals(1, changed.owner)
         assertEquals(0, changed.by, "made one over a link, at the node")
         assertEquals(7, news.count { it is Body.Managed }, "one answer to each request but the sync, which takes two")
+    }
+
+    /**
+     * How messages went, and traces (version 18): a message sent through the relay, tried again and
+     * delivered, whose last `ROUTE` describes the acknowledgement's way back; a message received
+     * across two hops and a group message received, each with its `ROUTE`; and traces refused (a
+     * reserved id, the node's own, one already out), answered, not answered and not begun, each told
+     * by `TRACED`. A trace's `STATE` changes no message. The vectors' connection asks for no sync
+     * after `HELLO`: the one this connection asks for is answered by hand, as in managing.
+     */
+    @Test
+    fun howMessagesWentAndTraces() {
+        val frames = vectors.list("route")
+        val link = Link(Connection(now = { 0 }, wallTime = null))
+        val answers = link.replay(frames, unsynced = true)
+        assertEquals(
+            listOf(
+                Outcome.Answered(Body.Queued(17)), Outcome.Refused(ErrorCode.REFUSED), Outcome.Refused(ErrorCode.REFUSED),
+                Outcome.Answered(Body.Queued(20)), Outcome.Refused(ErrorCode.NOT_NOW), Outcome.Answered(Body.Queued(21)),
+                Outcome.Answered(Body.Queued(22)),
+            ),
+            answers,
+        )
+        val r = link.connection.records
+        assertEquals(listOf(17L, 18L, 19L), r.items.keys.sorted(), "a trace's id is no message's")
+        assertEquals(MessageState.DELIVERED, r.items[17L]?.state)
+        val relay = 0x1D2E3F40L
+        assertEquals(Body.Route(17, 2, 22, -98, relay, 2, 19_640), r.routes[17L], "the last ROUTE, once delivered: the acknowledgement's way back")
+        assertEquals(Body.Route(18, 2, 19, -101, 0, 0, 0), r.routes[18L], "received across two hops; no frame names where it came from")
+        assertEquals(1, r.routes[19L]?.hops, "a group message: one hop, or none less")
+        val sent = link.events.mapNotNull { ((it as? ConnectionEvent.News)?.body as? Body.Route)?.takeIf { route -> route.id == 17L } }
+        assertEquals(listOf(1, 2, 2), sent.map { it.goes }, "each try on the air, then delivered")
+        assertEquals(listOf(0, 0, 2), sent.map { it.hops }, "nothing known of the way back until it is delivered")
+
+        val traced = link.events.mapNotNull { (it as? ConnectionEvent.News)?.body as? Body.Traced }
+        assertEquals(listOf(20L, 21L, 22L), traced.map { it.id })
+        assertEquals(listOf(TraceResult.ANSWERED, TraceResult.NOT_ANSWERED, TraceResult.NOT_BEGUN), traced.map { it.result })
+        val bob = traced[0].to
+        assertEquals(listOf(relay, bob), traced[0].wayOut.map { it.routingId }, "out through the relay, answered by Bob")
+        assertEquals(listOf(relay), traced[0].wayBack.map { it.routingId })
+        assertEquals(26, traced[0].snr)
+        assertEquals(3_120, traced[0].took)
+        assertTrue(traced.drop(1).all { it.hops.isEmpty() && it.took == 0L && !it.answered })
+        val bobs = r.items.values.filterIsInstance<Body.Message>().first().contact
+        assertEquals(bob, r.routingIdOf(bobs), "the trace was to the routing id of the address messages went to")
     }
 
     /** A client of version 0 that holds messages through 17 asks only for those after them, and sets no clock when it has none to give. */
@@ -269,13 +314,14 @@ class ConnectionTest {
      * Clients of versions 3 and 4 are sent no position and no sharing, one of version 5 no card and
      * a `SELF` without the cards' fields, one of version 6 its card, one of version 7 no fix, and one
      * of version 8 its fix, and one of version 11 no `update`; one of version 12 is refused an unsigned
-     * update, one of version 15 may not forget, and one of version 16 is told nothing of owners and
-     * may not make one. None sends the request, or the setting, its version does not define: it
-     * fails here, with nothing on the link.
+     * update, one of version 15 may not forget, one of version 16 is told nothing of owners and
+     * may not make one, and one of version 17 is told nothing of how messages went and may not
+     * trace. None sends the request, or the setting, its version does not define: it fails here,
+     * with nothing on the link.
      */
     @Test
-    fun olderVersions3To8And11To16AndTheRequestEachMustNotSend() {
-        for (version in (3..8) + 11 + 12 + 15 + 16) {
+    fun olderVersions3To8And11To17AndTheRequestEachMustNotSend() {
+        for (version in (3..8) + 11 + 12 + 15 + 16 + 17) {
             val frames = vectors.list("older").first { it.int("version") == version }.list("frames")
             val link = Link(Connection(version = version, now = { 0 }, wallTime = null))
             val answers = link.replay(frames.dropLast(2))
@@ -292,8 +338,9 @@ class ConnectionTest {
             assertEquals(version >= 6, link.connection.records.self?.cards != null)
             assertEquals(version >= 6, link.connection.records.self?.cardName != null)
             assertEquals(version >= 8, link.connection.records.fix != null)
-            assertEquals(null, link.connection.records.self?.locked)
-            assertTrue(link.connection.records.contacts.values.all { it.owner == null })
+            assertEquals(if (version >= 17) 0 else null, link.connection.records.self?.locked)
+            assertTrue(link.connection.records.contacts.values.all { (it.owner != null) == (version >= 17) })
+            assertEquals(emptyMap(), link.connection.records.routes)
 
             val refused = Codec.decode(frames[frames.size - 2].bytes("frame"), version + 1).body
             assertEquals(version + 1, refused.since)
@@ -1017,9 +1064,11 @@ private class Link(val connection: Connection) {
     /**
      * Plays the node's half of [frames], having asked for the client's requests up front, and checks
      * the client sends its half in order and never two requests at once. Returns each request's
-     * outcome.
+     * outcome. [unsynced]: [frames] ask for no sync after `HELLO`, and the one the connection asks
+     * for is answered by hand, as a node holding nothing answers it, which puts each request after
+     * it one `seq` later.
      */
-    fun replay(frames: List<JsonObject>): List<Outcome> {
+    fun replay(frames: List<JsonObject>, unsynced: Boolean = false): List<Outcome> {
         val answers = mutableListOf<Outcome>()
         connection.open()
         for (f in frames.filter { it.str("from") == "client" }) {
@@ -1027,12 +1076,20 @@ private class Link(val connection: Connection) {
             if (body is Body.Hello || body is Body.Sync || body is Body.SetTime) continue
             connection.submit(body) { answers += it }
         }
+        var shift = 0
+        fun shifted(bytes: ByteArray) = bytes.copyOf().also { it[1] = ((it[1] + shift) and 0xFF).toByte() }
         for (f in frames) {
+            if (unsynced && shift == 0 && out.firstOrNull()?.get(0) == 0x02.toByte()) {
+                val sync = out.removeFirst()
+                connection.receive(Codec.encode(Frame(sync[1].toInt() and 0xFF, Body.Synced(0))))
+                shift = 1
+            }
             assertTrue(out.size <= 1, "two requests at once")
+            val bytes = f.bytes("frame")
             if (f.str("from") == "client") {
-                assertEquals(f.str("frame"), out.removeFirstOrNull()?.let(Hex::encode), f.str("type"))
+                assertEquals(Hex.encode(shifted(bytes)), out.removeFirstOrNull()?.let(Hex::encode), f.str("type"))
             } else {
-                connection.receive(f.bytes("frame"))
+                connection.receive(if (Companion.isAnswer(bytes[0].toInt() and 0xFF)) shifted(bytes) else bytes)
             }
         }
         assertEquals(0, out.size)

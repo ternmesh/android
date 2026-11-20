@@ -19,7 +19,7 @@ turns it on again, and then stays off it, saying the node is off, until the user
 It erases a node of version 13 or later when the user asks (`WIPE`), after saying that its address,
 contacts, groups and messages go for good, and then forgets the node and the phone's pairing with it.
 
-It speaks version 17 of the companion protocol, and any earlier version a node speaks. From a node
+It speaks version 18 of the companion protocol, and any earlier version a node speaks. From a node
 of version 14, the routing ids it is told (of neighbours, group messages' writers and group
 positions) are made from a key blinded from each address, as below; from an earlier node, from the
 address itself. When pairing fails it says that a node with no screen pairs only for three minutes
@@ -179,7 +179,7 @@ says a board.
 
 | Path | |
 |---|---|
-| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 17, as Kotlin types, and its numbers. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 18, as Kotlin types, and its numbers. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Codec.kt` | A frame built into bytes, and read back from them. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/ByteStream.kt` | Frames on a byte stream (USB serial, TCP), with the node's console text between them. Bluetooth does not need it. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Connection.kt` | One connection, the client's half: `HELLO` and the version both speak, one request at a time, counted news, syncing again, and the `PING` that keeps a node from taking the app for gone. No I/O and no clock of its own: a link hands it frames and calls `tick()`. |
@@ -189,7 +189,7 @@ says a board.
 | `protocol/src/main/kotlin/org/ternmesh/companion/ReleaseKeys.kt`, `Signatures.kt` | The release keys, and an image's signature checked against them: what is offered to which node. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/RoutingIds.kt` | Routing ids from addresses, as a node of version 14 (blinded) or earlier makes them. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Managing.kt` | Managing a node over the mesh, the client's half: a request's and an answer's content, and `Remote`, one request at a time inside `MANAGE`, its answer from `MANAGED`, tries again, `HELLO` again after a restart, stops at `ERROR` 15, waits longer for a node that sleeps, and the `PING` that confirms a setting on trial; and `ManageStep`, what a request waits for, from its `STATE`. `OwnedNodes.kt`: the nodes the app's node owns, as learned, and their file. No I/O and no clock of its own, as `Connection`. |
-| `protocol/src/main/kotlin/org/ternmesh/companion/Records.kt` | What the node has said it holds, as news leaves it, positions received, sharing, the cards of who is about and the node's own fix included, and the `after` the next sync asks from. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Records.kt` | What the node has said it holds, as news leaves it, positions received, sharing, the cards of who is about, the node's own fix and how each message went (`ROUTE`) included, and the `after` the next sync asks from. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/RecordsFile.kt` | The records on disk, each as the frame that carried it, so the next run syncs only what is new; not positions, sharing, cards or the node's fix, which every sync sends whole. The Apple app keeps the same format. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Sharing.kt`, `JoinCode.kt` | An address's text, link and short code (draft/sharing.md); and a group's join code read, to name the group before the user joins it (draft/groups.md). |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Conversations.kt` | The records as conversations, and how far a `READ` may reach without marking another conversation's messages read. |

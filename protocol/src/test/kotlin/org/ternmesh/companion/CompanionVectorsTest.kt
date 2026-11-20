@@ -341,6 +341,42 @@ class CompanionVectorsTest {
         assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, self.copy(pairing = null))) }
     }
 
+    /**
+     * How messages went and traces are version 18's: `TRACE`, `ROUTE` and `TRACED`. A `TRACED`'s
+     * entries are five bytes each, the first `out` the way out, and at most 160 bytes in all.
+     */
+    @Test
+    fun routesAndTracesAreVersion18s() {
+        for (body in listOf(
+            Body.Trace(0xC0FFEE20, 0x1D2E3F40), Body.Route(17, 2, -38, -112, 0, 0, 0),
+            Body.Traced(24, 0x30313233, TraceResult.NOT_ANSWERED, 0, 0, 0, ByteArray(0)),
+        )) {
+            val bytes = Codec.encode(Frame(1, body))
+            assertEquals(18, body.since, body.typeName)
+            assertEquals(body, Codec.decode(bytes).body)
+            assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(bytes, 17) }.reason, body.typeName)
+        }
+        // Signed fields at their ends, and a round trip as long as four bytes of milliseconds hold.
+        val far = Body.Route(0xFFFF_FFFFL, 255, -128, -32768, 0xFFFF_FFFFL, 255, 0xFFFF_FFFFL)
+        assertEquals(far, Codec.decode(Codec.encode(Frame(0, far))).body)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, far.copy(snr = 128))) }
+
+        val traced = v.list("frames").first { it.str("type") == "TRACED" && it.obj("fields").int("result") == 0 }
+        val answered = Codec.decode(traced.bytes("frame")).body as Body.Traced
+        assertTrue(answered.answered)
+        assertEquals(listOf(TraceHop(0x1D2E3F40, 24), TraceHop(0x0A0B0C0D, 40)), answered.wayOut, "the relay, then the node that answered")
+        assertEquals(listOf(TraceHop(0x1D2E3F40, 30)), answered.wayBack)
+        val longest = Body.Traced(25, 1, TraceResult.ANSWERED, 16, 61_000, -80, ByteArray(Companion.TRACE_ENTRIES_MAX))
+        assertEquals(Companion.MAX_FRAME - 2, Codec.encode(Frame(0, longest)).size, "sixteen entries each way fit a frame, with room to spare")
+        assertEquals(16, longest.wayOut.size)
+        assertEquals(16, longest.wayBack.size)
+        assertFailsWith<IllegalArgumentException> {
+            Codec.encode(Frame(0, Body.Traced(25, 1, 0, 16, 0, 0, ByteArray(Companion.TRACE_ENTRIES_MAX + 1))))
+        }
+        // An entry cut short is no hop.
+        assertEquals(1, Body.Traced(26, 1, 0, 1, 0, 0, ByteArray(9)).hops.size)
+    }
+
     /** The node's own fix and the receiver setting are version 8's, and a fix's signed fields build and read back at their ends. */
     @Test
     fun theNodesOwnFixIsVersion8s() {
@@ -493,6 +529,7 @@ class CompanionVectorsTest {
         "FORGET_GROUP" -> Body.ForgetGroup(f.gid("group"), f.long("through"))
         "MANAGE" -> Body.Manage(f.long("ref"), f.addr("to"), f.bytes("request"))
         "OWNER" -> Body.Owner(f.addr("address"), f.int("owner"))
+        "TRACE" -> Body.Trace(f.long("ref"), f.long("to"))
         "SAVE_CONTACT" -> Body.SaveContact(f.addr("address"), f.str("name"))
         "REMOVE_CONTACT" -> Body.RemoveContact(f.addr("address"))
         "END_SESSION" -> Body.EndSession(f.addr("address"))
@@ -583,6 +620,10 @@ class CompanionVectorsTest {
         "GROUP_FORGOTTEN" -> Body.GroupForgotten(f.gid("group"), f.long("through"))
         "MANAGED" -> Body.Managed(f.addr("from"), f.bytes("answer"))
         "OWNER_CHANGED" -> Body.OwnerChanged(f.addr("from"), f.addr("contact"), f.int("owner"), f.int("by"))
+        "ROUTE" -> Body.Route(f.long("id"), f.int("hops"), f.int("snr"), f.int("rssi"), f.long("via"), f.int("goes"), f.long("took"))
+        "TRACED" -> Body.Traced(
+            f.long("id"), f.long("to"), f.int("result"), f.int("out"), f.long("took"), f.int("snr"), f.bytes("entries"),
+        )
         else -> fail("no frame named $name")
     }
 }
