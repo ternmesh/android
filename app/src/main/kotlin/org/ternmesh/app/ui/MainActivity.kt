@@ -20,6 +20,9 @@ class MainActivity : ComponentActivity() {
     /** A conversation a notification asked to open, which the navigation takes and clears. */
     private val opening = mutableStateOf<String?>(null)
 
+    /** A node managed over the mesh a notification asked to open (`m:` its Manage screen, `k:` its check), which the navigation takes and clears. */
+    private val managing = mutableStateOf<String?>(null)
+
     /** An address from a link opened in the app, which the contacts take and clear. */
     private val incoming = mutableStateOf<Address?>(null)
 
@@ -30,6 +33,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         opening.value = intent.getStringExtra(Notifier.EXTRA_PEER)
+        managing.value = intent.getStringExtra(Notifier.EXTRA_MANAGING)
         incoming.value = linked(intent)
         joining.value = joinLink(intent)
         val repository = (application as TernApplication).repository
@@ -50,6 +54,11 @@ class MainActivity : ComponentActivity() {
                         joining.value = null
                         intent.data = null
                     },
+                    managing = managing.value,
+                    managingOpened = {
+                        managing.value = null
+                        intent.removeExtra(Notifier.EXTRA_MANAGING)
+                    },
                 )
             }
         }
@@ -62,6 +71,10 @@ class MainActivity : ComponentActivity() {
             // survives the activity being made again, and is cleared from the intent that has it.
             setIntent(intent)
             opening.value = it
+        }
+        intent.getStringExtra(Notifier.EXTRA_MANAGING)?.let {
+            setIntent(intent)
+            managing.value = it
         }
         linked(intent)?.let {
             setIntent(intent)

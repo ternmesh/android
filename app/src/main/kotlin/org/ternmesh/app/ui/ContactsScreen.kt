@@ -153,7 +153,21 @@ private fun ContactsList(
                                 DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = { menu = false; shareLink(context, c.address) })
                                 DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { menu = false; renaming = c })
                                 if (managing) {
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.manage)) }, onClick = { menu = false; manage(c.address) })
+                                    // Manage only a node the app knows its node owns; any other, it can ask.
+                                    if (c.address in state.owned) {
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.manage)) }, onClick = { menu = false; manage(c.address) })
+                                    } else {
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.check_owner)) }, onClick = {
+                                            menu = false
+                                            // Its dialog is the repository's: it outlives this screen.
+                                            repository.manage(c.address, check = true)
+                                        })
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.not_yours), style = MaterialTheme.typography.bodySmall) },
+                                            onClick = {},
+                                            enabled = false,
+                                        )
+                                    }
                                     if (c.owner == 1) {
                                         DropdownMenuItem(text = { Text(stringResource(R.string.remove_owner)) }, onClick = {
                                             menu = false

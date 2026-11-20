@@ -4,6 +4,7 @@
 package org.ternmesh.app.ui
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -28,13 +31,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import org.ternmesh.app.R
+import org.ternmesh.app.node.Managed
 import org.ternmesh.app.node.NodeRepository
 import org.ternmesh.app.node.NodeState
 import org.ternmesh.companion.Address
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Companion
 import org.ternmesh.companion.Conversations
+import org.ternmesh.companion.ErrorCode
+import org.ternmesh.companion.ManageStep
 import org.ternmesh.companion.Outcome
 import org.ternmesh.companion.ReceiverState
 import org.ternmesh.companion.Remote
@@ -48,13 +55,17 @@ import org.ternmesh.companion.Setting
 fun ManageScreen(repository: NodeRepository, state: NodeState, address: Address, back: () -> Unit) {
     DisposableEffect(address) {
         repository.manage(address)
-        onDispose { repository.stopManaging() }
+        repository.showingManage()
+        // A request already on its way goes on, and says what it came to; only Stop stops it.
+        onDispose { repository.leftManage() }
     }
     val context = LocalContext.current
     val say = LocalSay.current
     val name = nodeName(context, state.records, address)
     val m = state.managed?.takeIf { it.address == address }
-    val report: (Outcome) -> Unit = remember(name, say) { { o -> if (o !is Outcome.Answered) say(manageOutcomeText(context, name, o)) } }
+    val report: (Outcome) -> Unit = remember(name, say) {
+        { o -> if (o !is Outcome.Answered && o != Outcome.Closed) say(manageOutcomeText(context, name, o)) }
+    }
     // A change answered is asked about again, so what is shown is what the node now holds.
     val ask: (Body) -> Unit = { body ->
         repository.askManaged(body) { o ->
@@ -71,35 +82,10 @@ fun ManageScreen(repository: NodeRepository, state: NodeState, address: Address,
     NodeSubScreen(stringResource(R.string.manage_title, name), back) {
         Footnote(stringResource(R.string.manage_explained, name), Modifier.padding(top = 8.dp))
 
-        // What is on its way now, and where.
-        val asking = m?.asking
-        if (asking != null || m?.settleUntil != null) {
-            SettingsGroup(Modifier.padding(top = 8.dp)) {
-                Row(
-                    Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Column {
-                        if (asking != null) {
-                            Text(askingText(context, asking))
-                            val where = listOfNotNull(
-                                m?.carried?.let { carriedText(context, it) },
-                                (m?.attempt ?: 0).takeIf { it > 1 }?.let { context.getString(R.string.manage_try, it, Remote.TRIES) },
-                            ).joinToString(" · ")
-                            if (where.isNotEmpty()) {
-                                Text(where, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        } else {
-                            Text(stringResource(R.string.manage_settling))
-                        }
-                    }
-                }
-            }
-        }
+        // What is on its way now, what it waits for, and a way to stop waiting.
+        if (m != null) ManageProgress(m, name, stop = repository::stopAsking, modifier = Modifier.padding(top = 8.dp))
         val failed = m?.failed
-        if (asking == null && failed != null) {
+        if (m?.asking == null && failed != null) {
             Text(
                 manageOutcomeText(context, name, failed),
                 color = MaterialTheme.colorScheme.error,
@@ -267,7 +253,11 @@ fun ManageScreen(repository: NodeRepository, state: NodeState, address: Address,
             title = { Text(stringResource(R.string.stop_owning_title, name)) },
             text = { Text(stringResource(R.string.stop_owning_explained)) },
             confirmButton = {
-                TextButton(onClick = { unowning = null; ask(Body.Owner(c.address, 0)) }) {
+                TextButton(onClick = {
+                    unowning = null
+                    // No longer an owner, it would answer nothing more: back to the contacts.
+                    repository.askManaged(Body.Owner(c.address, 0)) { o -> report(o); if (o is Outcome.Answered) back() }
+                }) {
                     Text(stringResource(R.string.remove_owner), color = MaterialTheme.colorScheme.error)
                 }
             },
@@ -308,17 +298,67 @@ private fun askingText(context: Context, body: Body): String = context.getString
     },
 )
 
-/** Where the message carrying a request is: its `STATE`. */
-private fun carriedText(context: Context, state: Int): String? = when (state) {
-    0 -> context.getString(R.string.manage_carried_0)
-    1 -> context.getString(R.string.manage_carried_1)
-    2 -> context.getString(R.string.manage_carried_2)
-    3 -> context.getString(R.string.manage_carried_3)
-    else -> null
+/**
+ * What a request over the mesh came to: `ERROR` 15 that the app's node is not an owner; no answer,
+ * that the node is asleep or out of reach, or does not take this one as an owner and said nothing.
+ */
+internal fun manageOutcomeText(context: Context, name: String, outcome: Outcome): String = when {
+    outcome == Outcome.NoAnswer -> context.getString(R.string.manage_no_answer, name.replaceFirstChar { it.uppercase() })
+    outcome is Outcome.Refused && outcome.code == ErrorCode.NOT_AN_OWNER -> context.getString(R.string.manage_not_owner, name)
+    else -> outcomeText(context, outcome)
 }
 
-/** What a request over the mesh came to: no answer most likely means the node is out of reach, or does not take this one as an owner. */
-private fun manageOutcomeText(context: Context, name: String, outcome: Outcome): String = when (outcome) {
-    Outcome.NoAnswer -> context.getString(R.string.manage_no_answer, name.replaceFirstChar { it.uppercase() })
-    else -> outcomeText(context, outcome)
+/**
+ * What is being asked of the managed node, and what it waits for now: making first contact,
+ * finding a route, the air, the node's sleep, or its answer. With a way to stop waiting.
+ */
+@Composable
+internal fun ManageProgress(m: Managed, name: String, stop: (() -> Unit)?, modifier: Modifier = Modifier) {
+    val asking = m.asking
+    if (asking == null && m.settleUntil == null) return
+    val context = LocalContext.current
+    SettingsGroup(modifier) {
+        Row(
+            Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = if (asking != null && stop != null) 4.dp else 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            Column {
+                if (asking != null) {
+                    // Once queued or delivered, the step changes with time alone: a node not known to sleep may be.
+                    var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+                    val from = m.deliveredAt ?: m.queuedAt
+                    LaunchedEffect(from) {
+                        now = SystemClock.elapsedRealtime()
+                        while (from != null) {
+                            delay(1_000)
+                            now = SystemClock.elapsedRealtime()
+                        }
+                    }
+                    val step = ManageStep.of(
+                        m.carried, m.reason, m.wait, m.wake,
+                        sinceDeliveredMs = m.deliveredAt?.let { now - it },
+                        sinceQueuedMs = m.queuedAt?.let { now - it },
+                    )
+                    Text(manageStepText(context, step, name))
+                    val what = listOfNotNull(
+                        askingText(context, asking),
+                        m.attempt.takeIf { it > 0 }?.let { context.getString(R.string.manage_try, it, Remote.TRIES) },
+                    ).joinToString(" · ")
+                    Text(what, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (ManageStep.waitsForWake(step)) {
+                        manageAsleepText(context, name, m.wake)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                } else {
+                    Text(stringResource(R.string.manage_settling))
+                }
+            }
+        }
+        if (asking != null && stop != null) {
+            TextButton(onClick = stop, modifier = Modifier.padding(start = 52.dp, bottom = 4.dp)) { Text(stringResource(R.string.manage_stop)) }
+        }
+    }
 }

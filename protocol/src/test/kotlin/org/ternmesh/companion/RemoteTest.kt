@@ -98,4 +98,165 @@ class RemoteTest {
         assertNull(remote.trialUntil)
         assertEquals(Body.Sync(0), last().body)
     }
+
+    /** `ERROR` 15: not an owner. Nothing is tried again, nothing waiting goes, and the app hears it is not one. */
+    @Test
+    fun error15StopsEverythingAndSaysNotAnOwner() {
+        val events = mutableListOf<RemoteEvent>()
+        remote.onEvent = { events += it }
+        var opened: Outcome? = null
+        var asked: Outcome? = null
+        remote.open { opened = it }
+        remote.submit(Body.Ping) { asked = it }
+        assertEquals(Body.Hello(Companion.VERSION), last().body)
+        answer(Body.Error(ErrorCode.NOT_AN_OWNER))
+        assertEquals(Outcome.Refused(ErrorCode.NOT_AN_OWNER), opened)
+        assertEquals(Outcome.Refused(ErrorCode.NOT_AN_OWNER), asked)
+        assertEquals(1, sent.size, "nothing more went")
+        assertTrue(!remote.busy)
+        assertEquals(listOf<RemoteEvent>(RemoteEvent.Owner(false)), events.filterIsInstance<RemoteEvent.Owner>())
+        time += Companion.MESH_ANSWER_WAIT_MS * 10
+        remote.tick()
+        assertEquals(1, sent.size)
+    }
+
+    /** Any answer at all, even a refusal, comes only to an owner. */
+    @Test
+    fun anyAnswerSaysAnOwner() {
+        val events = mutableListOf<RemoteEvent>()
+        remote.onEvent = { events += it }
+        remote.submit(Body.Hello(Companion.VERSION))
+        answer(Body.Error(ErrorCode.NOT_OVER_THE_MESH))
+        assertEquals(listOf<RemoteEvent>(RemoteEvent.Owner(true)), events.filterIsInstance<RemoteEvent.Owner>())
+    }
+
+    /** The message's STATE comes through with what it waits for. */
+    @Test
+    fun whatItWaitsForIsPassedOn() {
+        val events = mutableListOf<RemoteEvent>()
+        remote.onEvent = { events += it }
+        remote.submit(Body.Ping)
+        remote.receive(Body.State(nextId - 1, MessageState.WAITING, 2, 30))
+        assertEquals(RemoteEvent.Carried(MessageState.WAITING, 2, 30), events.last())
+    }
+
+    /** To a node that sleeps, each wait is longer by a sleep and a listen; a sync saying it is awake makes it the bare wait again. */
+    @Test
+    fun aSleepingNodeIsWaitedForLonger() {
+        remote.wake = 900
+        remote.listen = 5
+        var result: Outcome? = null
+        remote.submit(Body.Ping) { result = it }
+        val wait = Companion.MESH_ANSWER_WAIT_MS + 905_000
+        assertEquals(wait, remote.answerWaitMs)
+        assertEquals(wait, remote.deadline)
+        remote.receive(Body.State(nextId - 1, MessageState.SENT, 0, 0))
+        time = Companion.MESH_ANSWER_WAIT_MS + 1
+        remote.tick()
+        assertNull(result, "not given up after the bare two minutes")
+        remote.receive(Body.State(nextId - 1, MessageState.DELIVERED, 0, 0))
+        assertEquals(time + wait, remote.deadline)
+        answer(Body.Ok)
+        assertEquals(Outcome.Answered(Body.Ok), result)
+
+        remote.sync()
+        answer(Body.Sleep(900, 5, Sleeping.AWAKE, 0, 0))
+        answer(Body.Synced(1))
+        assertEquals(0, remote.wake)
+        assertEquals(Companion.MESH_ANSWER_WAIT_MS, remote.answerWaitMs)
+    }
+
+    /** Whether the node sleeps not known, a request waits ten minutes from each step: a keeper may hold it that long. */
+    @Test
+    fun notKnowingWhetherItSleepsWaitsTenMinutes() {
+        assertNull(remote.wake)
+        assertEquals(Remote.UNKNOWN_WAIT_MS, remote.answerWaitMs)
+        var result: Outcome? = null
+        remote.submit(Body.Ping) { result = it }
+        remote.receive(Body.State(nextId - 1, MessageState.DELIVERED, 0, 0))
+        time = Remote.UNKNOWN_WAIT_MS - 1
+        remote.tick()
+        assertNull(result)
+        time = Remote.UNKNOWN_WAIT_MS
+        remote.tick()
+        assertEquals(Outcome.NoAnswer, result)
+    }
+
+    /** The app's own node taking the request is passed on: it may be all that is heard while a keeper holds it. */
+    @Test
+    fun queuedIsPassedOn() {
+        val events = mutableListOf<RemoteEvent>()
+        remote.onEvent = { events += it }
+        remote.submit(Body.Hello(Companion.VERSION))
+        assertEquals(listOf(RemoteEvent.Trying(1), RemoteEvent.Queued), events)
+    }
+
+    private val info = Body.Info(Companion.VERSION, "tern", "heltec-v3", "0.2.0", UpdateBy.LINK)
+
+    /** Opening says HELLO, and asks for the state only once it is answered: one request at a time. */
+    @Test
+    fun openingSaysHelloThenSyncs() {
+        var opened: Outcome? = null
+        remote.open { opened = it }
+        assertEquals(listOf<Body>(Body.Hello(Companion.VERSION)), sent.map { Codec.decode(it.request).body })
+        answer(info)
+        assertEquals(Body.Sync(0), last().body)
+        answer(Body.Synced(0))
+        assertEquals(Outcome.Answered(Body.Synced(0)), opened)
+    }
+
+    /** Once the node has answered a HELLO, opening again asks only for its state. */
+    @Test
+    fun aHelloAnsweredIsNotSaidAgain() {
+        remote.submit(Body.Hello(Companion.VERSION))
+        answer(info)
+        remote.close()
+        sent.clear()
+        var opened: Outcome? = null
+        remote.open { opened = it }
+        assertEquals(listOf<Body>(Body.Sync(0)), sent.map { Codec.decode(it.request).body })
+        answer(Body.Synced(0))
+        assertEquals(Outcome.Answered(Body.Synced(0)), opened)
+    }
+
+    /** Where order matters, one at a time: the PING that confirms a SET goes only once the SET is answered. */
+    @Test
+    fun aSetAndItsPingGoOneAtATime() {
+        remote.submit(Body.Hello(Companion.VERSION))
+        answer(info)
+        remote.submit(Body.Set(Setting.Cards(1)))
+        remote.submit(Body.Sync(0))
+        assertEquals(Body.Set(Setting.Cards(1)), last().body)
+        assertEquals(2, sent.size)
+        answer(Body.Ok)
+        assertEquals(Body.Ping, last().body)
+        assertEquals(3, sent.size)
+    }
+
+    /**
+     * Opened again, as when the Manage screen is made again after the app comes back to the front: a
+     * state that came less than ten minutes ago, or one on its way, is not asked for again. "Ask
+     * again" asks at any time, but not twice at once.
+     */
+    @Test
+    fun openingAgainSoonAsksNothing() {
+        remote.open()
+        answer(info)
+        answer(Body.Synced(0))
+        assertEquals(2, sent.size)
+        time += 15_000
+        remote.open()
+        assertEquals(2, sent.size, "synced 15 s ago")
+        time += Remote.FRESH_MS
+        remote.open()
+        assertEquals(3, sent.size, "synced over ten minutes ago")
+        assertEquals(Body.Sync(0), last().body)
+        remote.open()
+        remote.sync()
+        assertEquals(3, sent.size, "a sync on its way")
+        answer(Body.Synced(0))
+        remote.sync()
+        assertEquals(4, sent.size, "asked again by the user")
+    }
 }
+
