@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 17: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 18: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -9,8 +9,8 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 16 is this without managing (`MANAGE`, `OWNER`, `RESTART`, `SET` 10, `MANAGED`, `OWNER_CHANGED`, `CONTACT`'s `owner` and `SELF`'s `locked`), version 15 is version 16 without forgetting (`FORGET`, `FORGET_GROUP`, `FORGOTTEN` and `GROUP_FORGOTTEN`), version 14 is version 15 without sleeping (`SET` 8 and 9, `SLEEP`, and `CONTACT`'s `wake`), version 13 is this with routing ids made from the address itself, not from the key blinded from it (RoutingIds), version 12 is version 13 without signed images (`UPDATE_BEGIN`'s `signature`) and `WIPE`, version 11 is version 12 without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 17
+    /** The version this client speaks. Version 17 is this without how messages went and traces (`TRACE`, `ROUTE` and `TRACED`), version 16 is version 17 without managing (`MANAGE`, `OWNER`, `RESTART`, `SET` 10, `MANAGED`, `OWNER_CHANGED`, `CONTACT`'s `owner` and `SELF`'s `locked`), version 15 is version 16 without forgetting (`FORGET`, `FORGET_GROUP`, `FORGOTTEN` and `GROUP_FORGOTTEN`), version 14 is version 15 without sleeping (`SET` 8 and 9, `SLEEP`, and `CONTACT`'s `wake`), version 13 is this with routing ids made from the address itself, not from the key blinded from it (RoutingIds), version 12 is version 13 without signed images (`UPDATE_BEGIN`'s `signature`) and `WIPE`, version 11 is version 12 without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 18
     /** `SET` 3's power that asks for the most the node may transmit at, which it works out (version 10). */
     const val POWER_MOST = -128
     const val MAX_FRAME = 180
@@ -73,6 +73,12 @@ object Companion {
     /** How long a `SET` over the mesh is on trial after it is answered, before the node takes it back unless an owner asks it something more. */
     const val TRIAL_MS = 900_000L
 
+    /** A `TRACED`'s `entries`, at most: [TRACE_ENTRY] bytes for each, sixteen each way (version 18). */
+    const val TRACE_ENTRIES_MAX = 160
+
+    /** One entry of a trace: a routing id, 4 bytes, and the SNR its node heard the frame at, an `i8` in quarters of a dB. */
+    const val TRACE_ENTRY = 5
+
     /** The least time between two `ASKED`s for one address, or two of `NEIGHBOUR`, `AIRTIME` or `POWER`, or two `FIX`es for a fix that moved. */
     const val QUIET_MS = 10_000L
 
@@ -103,6 +109,7 @@ object Companion {
         0x95 -> 15
         0x12, 0x28, 0x96, 0x97 -> 16
         0x13, 0x14, 0x38, 0x98, 0x99 -> 17
+        0x15, 0x9A, 0x9B -> 18
         else -> 0
     }
 
@@ -365,7 +372,28 @@ object MessageState {
     const val RECEIVED = 4
 }
 
-/** What a frame says: every frame of version 17. [since] is the least version that defines it. */
+/** `TRACED`'s `result`: how a trace ended (version 18). */
+object TraceResult {
+    /** Answered by the node traced to. */
+    const val ANSWERED = 0
+
+    /** Answered by the keeper of the node traced to, a leaf that sleeps: it got as far as where frames for it wait. */
+    const val KEEPER = 1
+
+    /** Answered by a relay with no route to the node traced to: it got as far as that relay. */
+    const val NO_ROUTE = 2
+
+    /** Not answered in time. */
+    const val NOT_ANSWERED = 3
+
+    /** Not begun: the node found no route. */
+    const val NOT_BEGUN = 4
+}
+
+/** One entry of a trace: a node that passed it on or answered it, by [routingId], and how well it heard the node before, in quarters of a dB. */
+data class TraceHop(val routingId: Long, val snrQuarterDb: Int)
+
+/** What a frame says: every frame of version 18. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String) {
     /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
     open val since: Int get() = Companion.since(type)
@@ -417,6 +445,13 @@ sealed class Body(val type: Int, val typeName: String) {
      * mesh: only ever what the user asked for, after being told so.
      */
     data class Owner(val address: Address, val owner: Int) : Body(0x14, "OWNER")
+
+    /**
+     * Find the way frames go to the node whose routing id is [to], and back (version 18). [ref] is as
+     * for `SEND`. Answered `QUEUED`; `STATE` news with that `id` says what became of it on the air,
+     * and `TRACED` how it ended.
+     */
+    data class Trace(val ref: Long, val to: Long) : Body(0x15, "TRACE")
     data class SaveContact(val address: Address, val name: String) : Body(0x18, "SAVE_CONTACT")
     data class RemoveContact(val address: Address) : Body(0x19, "REMOVE_CONTACT")
     data class EndSession(val address: Address) : Body(0x1A, "END_SESSION")
@@ -762,6 +797,75 @@ sealed class Body(val type: Int, val typeName: String) {
      * if by one of its owners over the mesh. Not a record: a sync does not send it again.
      */
     data class OwnerChanged(val from: Address, val contact: Address, val owner: Int, val by: Int) : Body(0x99, "OWNER_CHANGED")
+
+    /**
+     * How the message, group message or invite [id] went, as the node knows it (version 18): a
+     * record, which replaces any before it for that [id].
+     *
+     * [hops] is how many hops the frame that brought it came, the last counted, 1 for straight from
+     * its sender, 0 for unknown; for a group message received, the most it can have come, so it came
+     * that far or one hop less. [snr] (quarters of a dB) and [rssi] (dBm) are how that frame was
+     * heard, 0 when [hops] is. For one sent, [via] is the routing id of the neighbour it last went
+     * to, the destination's own when it went straight there, 0 while it has gone nowhere and for
+     * anything received or any group message; [goes] how many tries have gone on the air; and,
+     * once it is delivered, [hops], [snr] and [rssi] describe the acknowledgement's way back, and
+     * [took] how long from its first going on the air until the acknowledgement came, in
+     * milliseconds. Until then those four are 0.
+     */
+    data class Route(
+        val id: Long,
+        val hops: Int,
+        val snr: Int,
+        val rssi: Int,
+        val via: Long,
+        val goes: Int,
+        val took: Long,
+    ) : Body(0x9A, "ROUTE")
+
+    /**
+     * How the trace [id] to [to] ended (version 18): [result], a [TraceResult]. For one answered
+     * (0 to 2), [entries] are the answer's, [Companion.TRACE_ENTRY] bytes each, the first [out] the
+     * way out, ending with the node that answered, and the rest the way back; [snr] is how well this
+     * node heard the answer, in quarters of a dB, and [took] how long from the trace's first going
+     * on the air until the answer came, in milliseconds. For 3 and 4 they are 0, and [entries] is
+     * empty. Not a record: a sync does not send it again. A trace shows how frames went just then,
+     * and any relay on the way can write what it likes in its entry.
+     */
+    class Traced(
+        val id: Long,
+        val to: Long,
+        val result: Int,
+        val out: Int,
+        val took: Long,
+        val snr: Int,
+        entries: ByteArray,
+    ) : Body(0x9B, "TRACED") {
+        private val bytes = entries.copyOf()
+
+        val entries: ByteArray get() = bytes.copyOf()
+
+        /** Each whole entry, in the order they were added: [wayOut] and then [wayBack]. */
+        val hops: List<TraceHop>
+            get() = (0 until bytes.size / Companion.TRACE_ENTRY).map { i ->
+                val at = i * Companion.TRACE_ENTRY
+                val id = (0 until 4).fold(0L) { v, k -> v shl 8 or (bytes[at + k].toLong() and 0xFF) }
+                TraceHop(id, bytes[at + 4].toInt())
+            }
+
+        /** The nodes that passed the trace on, and last the one that answered it. */
+        val wayOut: List<TraceHop> get() = hops.take(out)
+
+        /** The nodes that passed the answer back, before it reached this node. */
+        val wayBack: List<TraceHop> get() = hops.drop(out)
+
+        /** Whether something answered it: its destination, its keeper or a relay with no route. */
+        val answered: Boolean get() = result <= TraceResult.NO_ROUTE
+
+        override fun equals(other: Any?) = other is Traced && id == other.id && to == other.to && result == other.result &&
+            out == other.out && took == other.took && snr == other.snr && bytes.contentEquals(other.bytes)
+        override fun hashCode() = listOf(id, to, result, out, took, snr).hashCode() * 31 + bytes.contentHashCode()
+        override fun toString() = "Traced(id=$id, to=$to, result=$result, out=$out, took=$took, snr=$snr, entries=${Hex.encode(bytes)})"
+    }
 }
 
 internal object Hex {

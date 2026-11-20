@@ -89,6 +89,18 @@
             android:name=".node.ReplyReceiver"
             android:exported="false" />
 
+        <!-- A range test's log, shared as a file with the app the user picks. Only that file,
+             in the cache, and only to the app it is shared with. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/shared_files" />
+        </provider>
+
         <!-- Keeps the link to the node up while the app is not on screen. -->
         <service
             android:name=".node.NodeService"

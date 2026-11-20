@@ -2,8 +2,9 @@
 // node holds" says. A record replaces the one before it; STATE changes a message in place; a
 // position or sharing of precision 0 is none; a sync is the whole list of contacts, groups,
 // neighbours, positions, sharing and cards, but not of messages; a sync of version 8 sends a
-// FIX, which replaces the one before it as AIRTIME and POWER do; and a FORGOTTEN or
-// GROUP_FORGOTTEN takes away every message it covers.
+// FIX, which replaces the one before it as AIRTIME and POWER do; a FORGOTTEN or
+// GROUP_FORGOTTEN takes away every message it covers; and a ROUTE replaces the one before it for
+// its message, which a sync need not send again.
 package org.ternmesh.companion
 
 /**
@@ -18,6 +19,13 @@ class Records {
 
     /** Messages, group messages and invites, by `id`. */
     val items = mutableMapOf<Long, Item>()
+
+    /**
+     * How each message, group message or invite went, by its `id`, as the node's last `ROUTE` for
+     * it said (version 18). Not every item has one: a node keeps none for one from before it kept
+     * them, and may keep none across a restart, so a sync that sends none takes none away.
+     */
+    val routes = mutableMapOf<Long, Body.Route>()
     val neighbours = mutableMapOf<Long, Body.Neighbour>()
 
     /** Positions received, from contacts and from routing ids in groups. None of precision 0 is held. */
@@ -114,16 +122,18 @@ class Records {
             is Item -> items[news.id] = news
             // What the user forgot, on this client or another (version 16): gone wherever it was kept.
             // Told outright, so taken even from a sync that missed news.
-            is Body.Forgotten -> items.values.removeAll {
+            // Each with its route.
+            is Body.Forgotten -> forget {
                 it.id <= news.through && when (it) {
                     is Body.Message -> it.contact == news.contact
                     is Body.Invite -> it.contact == news.contact
                     else -> false
                 }
             }
-            is Body.GroupForgotten -> items.values.removeAll {
+            is Body.GroupForgotten -> forget {
                 it.id <= news.through && it is Body.GroupMessage && it.group == news.group
             }
+            is Body.Route -> routes[news.id] = news
             is Body.State -> items[news.id]?.let { items[news.id] = it.with(news) }
             is Body.Neighbour -> {
                 neighbours[news.routingId] = news
@@ -158,6 +168,13 @@ class Records {
             is Body.Sleep -> sleep = news
             else -> {}
         }
+    }
+
+    /** Takes away every item [which] picks, and its route. */
+    private fun forget(which: (Item) -> Boolean) {
+        val gone = items.values.filter(which).map { it.id }
+        items.keys.removeAll(gone.toSet())
+        routes.keys.removeAll(gone.toSet())
     }
 
     /**
@@ -222,6 +239,7 @@ class Records {
         it.contacts += contacts
         it.groups += groups
         it.items += items
+        it.routes += routes
         it.neighbours += neighbours
         it.positions += positions
         it.groupPositions += groupPositions
@@ -238,14 +256,14 @@ class Records {
     }
 
     override fun equals(other: Any?) = other is Records && self == other.self && contacts == other.contacts &&
-        groups == other.groups && items == other.items && neighbours == other.neighbours &&
+        groups == other.groups && items == other.items && routes == other.routes && neighbours == other.neighbours &&
         positions == other.positions && groupPositions == other.groupPositions && sharing == other.sharing &&
         groupSharing == other.groupSharing && cards == other.cards && airtime == other.airtime && power == other.power &&
         fix == other.fix && sleep == other.sleep &&
         syncedVersion == other.syncedVersion && missedSince == other.missedSince
 
     override fun hashCode() = listOf(
-        self, contacts, groups, items, neighbours, positions, groupPositions, sharing, groupSharing, cards,
+        self, contacts, groups, items, routes, neighbours, positions, groupPositions, sharing, groupSharing, cards,
         airtime, power, fix, sleep, syncedVersion, missedSince,
     ).hashCode()
 }

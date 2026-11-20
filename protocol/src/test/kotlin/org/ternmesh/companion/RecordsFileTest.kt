@@ -57,6 +57,28 @@ class RecordsFileTest {
         assertEquals(kept(r), back)
     }
 
+    /**
+     * How each message went is kept (version 18), the last `ROUTE` for each; a `FORGOTTEN` takes the
+     * routes of what it forgets; and a file with a `TRACED` in it, which is not a record, is spoiled.
+     */
+    @Test
+    fun routesAreKeptAndForgottenWithTheirMessages() {
+        val r = Records().apply {
+            apply(received(40, alice))
+            apply(received(41, bob))
+            apply(Body.Route(40, 1, 25, -71, 0, 0, 0))
+            apply(Body.Route(41, 3, -38, -112, 0, 0, 0))
+            apply(Body.Route(41, 2, -30, -110, 0, 0, 0))
+            syncedVersion = Companion.VERSION
+        }
+        assertEquals(2, r.routes[41L]?.hops, "the last replaces the one before")
+        assertEquals(r, RecordsFile.decode(RecordsFile.encode(r)))
+        r.apply(Body.Forgotten(alice, 40))
+        assertEquals(setOf(41L), r.routes.keys)
+        val traced = Codec.encode(Frame(0, Body.Traced(42, 1, TraceResult.NOT_BEGUN, 0, 0, 0, ByteArray(0))))
+        assertEquals(Records(), RecordsFile.decode(RecordsFile.encode(r) + byteArrayOf(traced.size.toByte()) + traced))
+    }
+
     /** Positions, sharing, cards and the node's fix are not kept: their counts would go stale on disk. A file that has them is read all the same. */
     @Test
     fun positionsSharingCardsAndTheFixAreNotKept() {

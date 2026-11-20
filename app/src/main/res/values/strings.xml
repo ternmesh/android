@@ -625,4 +625,131 @@
     <string name="bluetooth_locked_explained">Over Bluetooth the node answers nothing but a hello, so this phone can see it but not change it. Unlock it over USB, or from one of its owners over the mesh.</string>
     <string name="lock_section">Bluetooth lock</string>
     <string name="lock_this_explained">Locked, the node answers nothing over Bluetooth but a hello, this phone included. Only USB, or one of its owners over the mesh, can unlock it. Lock a node you leave somewhere, once its owners are set.</string>
+    <!-- How a message went, and traces (ROUTE, TRACE and TRACED, version 18 of draft/companion.md). -->
+    <string name="route_snr">SNR %1$s</string>
+    <string name="dbm">%1$d dBm</string>
+    <string name="seconds_tenths">%1$.1f s</string>
+    <string name="route_direct">Direct</string>
+    <plurals name="route_hops">
+        <item quantity="one">%1$d hop</item>
+        <item quantity="other">%1$d hops</item>
+    </plurals>
+    <plurals name="route_up_to_hops">
+        <item quantity="one">≤%1$d hop</item>
+        <item quantity="other">≤%1$d hops</item>
+    </plurals>
+    <plurals name="route_went_out">
+        <item quantity="one">Went out once</item>
+        <item quantity="other">Went out %1$d times</item>
+    </plurals>
+    <string name="route_delivered_direct">Delivered direct</string>
+    <string name="route_delivered_via">Delivered via %1$s</string>
+    <string name="route_sent_direct">Sent direct</string>
+    <string name="route_sent_via">Sent via %1$s</string>
+    <string name="route_try">try %1$d</string>
+    <string name="route_reply_direct">reply direct</string>
+    <plurals name="route_reply_hops">
+        <item quantity="one">reply %1$d hop</item>
+        <item quantity="other">reply %1$d hops</item>
+    </plurals>
+    <string name="route_last_direct">Last tried direct</string>
+    <string name="route_last_via">Last tried via %1$s</string>
+    <plurals name="route_tries">
+        <item quantity="one">%1$d try</item>
+        <item quantity="other">%1$d tries</item>
+    </plurals>
+    <string name="route_details">How it went</string>
+    <string name="route_none">Your node hasn\'t said how this one went. It keeps that only for messages since its firmware could, and may lose it when it restarts.</string>
+    <string name="route_fact_came">Came</string>
+    <string name="route_unknown">Not known</string>
+    <string name="route_came_direct">Straight from the other node: 1 hop</string>
+    <plurals name="route_came_relays">
+        <item quantity="one">%1$d hops: %2$d relay passed it on</item>
+        <item quantity="other">%1$d hops: %2$d relays passed it on</item>
+    </plurals>
+    <plurals name="route_came_up_to">
+        <item quantity="one">At most %1$d hop: %1$d or %2$d</item>
+        <item quantity="other">At most %1$d hops: %1$d or %2$d</item>
+    </plurals>
+    <string name="route_fact_snr">Signal-to-noise of the last hop</string>
+    <string name="route_fact_rssi">Signal strength of the last hop</string>
+    <string name="route_fact_went_out">Sent out</string>
+    <plurals name="route_times">
+        <item quantity="one">once</item>
+        <item quantity="other">%1$d times</item>
+    </plurals>
+    <string name="route_fact_first">First went to</string>
+    <string name="route_nowhere_yet">Nowhere yet</string>
+    <string name="route_straight_to">Straight to %1$s</string>
+    <string name="route_named_id">%1$s (%2$s)</string>
+    <string name="route_fact_tries">Tries on the air</string>
+    <string name="route_fact_back">Acknowledgement came back</string>
+    <string name="route_fact_took">Round trip</string>
+    <string name="route_group_explained">A group message\'s writer hides how far off it is, so it may have come one hop less than this.</string>
+    <string name="route_relays_unnamed">No message names the relays that passed it on. A trace does: Trace route, in the chat\'s menu.</string>
+    <string name="route_back_explained">The hops and signal are the acknowledgement\'s, on its way back. The other node sends it by its own route: most often through the same relays, but not always.</string>
+    <string name="route_until_delivered">Hops, signal and round trip come once it\'s delivered, from the acknowledgement on its way back.</string>
+    <string name="trace_route">Trace route</string>
+    <string name="trace_needs_update">Update the node\'s firmware to trace</string>
+    <string name="trace_title">Trace to %1$s</string>
+    <string name="trace_explained">A trace goes out to %1$s the way your node\'s messages would, and comes back. Each node on the way adds itself, and how well it heard the one before.</string>
+    <string name="trace_start">Trace</string>
+    <string name="trace_again">Trace again</string>
+    <string name="trace_asking">Handing it to your node…</string>
+    <string name="trace_queued">Waiting to go…</string>
+    <string name="trace_sent">Out: waiting for the answer…</string>
+    <string name="trace_answered">Answered by %1$s</string>
+    <string name="trace_keeper">Answered by %1$s, which keeps %2$s\'s messages while it sleeps: that\'s as far as they go until it wakes</string>
+    <string name="trace_no_route">Got as far as %1$s, which has no route to %2$s</string>
+    <string name="trace_not_answered">No answer in time. %1$s may be out of reach, or a relay on the way may not pass traces on.</string>
+    <string name="trace_not_answered_leaf">No answer from %1$s.</string>
+    <string name="trace_leaf_hint">Handhelds (leaves) answer traces only from nodes they have a secure session with.</string>
+    <string name="trace_not_begun">Not begun: your node has no route to %1$s</string>
+    <string name="trace_other">Ended (%1$d)</string>
+    <string name="trace_a_relay">a relay</string>
+    <plurals name="trace_hops_out">
+        <item quantity="one">%1$d hop out</item>
+        <item quantity="other">%1$d hops out</item>
+    </plurals>
+    <plurals name="trace_hops_back">
+        <item quantity="one">%1$d hop back</item>
+        <item quantity="other">%1$d hops back</item>
+    </plurals>
+    <string name="trace_way_out">Way out</string>
+    <string name="trace_way_back">Way back</string>
+    <string name="trace_you">You</string>
+    <string name="trace_heard">heard at %1$s</string>
+    <string name="trace_answerer">answered</string>
+    <string name="trace_disclaimer">A trace shows the way frames went just then; the next message may go another way. Relays on the way can misreport it, and nothing checks what they add.</string>
+    <string name="trace_name_hint">Tap a node with no name to give it one on this phone.</string>
+    <string name="trace_failed">Not traced: %1$s</string>
+    <string name="name_relay">Name this node</string>
+    <string name="name_relay_explained">Only this phone shows the name. Nothing is sent, and a contact\'s name comes first.</string>
+    <string name="neighbour_trace">Trace</string>
+    <string name="range_test">Range test</string>
+    <string name="range_test_explained">Sends %1$s a numbered message every so often, and logs each: where this phone was, whether it was delivered and how. Keep this screen open while you move; the screen stays on.</string>
+    <string name="range_to">To</string>
+    <string name="range_choose">Choose a contact</string>
+    <string name="range_every">Every %1$d s</string>
+    <string name="range_begin">Start</string>
+    <string name="range_stop">Stop</string>
+    <string name="range_export">Export CSV</string>
+    <string name="range_running">Running: next in %1$d s</string>
+    <string name="range_stopped">Stopped</string>
+    <string name="range_tally">Delivered: %1$d of %2$d</string>
+    <string name="range_no_location">No location: the log won\'t say where you were.</string>
+    <string name="range_allow_location">Allow location</string>
+    <string name="range_no_fix">no fix</string>
+    <string name="range_fix">%1$.5f, %2$.5f ±%3$d m</string>
+    <string name="range_fix_unsure">%1$.5f, %2$.5f</string>
+    <string name="range_not_connected">Not sent: node not connected</string>
+    <string name="range_refused">Not sent: the node refused it</string>
+    <string name="range_unanswered">The node didn\'t answer</string>
+    <string name="range_asking">Handing it to your node…</string>
+    <string name="range_via">via %1$s</string>
+    <string name="range_needs_update">This node\'s firmware says only whether each was delivered. Update it for hops, signal and round trip.</string>
+    <string name="range_export_subject">Tern range test to %1$s</string>
+    <string name="range_leave_title">Stop the range test?</string>
+    <string name="range_leave_explained">Its log goes when you leave. Export it first to keep it.</string>
+    <string name="range_leave">Leave</string>
 </resources>

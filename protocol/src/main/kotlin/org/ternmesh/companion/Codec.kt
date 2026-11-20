@@ -73,6 +73,10 @@ object Codec {
                 w.addr(b.address)
                 w.u8(b.owner)
             }
+            is Body.Trace -> {
+                w.u32(b.ref)
+                w.u32(b.to)
+            }
             is Body.SaveContact -> {
                 w.addr(b.address)
                 w.str(b.name, Companion.NAME_MAX)
@@ -298,6 +302,24 @@ object Codec {
                 w.u8(b.owner)
                 w.u8(b.by)
             }
+            is Body.Route -> {
+                w.u32(b.id)
+                w.u8(b.hops)
+                w.i8(b.snr)
+                w.i16(b.rssi)
+                w.u32(b.via)
+                w.u8(b.goes)
+                w.u32(b.took)
+            }
+            is Body.Traced -> {
+                w.u32(b.id)
+                w.u32(b.to)
+                w.u8(b.result)
+                w.u8(b.out)
+                w.u32(b.took)
+                w.i8(b.snr)
+                w.bytes(b.entries, Companion.TRACE_ENTRIES_MAX)
+            }
         }
         val out = w.toByteArray()
         require(out.size <= Companion.MAX_FRAME) { "${b.typeName} is ${out.size} bytes, more than a frame holds" }
@@ -344,6 +366,7 @@ object Codec {
             0x12 -> Body.Forget(r.addr(), r.u32())
             0x13 -> Body.Manage(r.u32(), r.addr(), r.bytes(Companion.REQUEST_MAX))
             0x14 -> Body.Owner(r.addr(), r.u8())
+            0x15 -> Body.Trace(r.u32(), r.u32())
             0x18 -> Body.SaveContact(r.addr(), r.str(Companion.NAME_MAX))
             0x19 -> Body.RemoveContact(r.addr())
             0x1A -> Body.EndSession(r.addr())
@@ -436,6 +459,8 @@ object Codec {
             0x97 -> Body.GroupForgotten(r.gid(), r.u32())
             0x98 -> Body.Managed(r.addr(), r.bytes(Companion.ANSWER_MAX))
             0x99 -> Body.OwnerChanged(r.addr(), r.addr(), r.u8(), r.u8())
+            0x9A -> Body.Route(r.u32(), r.u8(), r.i8(), r.i16(), r.u32(), r.u8(), r.u32())
+            0x9B -> Body.Traced(r.u32(), r.u32(), r.u8(), r.u8(), r.u32(), r.i8(), r.bytes(Companion.TRACE_ENTRIES_MAX))
             else -> throw DecodeException(Unreadable.UNDEFINED)
         }
         return Frame(seq, body)

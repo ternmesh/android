@@ -67,17 +67,7 @@ class LocationFeed(private val context: Context, private val give: (Body.SetPosi
             ?.let(::take)
     }
 
-    private fun providers(): List<String> {
-        val m = manager ?: return emptyList()
-        val all = runCatching { m.allProviders }.getOrDefault(emptyList())
-        // The fused provider weighs satellites against networks itself; without it, both, and the
-        // better fix wins as each arrives. Each is asked whether or not it is on now: one the user
-        // turns on later starts giving fixes without the app asking again.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && LocationManager.FUSED_PROVIDER in all) {
-            return listOf(LocationManager.FUSED_PROVIDER)
-        }
-        return listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter { it in all }
-    }
+    private fun providers(): List<String> = providers(manager)
 
     private fun take(location: Location) {
         if (!listening) return
@@ -118,6 +108,20 @@ class LocationFeed(private val context: Context, private val give: (Body.SetPosi
         private const val MIN_GAP_MS = 15_000L
         private const val BETTER_GAP_MS = 3_000L
         private const val RECENT_S = 600L
+
+        /**
+         * The providers to ask. The fused provider weighs satellites against networks itself;
+         * without it, both, and the better fix wins as each arrives. Each is asked whether or not it
+         * is on now: one the user turns on later starts giving fixes without the app asking again.
+         */
+        fun providers(manager: LocationManager?): List<String> {
+            val m = manager ?: return emptyList()
+            val all = runCatching { m.allProviders }.getOrDefault(emptyList())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && LocationManager.FUSED_PROVIDER in all) {
+                return listOf(LocationManager.FUSED_PROVIDER)
+            }
+            return listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).filter { it in all }
+        }
 
         fun permitted(context: Context) = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
             .any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }

@@ -179,6 +179,28 @@ data class Managed(
     val synced: Boolean = false,
 )
 
+/**
+ * A trace the user began to the routing id [to] (version 18), from the request until it ends:
+ * [id] once the node took it, where it is on the air from its `STATE` ([state], [reason] and
+ * [wait], as a message's), and how it ended, [traced]; or [failed], what the request came to when
+ * the node did not take it.
+ */
+data class TraceRun(
+    val to: Long,
+    val id: Long? = null,
+    val state: Int? = null,
+    val reason: Int = 0,
+    val wait: Int = 0,
+    val traced: Body.Traced? = null,
+    val failed: Outcome? = null,
+) {
+    /** Still on its way: neither ended nor refused. */
+    val running: Boolean get() = traced == null && failed == null
+}
+
+/** The range test, while its screen is open: to [to], a ping each [intervalMs], the next at [nextAt] on the phone's clock, and [running] until stopped. */
+data class RangeState(val to: Address, val intervalMs: Long, val pings: List<RangePing>, val running: Boolean, val nextAt: Long)
+
 /** A node erased with `WIPE`: [name] as the user knew it; [bondRemoved] if the phone forgot its bond too. */
 data class Wiped(val name: String?, val bondRemoved: Boolean)
 
@@ -211,6 +233,12 @@ data class NodeState(
     val lockedOut: Boolean = false,
     /** The node managed over the mesh from the Manage screen, while it is open. */
     val managed: Managed? = null,
+    /** Traces the user began (version 18), by the routing id each is to: the last to each, until another. */
+    val traces: Map<Long, TraceRun> = emptyMap(),
+    /** The names the user gave routing ids that no contact has, relays most often: the phone's alone, whichever node is chosen, and never sent. */
+    val relayNames: Map<Long, String> = emptyMap(),
+    /** The range test, while its screen is open. */
+    val range: RangeState? = null,
     val unanswered: List<Unanswered> = emptyList(),
     /** Every node the app keeps records of, most recently chosen first. */
     val known: List<ChosenNode> = emptyList(),
@@ -233,6 +261,7 @@ class NodeRepository(private val context: Context) {
     private val labelPrefs = context.getSharedPreferences("labels", Context.MODE_PRIVATE)
     private val setupPrefs = context.getSharedPreferences("setup", Context.MODE_PRIVATE)
     private val locationPrefs = context.getSharedPreferences("location", Context.MODE_PRIVATE)
+    private val relayPrefs = context.getSharedPreferences("relays", Context.MODE_PRIVATE)
     private val notifier = Notifier(context)
     private val location = LocationFeed(context) { position ->
         connection.submit(position) {} // a fix the node did not take is followed by the next
@@ -312,6 +341,11 @@ class NodeRepository(private val context: Context) {
     /** The check's outcome has been told in a notification, or seen. */
     private var checkTold = false
 
+    /** The range test, while its screen is open, and the phone's position for its log. */
+    private var range: RangeTest? = null
+    private var rangeRunning = false
+    private val phoneFixes = PhoneFixes(context)
+
     init {
         link.onState = ::linkState
         link.onFrame = { frame ->
@@ -337,7 +371,7 @@ class NodeRepository(private val context: Context) {
                 )
             }
         }
-        update { it.copy(known = loadKnown()) }
+        update { it.copy(known = loadKnown(), relayNames = loadRelayNames()) }
     }
 
     /** Connects to the node chosen before, if there is one and the app is not already at it. */
@@ -361,7 +395,7 @@ class NodeRepository(private val context: Context) {
                 NodeState(
                     node = node, records = connection.records.copy(), unanswered = loadUnanswered(node.address),
                     asked = loadAsked(node.address), ownerChanges = loadOwnerChanges(node.address),
-                    owned = loadOwned(node.address),
+                    owned = loadOwned(node.address), relayNames = it.relayNames,
                 )
             }
         }
@@ -419,6 +453,8 @@ class NodeRepository(private val context: Context) {
         update { it.copy(phase = phase, problem = null) }
         prefs.edit().putBoolean(KEY_DISCONNECTED, true).putBoolean(KEY_OFF, phase == Phase.OFF).apply()
         handler.removeCallbacksAndMessages(null)
+        // A range test goes on, logging each ping as not sent, until its screen closes.
+        scheduleRange()
         link.disconnect()
         connection.close()
         save()
@@ -428,6 +464,7 @@ class NodeRepository(private val context: Context) {
     /** Drops the link and the node, keeping its records on disk in case it is chosen again. */
     fun leave() {
         stopManaging()
+        closeRangeTest()
         // Another node's HELLOs, answered to this one's address, are not its.
         remotes.clear()
         stopUpdate()
@@ -440,7 +477,7 @@ class NodeRepository(private val context: Context) {
         // A notification names only an address or group: opened after another node is chosen, it
         // would open that conversation against the wrong node.
         notifier.cancelAll()
-        update { NodeState(known = loadKnown()) }
+        update { NodeState(known = loadKnown(), relayNames = it.relayNames) }
     }
 
     /**
@@ -923,6 +960,131 @@ class NodeRepository(private val context: Context) {
             val a = org.ternmesh.companion.Address.fromHex(hex) ?: return@mapNotNull null
             Body.Asked(a, why.toIntOrNull() ?: return@mapNotNull null)
         }
+
+    /**
+     * Traces the way frames go to the node whose routing id is [to], and back (version 18): its
+     * contact's, a neighbour's, or any other. Another to the same id while one is out is not asked:
+     * the node would refuse it.
+     */
+    fun trace(to: Long) {
+        if (_state.value.traces[to]?.running == true) return
+        update { it.copy(traces = it.traces + (to to TraceRun(to))) }
+        submit(Body.Trace(Random.nextLong(1, 0x1_0000_0000L), to)) { outcome ->
+            val queued = (outcome as? Outcome.Answered)?.body as? Body.Queued
+            setTrace(to) { run -> if (queued != null) run.copy(id = queued.id) else run.copy(failed = outcome) }
+        }
+    }
+
+    private fun setTrace(to: Long, change: (TraceRun) -> TraceRun) =
+        update { s -> s.traces[to]?.let { s.copy(traces = s.traces + (to to change(it))) } ?: s }
+
+    /** A trace's `STATE`, which is no message's, and its `TRACED`, which may be of one another client began. */
+    private fun traceNews(body: Body) {
+        when (body) {
+            is Body.State -> _state.value.traces.values.firstOrNull { it.id == body.id && it.running }?.let { run ->
+                setTrace(run.to) { it.copy(state = body.state, reason = body.reason, wait = body.wait) }
+            }
+            is Body.Traced -> {
+                val mine = _state.value.traces[body.to]
+                if (mine != null && (mine.id == body.id || mine.id == null && mine.running)) {
+                    setTrace(body.to) { it.copy(id = body.id, traced = body) }
+                } else if (mine == null || !mine.running) {
+                    update { it.copy(traces = it.traces + (body.to to TraceRun(body.to, body.id, traced = body))) }
+                }
+            }
+            else -> {}
+        }
+    }
+
+    /**
+     * Gives the routing id [id] the [name] the app shows it by, on this phone alone, for a relay
+     * or any node no contact names; an empty name takes it away. Nothing is sent.
+     */
+    fun nameRelay(id: Long, name: String) {
+        val trimmed = name.trim()
+        relayPrefs.edit().apply { if (trimmed.isEmpty()) remove(relayKey(id)) else putString(relayKey(id), trimmed) }.apply()
+        update { it.copy(relayNames = loadRelayNames()) }
+    }
+
+    private fun relayKey(id: Long) = "%08x".format(id)
+
+    private fun loadRelayNames(): Map<Long, String> = relayPrefs.all.mapNotNull { (key, value) ->
+        val id = key.toLongOrNull(16)?.takeIf { key.length == 8 } ?: return@mapNotNull null
+        (value as? String)?.let { id to it }
+    }.toMap()
+
+    /**
+     * Starts a range test to [to]: a numbered message every [intervalMs], the first at once, each
+     * logged with where the phone is, until [stopRangeTest]. Whatever the link does meanwhile, it
+     * goes on: a ping due while the node is not connected is logged as not sent, and one the node
+     * did not answer for is found by its text once a sync shows it went.
+     */
+    fun startRangeTest(to: Address, intervalMs: Long) {
+        handler.removeCallbacks(rangeTick)
+        range = RangeTest(to, intervalMs, System.currentTimeMillis())
+        rangeRunning = true
+        phoneFixes.start()
+        // The service keeps the process, and so the link, while the phone is put away.
+        if (_state.value.node != null && !_state.value.phase.stayingOff) NodeService.start(context)
+        rangePing()
+    }
+
+    /** Stops pinging; the log stays, to look at and export, until the screen closes. */
+    fun stopRangeTest() {
+        handler.removeCallbacks(rangeTick)
+        rangeRunning = false
+        phoneFixes.stop()
+        publishRange()
+    }
+
+    /** The range test's screen closed: the test and its log go. */
+    fun closeRangeTest() {
+        stopRangeTest()
+        range = null
+        update { it.copy(range = null) }
+    }
+
+    /** Location was allowed while the test ran: its log has where the phone is from the next ping. */
+    fun rangePermissionChanged() {
+        if (rangeRunning) phoneFixes.start()
+    }
+
+    private val rangeTick = Runnable { rangePing() }
+
+    private fun rangePing() {
+        val t = range ?: return
+        if (!rangeRunning) return
+        val after = maxOf(connection.records.greatest, queuedFloor)
+        val p = t.next(System.currentTimeMillis(), phoneFixes.now(), after, unsent = if (canWrite) null else Unsent.NOT_CONNECTED)
+        if (p.unsent == null) {
+            submit(Body.Send(Random.nextLong(1, 0x1_0000_0000L), t.to, p.text)) { outcome ->
+                if (range !== t) return@submit
+                val queued = (outcome as? Outcome.Answered)?.body as? Body.Queued
+                when {
+                    queued != null -> {
+                        queuedFloor = maxOf(queuedFloor, queued.id)
+                        t.queued(p.n, queued.id)
+                    }
+                    outcome is Outcome.Refused || outcome == Outcome.Unsupported || outcome is Outcome.Invalid -> t.unsent(p.n, Unsent.REFUSED)
+                    else -> t.unsent(p.n, Unsent.UNANSWERED)
+                }
+                publishRange()
+            }
+        }
+        publishRange()
+        scheduleRange()
+    }
+
+    private fun scheduleRange() {
+        val t = range?.takeIf { rangeRunning } ?: return
+        handler.removeCallbacks(rangeTick)
+        handler.postDelayed(rangeTick, (t.nextAt - System.currentTimeMillis()).coerceIn(0L, t.intervalMs))
+    }
+
+    private fun publishRange() {
+        val t = range ?: return
+        update { it.copy(range = RangeState(t.to, t.intervalMs, t.pings, rangeRunning, t.nextAt)) }
+    }
 
     /** The user has seen [peer]'s conversation: tell the node, as far as a READ may reach. */
     fun markRead(peer: Peer) {
@@ -1515,6 +1677,9 @@ class NodeRepository(private val context: Context) {
             notifier.ownerChanged(connection.records, body)
             return
         }
+        // A trace's: where it is, or how it ended (version 18).
+        if (body is Body.State || body is Body.Traced) traceNews(body)
+        if (body is Body.Traced) return
         if (body is Body.Forgotten) forgotten(Peer.Contact(body.contact), body.through)
         if (body is Body.GroupForgotten) forgotten(Peer.Group(body.group), body.through)
         if (body is Body.Position || body is Body.GroupPosition || body is Body.Sharing || body is Body.GroupSharing ||
@@ -1544,6 +1709,8 @@ class NodeRepository(private val context: Context) {
         if (_state.value.unanswered.any { Conversations.holdsSent(records, it.peer, it.text, it.after) }) {
             setUnanswered { list -> list.filterNot { Conversations.holdsSent(records, it.peer, it.text, it.after) } }
         }
+        // A ping the node did not answer for, which a sync now shows it holds.
+        if (range?.resolve(records) == true) publishRange()
         val held = records.positions.values + records.groupPositions.values + records.sharing.values + records.groupSharing.values +
             records.cards.values + listOfNotNull(records.fix)
         arrived.keys.retainAll(held.toSet())
