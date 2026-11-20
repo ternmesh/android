@@ -108,18 +108,16 @@ class RemoteTest {
         var asked: Outcome? = null
         remote.open { opened = it }
         remote.submit(Body.Ping) { asked = it }
-        assertEquals(listOf<Body>(Body.Hello(Companion.VERSION), Body.Sync(0)), sent.map { Codec.decode(it.request).body })
-        // The HELLO's answer: the SYNC that went with it, and the PING that waited, fail with it.
-        val content = Managing.pack(listOf(Codec.encode(Frame(Codec.decode(sent[0].request).seq, Body.Error(ErrorCode.NOT_AN_OWNER))))).single()
-        remote.receive(Body.Managed(bob, content.copyOfRange(1, content.size)))
+        assertEquals(Body.Hello(Companion.VERSION), last().body)
+        answer(Body.Error(ErrorCode.NOT_AN_OWNER))
         assertEquals(Outcome.Refused(ErrorCode.NOT_AN_OWNER), opened)
         assertEquals(Outcome.Refused(ErrorCode.NOT_AN_OWNER), asked)
-        assertEquals(2, sent.size, "nothing more went")
+        assertEquals(1, sent.size, "nothing more went")
         assertTrue(!remote.busy)
         assertEquals(listOf<RemoteEvent>(RemoteEvent.Owner(false)), events.filterIsInstance<RemoteEvent.Owner>())
         time += Companion.MESH_ANSWER_WAIT_MS * 10
         remote.tick()
-        assertEquals(2, sent.size)
+        assertEquals(1, sent.size)
     }
 
     /** Any answer at all, even a refusal, comes only to an owner. */
@@ -193,26 +191,18 @@ class RemoteTest {
         assertEquals(listOf(RemoteEvent.Trying(1), RemoteEvent.Queued), events)
     }
 
-    /** The managed node answers the request [n]th sent (from 0) with [body]. */
-    private fun answerTo(n: Int, body: Body) {
-        val content = Managing.pack(listOf(Codec.encode(Frame(Codec.decode(sent[n].request).seq, body)))).single()
-        remote.receive(Body.Managed(bob, content.copyOfRange(1, content.size)))
-    }
-
     private val info = Body.Info(Companion.VERSION, "tern", "heltec-v3", "0.2.0", UpdateBy.LINK)
 
-    /** Opening sends HELLO and SYNC at once, to ride one wake; their answers are told apart by seq, in either order. */
+    /** Opening says HELLO, and asks for the state only once it is answered: one request at a time. */
     @Test
-    fun openingSendsHelloAndSyncTogether() {
+    fun openingSaysHelloThenSyncs() {
         var opened: Outcome? = null
         remote.open { opened = it }
-        assertEquals(listOf<Body>(Body.Hello(Companion.VERSION), Body.Sync(0)), sent.map { Codec.decode(it.request).body })
-        // The SYNCED first, then the INFO: answers can pass each other.
-        answerTo(1, Body.Synced(0))
+        assertEquals(listOf<Body>(Body.Hello(Companion.VERSION)), sent.map { Codec.decode(it.request).body })
+        answer(info)
+        assertEquals(Body.Sync(0), last().body)
+        answer(Body.Synced(0))
         assertEquals(Outcome.Answered(Body.Synced(0)), opened)
-        answerTo(0, info)
-        assertEquals(Companion.VERSION, remote.agreed)
-        assertTrue(!remote.busy)
     }
 
     /** Once the node has answered a HELLO, opening again asks only for its state. */
@@ -227,21 +217,6 @@ class RemoteTest {
         assertEquals(listOf<Body>(Body.Sync(0)), sent.map { Codec.decode(it.request).body })
         answer(Body.Synced(0))
         assertEquals(Outcome.Answered(Body.Synced(0)), opened)
-    }
-
-    /** A SYNC that arrived before the HELLO that went with it is answered ERROR 6: asked again once the HELLO is answered, with no second HELLO. */
-    @Test
-    fun aSyncAheadOfItsHelloIsAskedAgainAfter() {
-        var opened: Outcome? = null
-        remote.open { opened = it }
-        answerTo(1, Body.Error(ErrorCode.HELLO_FIRST))
-        assertEquals(2, sent.size, "nothing more yet: the HELLO is on its way")
-        answerTo(0, info)
-        assertEquals(3, sent.size)
-        assertEquals(Body.Sync(0), last().body)
-        answer(Body.Synced(0))
-        assertEquals(Outcome.Answered(Body.Synced(0)), opened)
-        assertEquals(1, sent.count { Codec.decode(it.request).body is Body.Hello })
     }
 
     /** Where order matters, one at a time: the PING that confirms a SET goes only once the SET is answered. */

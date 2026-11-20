@@ -166,7 +166,7 @@ class Remote(
     var trialUntil: Long? = null
         private set
 
-    /** The request on its way, or waiting for its answer, the first of those that are; null when none is. */
+    /** The request on its way, or waiting for its answer; null when none is. */
     val asking: Body? get() = flights.firstOrNull()?.pending?.body
 
     /** Whether a request is on its way or waiting for its answer. */
@@ -191,18 +191,14 @@ class Remote(
     /** How long a request waits for its answer from each step its message takes: longer by a sleep and a listen for a node that sleeps. */
     val answerWaitMs: Long get() = waitFor(wake, listen)
 
-    /** When a request on its way is first given up on unless something more is heard; null when none is. */
+    /** When the request on its way is given up on unless something more is heard; null when none is. */
     val deadline: Long? get() = flights.minOfOrNull { it.deadline }
 
     /** When tick() next has something to do; null when nothing waits. */
     val nextDeadline: Long? get() = deadline ?: settleUntil?.takeIf { queue.isNotEmpty() }
 
-    /**
-     * A request asked, and what to tell of it. One [together] may go while others are unanswered,
-     * if they are all so: the `HELLO` and `SYNC` that open a node, which ride the same wake of a
-     * node that sleeps, and whose answers are told apart by `seq`.
-     */
-    private class Pending(val body: Body, val together: Boolean = false, val then: (Outcome) -> Unit)
+    /** A request asked, and what to tell of it. */
+    private class Pending(val body: Body, val then: (Outcome) -> Unit)
 
     private inner class InFlight(val pending: Pending, val seq: Int, val frame: ByteArray) {
         var attempt = 0
@@ -215,7 +211,7 @@ class Remote(
 
     private val queue = ArrayDeque<Pending>()
 
-    /** The requests on their way, or waiting for their answers, oldest first: one, or the few that go together. */
+    /** The request on its way, or waiting for its answer: one at a time, as draft/managing.md has it, so at most one. */
     private val flights = mutableListOf<InFlight>()
     private var seq = 0
 
@@ -233,19 +229,18 @@ class Remote(
 
     /**
      * Asks for the node's state, before anything else asked; and says `HELLO` first, unless the node
-     * has answered one from this client already, which holds until it answers `ERROR` 6. The two go
-     * at once, not one after the other, so that a node that sleeps takes both in one wake. [then]
+     * has answered one from this client already, which holds until it answers `ERROR` 6. [then]
      * hears what came of the sync, or of a `HELLO` that failed.
      */
     fun open(then: (Outcome) -> Unit = {}) {
         queue.removeAll { it.body is Body.Hello }
         if (nodeVersion != null) {
-            queue.addFirst(Pending(Body.Sync(0), then = then))
+            queue.addFirst(Pending(Body.Sync(0), then))
             return pump()
         }
-        val sync = Pending(Body.Sync(0), together = true, then = then)
+        val sync = Pending(Body.Sync(0), then)
         queue.addFirst(sync)
-        queue.addFirst(Pending(Body.Hello(version), together = true) { outcome ->
+        queue.addFirst(Pending(Body.Hello(version)) { outcome ->
             if (outcome !is Outcome.Answered && queue.remove(sync)) then(outcome)
         })
         pump()
@@ -262,7 +257,7 @@ class Remote(
     fun submit(body: Body, then: (Outcome) -> Unit = {}) {
         require(Protocol.isRequest(body.type)) { "${body.typeName} is not a request" }
         if (body.since > (agreed ?: version)) return then(Outcome.Unsupported)
-        queue.addLast(Pending(body, then = then))
+        queue.addLast(Pending(body, then))
         pump()
     }
 
@@ -311,8 +306,8 @@ class Remote(
         while (true) {
             settleUntil?.let { if (now() < it) return else settleUntil = null }
             val p = queue.firstOrNull() ?: return
-            // One at a time, but for those that go together.
-            if (flights.isNotEmpty() && !(p.together && flights.all { it.pending.together })) return
+            // One at a time.
+            if (flights.isNotEmpty()) return
             queue.removeFirst()
             // A request asked before the HELLO was answered: the node's version is known only now.
             if (p.body.since > (agreed ?: version)) {
@@ -430,20 +425,16 @@ class Remote(
         }
         when {
             body is Body.Error && body.code == ErrorCode.HELLO_FIRST && p.body !is Body.Hello -> {
-                // The node restarted, as one does to apply some settings, and forgot this client; or
-                // a request that went with a HELLO arrived before it. Say HELLO again, unless one is
-                // on its way, and ask once more, after it. Nothing it refused was acted on.
+                // The node restarted, as one does to apply some settings, and forgot this client:
+                // say HELLO again, and ask once more. Nothing it refused was acted on.
                 flights.remove(f)
                 if (syncFlight === f) {
                     syncFlight = null
                     records.abandonSync()
                 }
                 nodeVersion = null
-                queue.addFirst(Pending(p.body, then = p.then))
-                val helloGoing = flights.any { it.pending.body is Body.Hello } || queue.any { it.body is Body.Hello }
-                if (!helloGoing) {
-                    queue.addFirst(Pending(Body.Hello(version)) { outcome -> if (outcome !is Outcome.Answered) failQueued(outcome) })
-                }
+                queue.addFirst(p)
+                queue.addFirst(Pending(Body.Hello(version)) { outcome -> if (outcome !is Outcome.Answered) failQueued(outcome) })
                 return pump()
             }
             p.body is Body.Hello && body is Body.Info -> {
