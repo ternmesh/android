@@ -40,11 +40,18 @@ every client (`FORGOTTEN`, `GROUP_FORGOTTEN`), at once or at its next sync, and 
 messages and their notifications. The contact, its session and the group are kept.
 
 From a node of version 17 the app manages another node over the mesh (`MANAGE`), if that node has
-made the app's node one of its owners: "Manage" in a contact's menu shows that node's own state from a
+made the app's node one of its owners. The app keeps, beside the records, the nodes it knows its node
+owns: from `OWNER_CHANGED` notices, from any answer over the mesh, and, as no longer owned, from
+`ERROR` 15 (a draft: a node that says at once that the asker is not an owner, where version 17 says
+nothing). A contact's menu offers "Manage" only for those; for any other it offers "Check if I'm an
+owner", one `HELLO` over the mesh, and says it is not yours. While a request is on its way the app says
+what it waits for, from its message's `STATE`: first contact, a route, the air, delivery or the answer;
+and, for a node known to sleep, from its last sync or its contact's wake, how long that can take, and
+waits that much longer. A request can be stopped. "Manage" shows that node's own state from a
 sync over the mesh, and changes its role, power, presence card and its name, receiver, sleep (how often
 it wakes and how long it listens) and Bluetooth lock, who its owners are, and restarts it. Region and passkey are changed only at the node. Each request goes one at
 a time, is tried again up to three times when not delivered, and waits two minutes for its answer once
-delivered. A change made over the mesh is on trial, and the app confirms it with a `PING` at once, or 45
+delivered, longer by a sleep and a listen for a node that sleeps; `ERROR` 15 stops it, and what waited. A change made over the mesh is on trial, and the app confirms it with a `PING` at once, or 45
 seconds later for a role or a power, which the node restarts to apply; the rest restart nothing. In the app's own node, a
 contact can be made an owner (`OWNER`), after saying what an owner can do. When a node says its owners
 changed (`OWNER_CHANGED`), the app says who, of which node, and whether at the node or over the mesh, in
@@ -175,7 +182,7 @@ says a board.
 | `protocol/src/main/kotlin/org/ternmesh/companion/Release.kt` | The firmware manifest at `ternmesh.org/firmware/latest.json`: the image for a board, a region and the way the node is updated (its `update`, absent for over the link), and whether its release is newer than a node's, by Semantic Versioning. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/ReleaseKeys.kt`, `Signatures.kt` | The release keys, and an image's signature checked against them: what is offered to which node. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/RoutingIds.kt` | Routing ids from addresses, as a node of version 14 (blinded) or earlier makes them. |
-| `protocol/src/main/kotlin/org/ternmesh/companion/Managing.kt` | Managing a node over the mesh, the client's half: a request's and an answer's content, and `Remote`, one request at a time inside `MANAGE`, its answer from `MANAGED`, tries again, `HELLO` again after a restart, and the `PING` that confirms a setting on trial. No I/O and no clock of its own, as `Connection`. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Managing.kt` | Managing a node over the mesh, the client's half: a request's and an answer's content, and `Remote`, one request at a time inside `MANAGE`, its answer from `MANAGED`, tries again, `HELLO` again after a restart, stops at `ERROR` 15, waits longer for a node that sleeps, and the `PING` that confirms a setting on trial; and `ManageStep`, what a request waits for, from its `STATE`. `OwnedNodes.kt`: the nodes the app's node owns, as learned, and their file. No I/O and no clock of its own, as `Connection`. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Records.kt` | What the node has said it holds, as news leaves it, positions received, sharing, the cards of who is about and the node's own fix included, and the `after` the next sync asks from. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/RecordsFile.kt` | The records on disk, each as the frame that carried it, so the next run syncs only what is new; not positions, sharing, cards or the node's fix, which every sync sends whole. The Apple app keeps the same format. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Sharing.kt`, `JoinCode.kt` | An address's text, link and short code (draft/sharing.md); and a group's join code read, to name the group before the user joins it (draft/groups.md). |

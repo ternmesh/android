@@ -98,4 +98,71 @@ class RemoteTest {
         assertNull(remote.trialUntil)
         assertEquals(Body.Sync(0), last().body)
     }
+
+    /** `ERROR` 15: not an owner. Nothing is tried again, nothing waiting goes, and the app hears it is not one. */
+    @Test
+    fun error15StopsEverythingAndSaysNotAnOwner() {
+        val events = mutableListOf<RemoteEvent>()
+        remote.onEvent = { events += it }
+        var opened: Outcome? = null
+        var asked: Outcome? = null
+        remote.open { opened = it }
+        remote.submit(Body.Ping) { asked = it }
+        assertEquals(Body.Hello(Companion.VERSION), last().body)
+        answer(Body.Error(ErrorCode.NOT_AN_OWNER))
+        assertEquals(Outcome.Refused(ErrorCode.NOT_AN_OWNER), opened)
+        assertEquals(Outcome.Refused(ErrorCode.NOT_AN_OWNER), asked)
+        assertEquals(1, sent.size, "nothing more went")
+        assertTrue(!remote.busy)
+        assertEquals(listOf<RemoteEvent>(RemoteEvent.Owner(false)), events.filterIsInstance<RemoteEvent.Owner>())
+        time += Companion.MESH_ANSWER_WAIT_MS * 10
+        remote.tick()
+        assertEquals(1, sent.size)
+    }
+
+    /** Any answer at all, even a refusal, comes only to an owner. */
+    @Test
+    fun anyAnswerSaysAnOwner() {
+        val events = mutableListOf<RemoteEvent>()
+        remote.onEvent = { events += it }
+        remote.submit(Body.Hello(Companion.VERSION))
+        answer(Body.Error(ErrorCode.NOT_OVER_THE_MESH))
+        assertEquals(listOf<RemoteEvent>(RemoteEvent.Owner(true)), events.filterIsInstance<RemoteEvent.Owner>())
+    }
+
+    /** The message's STATE comes through with what it waits for. */
+    @Test
+    fun whatItWaitsForIsPassedOn() {
+        val events = mutableListOf<RemoteEvent>()
+        remote.onEvent = { events += it }
+        remote.submit(Body.Ping)
+        remote.receive(Body.State(nextId - 1, MessageState.WAITING, 2, 30))
+        assertEquals(RemoteEvent.Carried(MessageState.WAITING, 2, 30), events.last())
+    }
+
+    /** To a node that sleeps, each wait is longer by a sleep and a listen; a sync saying it is awake makes it the bare wait again. */
+    @Test
+    fun aSleepingNodeIsWaitedForLonger() {
+        remote.wake = 900
+        remote.listen = 5
+        var result: Outcome? = null
+        remote.submit(Body.Ping) { result = it }
+        val wait = Companion.MESH_ANSWER_WAIT_MS + 905_000
+        assertEquals(wait, remote.answerWaitMs)
+        assertEquals(wait, remote.deadline)
+        remote.receive(Body.State(nextId - 1, MessageState.SENT, 0, 0))
+        time = Companion.MESH_ANSWER_WAIT_MS + 1
+        remote.tick()
+        assertNull(result, "not given up after the bare two minutes")
+        remote.receive(Body.State(nextId - 1, MessageState.DELIVERED, 0, 0))
+        assertEquals(time + wait, remote.deadline)
+        answer(Body.Ok)
+        assertEquals(Outcome.Answered(Body.Ok), result)
+
+        remote.sync()
+        answer(Body.Sleep(900, 5, Sleeping.AWAKE, 0, 0))
+        answer(Body.Synced(0, 1))
+        assertEquals(0, remote.wake)
+        assertEquals(Companion.MESH_ANSWER_WAIT_MS, remote.answerWaitMs)
+    }
 }

@@ -1,0 +1,52 @@
+// What a client says a request over the mesh waits for, from its message's STATE, and whether the
+// managed node is known to sleep.
+package org.ternmesh.companion
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class ManageStepTest {
+    @Test
+    fun eachStateAndReasonHasItsStep() {
+        assertEquals(ManageStep.Starting, ManageStep.of(null))
+        assertEquals(ManageStep.Waiting, ManageStep.of(MessageState.WAITING, 0, 0))
+        assertEquals(ManageStep.FindingRoute, ManageStep.of(MessageState.WAITING, 1, 0))
+        assertEquals(ManageStep.FirstContact, ManageStep.of(MessageState.WAITING, 2, 0))
+        assertEquals(ManageStep.Airtime(3, 40), ManageStep.of(MessageState.WAITING, 3, 40))
+        assertEquals(ManageStep.Airtime(4, 0), ManageStep.of(MessageState.WAITING, 4, 0))
+        assertEquals(ManageStep.Airtime(5, 2), ManageStep.of(MessageState.WAITING, 5, 2))
+        assertEquals(ManageStep.Waiting, ManageStep.of(MessageState.WAITING, 9, 0), "a reason not known")
+        assertEquals(ManageStep.Sent, ManageStep.of(MessageState.SENT))
+        assertEquals(ManageStep.Delivered, ManageStep.of(MessageState.DELIVERED))
+        assertEquals(ManageStep.NotDelivered, ManageStep.of(MessageState.NOT_DELIVERED))
+    }
+
+    /** Its own SLEEP first, as what it does now; then its contact's wake; and nothing guessed. */
+    @Test
+    fun whetherItSleeps() {
+        assertEquals(900, ManageStep.sleeps(Body.Sleep(900, 5, Sleeping.ASLEEP, 7, 0), null))
+        assertNull(ManageStep.sleeps(Body.Sleep(900, 5, Sleeping.WAITING, 0, 0), 600), "to sleep, but listening all the time")
+        assertNull(ManageStep.sleeps(Body.Sleep(0, 5, Sleeping.AWAKE, 0, 0), 600))
+        assertEquals(600, ManageStep.sleeps(null, 600))
+        assertNull(ManageStep.sleeps(null, 0))
+        assertNull(ManageStep.sleeps(null, null))
+    }
+
+    /** A sleeping node is what it waits for until delivery, not after. */
+    @Test
+    fun theWakeMattersUntilDelivery() {
+        assertTrue(ManageStep.waitsForWake(ManageStep.Sent))
+        assertTrue(ManageStep.waitsForWake(ManageStep.FirstContact))
+        assertFalse(ManageStep.waitsForWake(ManageStep.Delivered))
+        assertFalse(ManageStep.waitsForWake(ManageStep.NotDelivered))
+    }
+
+    @Test
+    fun theWaitForASleepingNode() {
+        assertEquals(Companion.MESH_ANSWER_WAIT_MS, Remote.waitFor(0, 5))
+        assertEquals(Companion.MESH_ANSWER_WAIT_MS + 905_000, Remote.waitFor(900, 5))
+    }
+}

@@ -208,6 +208,13 @@ object ErrorCode {
 
     /** Locked: the node's Bluetooth is locked, and it acts on nothing over it but `HELLO` and `PING` (version 17). */
     const val LOCKED = 14
+
+    /**
+     * Not an owner: a managed node answers a request over the mesh from one that is not among its
+     * owners (a draft of managing after version 17). It may still say nothing, as it limits how
+     * often it answers so; and a node of version 17 always says nothing.
+     */
+    const val NOT_AN_OWNER = 15
 }
 
 /**

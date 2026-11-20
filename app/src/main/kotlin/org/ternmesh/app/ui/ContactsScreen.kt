@@ -125,6 +125,7 @@ private fun ContactsList(
     var renaming by remember { mutableStateOf<Body.Contact?>(null) }
     var removing by remember { mutableStateOf<Body.Contact?>(null) }
     var owning by remember { mutableStateOf<Body.Contact?>(null) }
+    var checking by remember { mutableStateOf<Address?>(null) }
     val report = rememberReport()
     // Owners, and managing a node over the mesh, are version 17's: a node of 16 or earlier offers neither.
     val managing = canManage(state)
@@ -153,7 +154,21 @@ private fun ContactsList(
                                 DropdownMenuItem(text = { Text(stringResource(R.string.share)) }, onClick = { menu = false; shareLink(context, c.address) })
                                 DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { menu = false; renaming = c })
                                 if (managing) {
-                                    DropdownMenuItem(text = { Text(stringResource(R.string.manage)) }, onClick = { menu = false; manage(c.address) })
+                                    // Manage only a node the app knows its node owns; any other, it can ask.
+                                    if (c.address in state.owned) {
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.manage)) }, onClick = { menu = false; manage(c.address) })
+                                    } else {
+                                        DropdownMenuItem(text = { Text(stringResource(R.string.check_owner)) }, onClick = {
+                                            menu = false
+                                            checking = c.address
+                                            repository.manage(c.address, check = true)
+                                        })
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.not_yours), style = MaterialTheme.typography.bodySmall) },
+                                            onClick = {},
+                                            enabled = false,
+                                        )
+                                    }
                                     if (c.owner == 1) {
                                         DropdownMenuItem(text = { Text(stringResource(R.string.remove_owner)) }, onClick = {
                                             menu = false
@@ -187,6 +202,12 @@ private fun ContactsList(
         }
     }
     showing?.let { c -> CodeDialog(c) { showing = null } }
+    checking?.let { address ->
+        CheckOwnerDialog(repository, state, address, close = { checking = null }) {
+            checking = null
+            manage(address)
+        }
+    }
     owning?.let { c ->
         // Only ever what the user asked for, once told what an owner can do.
         AlertDialog(
@@ -296,5 +317,51 @@ private fun CodeDialog(c: Body.Contact, onDismiss: () -> Unit) {
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) } },
+    )
+}
+
+/**
+ * Whether the app's node is an owner of the node at [address]: one `HELLO` over the mesh, which only
+ * an owner answers. An answer means it is, and Manage opens from here; `ERROR` 15 that it is not;
+ * and no answer says nothing, since a node may be asleep or out of reach, or say nothing to anyone else.
+ */
+@Composable
+private fun CheckOwnerDialog(repository: NodeRepository, state: NodeState, address: Address, close: () -> Unit, manage: () -> Unit) {
+    val context = LocalContext.current
+    val name = nodeName(context, state.records, address)
+    val m = state.managed?.takeIf { it.address == address }
+    val waiting = m != null && m.asking != null
+    val dismiss = {
+        repository.stopManaging()
+        close()
+    }
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text(stringResource(R.string.check_owner_title, name)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                when {
+                    m?.owner == true -> Text(stringResource(R.string.check_owner_yes, name))
+                    m?.failed != null && !waiting -> Text(manageOutcomeText(context, name, m.failed), color = MaterialTheme.colorScheme.error)
+                    else -> {
+                        Text(stringResource(R.string.check_owner_explained, name))
+                        // The dialog's own Cancel stops it.
+                        if (m != null) ManageProgress(m, name, stop = null)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            when {
+                m?.owner == true -> TextButton(onClick = manage) { Text(stringResource(R.string.manage)) }
+                // Told it is not an owner, asking again comes to the same.
+                m?.failed != null && !waiting && m.owner != false -> TextButton(onClick = {
+                    repository.stopManaging()
+                    repository.manage(address, check = true)
+                }) { Text(stringResource(R.string.retry)) }
+                else -> {}
+            }
+        },
+        dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(if (waiting) R.string.cancel else R.string.done)) } },
     )
 }

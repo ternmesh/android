@@ -95,8 +95,17 @@ sealed interface RemoteEvent {
     /** A request is on its way, or was given up on and goes again: [attempt] counts from 1. */
     data class Trying(val attempt: Int) : RemoteEvent
 
-    /** Where the message carrying the request is, as its `STATE` says: a [MessageState]. */
-    data class Carried(val state: Int) : RemoteEvent
+    /**
+     * Where the message carrying the request is, as its `STATE` says: a [MessageState], and while
+     * it waits, [reason] and [wait] as a message's are.
+     */
+    data class Carried(val state: Int, val reason: Int = 0, val wait: Int = 0) : RemoteEvent
+
+    /**
+     * The managed node said whether it holds this client's node as an owner: [owner] when it
+     * answered anything at all, and not when it answered `ERROR` 15.
+     */
+    data class Owner(val owner: Boolean) : RemoteEvent
 
     /**
      * A `SET` was answered, and is on trial: the node takes it back unless it hears from an owner
@@ -117,6 +126,10 @@ sealed interface RemoteEvent {
  * [Protocol.MESH_ANSWER_WAIT_MS] for an answer once the request is delivered. A node that answers
  * `ERROR` 6 has restarted and forgotten this client's `HELLO`: it is said again, and the request
  * asked once more. A `SET` that is answered is on trial, and a `PING` follows it at once to confirm it.
+ * A node that answers `ERROR` 15 does not take this client's node as an owner: nothing more is asked.
+ *
+ * A node that sleeps answers only once it wakes: with [wake] and [listen] known, each wait is longer
+ * by them ([answerWaitMs]).
  *
  * @param manage makes a request of the client's own node: [Connection.submit], or the app's own.
  * @param now a clock in milliseconds that only goes forward.
@@ -161,6 +174,20 @@ class Remote(
     var settleUntil: Long? = null
         private set
 
+    /**
+     * The managed node's seconds between wakes, 0 if it is not known to sleep, and how long it
+     * listens after each: the app sets them from what it knows, and a sync over the mesh sets them
+     * from the node's own `SLEEP`.
+     */
+    var wake: Int = 0
+    var listen: Int = 0
+
+    /** How long a request waits for its answer from each step its message takes: longer by a sleep and a listen for a node that sleeps. */
+    val answerWaitMs: Long get() = waitFor(wake, listen)
+
+    /** When the request on its way is given up on unless something more is heard; null when none is. */
+    val deadline: Long? get() = inFlight?.deadline
+
     /** When tick() next has something to do; null when nothing waits. */
     val nextDeadline: Long? get() = inFlight?.deadline ?: settleUntil?.takeIf { queue.isNotEmpty() }
 
@@ -169,7 +196,7 @@ class Remote(
     private inner class InFlight(val pending: Pending, val seq: Int, val frame: ByteArray) {
         var attempt = 0
         var id: Long? = null
-        var deadline = now() + Protocol.MESH_ANSWER_WAIT_MS
+        var deadline = now() + answerWaitMs
 
         /** The message carrying it was given up on: it waits a moment for an answer from a copy that arrived, then goes again. */
         var lost = false
@@ -227,7 +254,7 @@ class Remote(
     fun receive(news: Body) {
         val f = inFlight ?: return
         when (news) {
-            is Body.State -> if (news.id == f.id) carried(f, news.state)
+            is Body.State -> if (news.id == f.id) carried(f, news)
             is Body.Managed -> if (news.from == to) answered(f, news.answer)
             else -> {}
         }
@@ -282,7 +309,7 @@ class Remote(
         f.attempt += 1
         f.lost = false
         f.id = null
-        f.deadline = now() + Protocol.MESH_ANSWER_WAIT_MS
+        f.deadline = now() + answerWaitMs
         onEvent(RemoteEvent.Trying(f.attempt))
         manage(Body.Manage(newRef(), to, f.frame)) { outcome ->
             if (inFlight !== f) return@manage
@@ -295,18 +322,18 @@ class Remote(
         }
     }
 
-    private fun carried(f: InFlight, state: Int) {
-        onEvent(RemoteEvent.Carried(state))
-        when (state) {
+    private fun carried(f: InFlight, news: Body.State) {
+        onEvent(RemoteEvent.Carried(news.state, news.reason, news.wait))
+        when (news.state) {
             // Delivered: the answer comes within the wait, or not at all.
-            MessageState.DELIVERED -> f.deadline = now() + Protocol.MESH_ANSWER_WAIT_MS
+            MessageState.DELIVERED -> f.deadline = now() + answerWaitMs
             // Given up: its answer may still come, from a copy that arrived. A moment for it, then again.
             MessageState.NOT_DELIVERED -> {
                 f.lost = true
                 f.deadline = now() + LOST_GRACE_MS
             }
             // Still on its way: the wait starts again from each step it takes.
-            else -> f.deadline = maxOf(f.deadline, now() + Protocol.MESH_ANSWER_WAIT_MS)
+            else -> f.deadline = maxOf(f.deadline, now() + answerWaitMs)
         }
     }
 
@@ -341,10 +368,18 @@ class Remote(
 
     private fun answer(f: InFlight, body: Body) {
         val p = f.pending
+        if (body is Body.Error && body.code == ErrorCode.NOT_AN_OWNER) {
+            // Not one of its owners: asking again, or anything else, comes to the same.
+            onEvent(RemoteEvent.Owner(false))
+            finish(f, Outcome.Refused(body.code), next = false)
+            return failQueued(Outcome.Refused(body.code))
+        }
+        // Whatever else it answered, it answers only its owners.
+        onEvent(RemoteEvent.Owner(true))
         if (p.body is Body.Sync && body is Body.Synced && !syncComplete(body)) {
             // Its news is still on the way: wait for it, as long as for any answer.
             heldSynced = body
-            f.deadline = now() + Protocol.MESH_ANSWER_WAIT_MS
+            f.deadline = now() + answerWaitMs
             return
         }
         // Any request an owner makes over the mesh ends a trial, whatever it is answered: it reached the node.
@@ -373,7 +408,15 @@ class Remote(
             p.body is Body.Sync && body is Body.Synced -> {
                 newsFrom = body.news ?: 0
                 syncing = false
-                if (records.finishSync(agreed ?: version)) onEvent(RemoteEvent.Synced)
+                if (records.finishSync(agreed ?: version)) {
+                    // Its own word on whether it sleeps is better than any the app had.
+                    records.sleep?.let { sleep ->
+                        val asleep = sleep.state == Sleeping.ASLEEP && sleep.wake > 0
+                        wake = if (asleep) sleep.wake else 0
+                        listen = if (asleep) sleep.listen else 0
+                    }
+                    onEvent(RemoteEvent.Synced)
+                }
             }
             p.body is Body.Sync -> records.abandonSync()
             p.body is Body.Set && body == Body.Ok -> {
@@ -390,7 +433,7 @@ class Remote(
         finish(f, if (body is Body.Error) Outcome.Refused(body.code) else Outcome.Answered(body))
     }
 
-    private fun finish(f: InFlight, outcome: Outcome) {
+    private fun finish(f: InFlight, outcome: Outcome, next: Boolean = true) {
         if (inFlight !== f) return
         inFlight = null
         if (syncing) {
@@ -398,7 +441,7 @@ class Remote(
             records.abandonSync()
         }
         f.pending.then(outcome)
-        pump()
+        if (next) pump()
     }
 
     /** A `HELLO` said again was not answered: what waited on it fails too. */
@@ -423,5 +466,75 @@ class Remote(
 
         /** How long after such a `SET` is answered the next request waits: a node can acknowledge nothing for about 30 s after it starts. */
         const val SETTLE_MS = 45_000L
+
+        /**
+         * How long a request waits for its answer, from each step its message takes, to a node that
+         * sleeps [wake] seconds between wakes, 0 for one that does not, and listens [listen] after
+         * each: it may not hear it, or answer, until it next wakes.
+         */
+        fun waitFor(wake: Int, listen: Int): Long =
+            Protocol.MESH_ANSWER_WAIT_MS + if (wake > 0) (wake.toLong() + listen.coerceAtLeast(0)) * 1000 else 0
+    }
+}
+
+/**
+ * What a request over the mesh waits for now, for a client to say: from the `STATE` of the message
+ * that carries it, and nothing more. Whether the node sleeps is [ManageStep.sleeps]'s.
+ */
+sealed interface ManageStep {
+    /** Handed to the client's own node, which has not yet said where it is. */
+    data object Starting : ManageStep
+
+    /** Waiting for a session: first contact with the managed node is under way. */
+    data object FirstContact : ManageStep
+
+    /** Waiting for a route to the managed node. */
+    data object FindingRoute : ManageStep
+
+    /** Waiting for the region's limit (3), the airtime budget (4) or the radio (5): [reason] as a message's, [wait] seconds, 0 if unknown. */
+    data class Airtime(val reason: Int, val wait: Int) : ManageStep
+
+    /** Waiting, for nothing the node can name. */
+    data object Waiting : ManageStep
+
+    /** On the air, not yet delivered. */
+    data object Sent : ManageStep
+
+    /** Delivered: the answer is all that is left. */
+    data object Delivered : ManageStep
+
+    /** Given up on: it goes again, if tries are left. */
+    data object NotDelivered : ManageStep
+
+    companion object {
+        /** The step a message's [state], a [MessageState] or null before any, with its [reason] and [wait], says it is at. */
+        fun of(state: Int?, reason: Int = 0, wait: Int = 0): ManageStep = when (state) {
+            null -> Starting
+            MessageState.WAITING -> when (reason) {
+                1 -> FindingRoute
+                2 -> FirstContact
+                3, 4, 5 -> Airtime(reason, wait)
+                else -> Waiting
+            }
+            MessageState.SENT -> Sent
+            MessageState.DELIVERED -> Delivered
+            MessageState.NOT_DELIVERED -> NotDelivered
+            else -> Waiting
+        }
+
+        /**
+         * Seconds between the managed node's wakes, when it is known to sleep; null when it is not, or
+         * the client does not know. Its own [sleep] from a sync over the mesh comes first, as what it
+         * does now; then the [contactWake] its `CONTACT` in the client's own node gave, which is what
+         * it said of itself in its session. Nothing is guessed.
+         */
+        fun sleeps(sleep: Body.Sleep?, contactWake: Int?): Int? = when {
+            sleep != null -> sleep.wake.takeIf { sleep.state == Sleeping.ASLEEP && it > 0 }
+            contactWake != null && contactWake > 0 -> contactWake
+            else -> null
+        }
+
+        /** Whether, at [step], a node that sleeps may be what it waits for: anything before its delivery. */
+        fun waitsForWake(step: ManageStep): Boolean = step != Delivered && step != NotDelivered
     }
 }

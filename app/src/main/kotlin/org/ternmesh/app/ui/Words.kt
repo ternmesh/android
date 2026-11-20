@@ -16,6 +16,7 @@ import org.ternmesh.companion.Body
 import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.DfuFailure
 import org.ternmesh.companion.Item
+import org.ternmesh.companion.ManageStep
 import org.ternmesh.companion.MessageState
 import org.ternmesh.companion.Outcome
 import org.ternmesh.companion.Records
@@ -64,6 +65,7 @@ fun errorText(context: Context, code: Int): String = when (code) {
     12 -> context.getString(R.string.error_12)
     13 -> context.getString(R.string.error_13)
     14 -> context.getString(R.string.error_14)
+    15 -> context.getString(R.string.error_15)
     else -> context.getString(R.string.error_other, code)
 }
 
@@ -163,3 +165,30 @@ fun ownerChangedText(context: Context, records: Records, notice: Body.OwnerChang
     }
     return context.getString(id, who, node)
 }
+
+/** What a request to [node], managed over the mesh, waits for now: [step], from its message's `STATE`. */
+fun manageStepText(context: Context, step: ManageStep, node: String): String = when (step) {
+    ManageStep.Starting -> context.getString(R.string.manage_step_starting)
+    ManageStep.FirstContact -> context.getString(R.string.manage_step_first_contact, node)
+    ManageStep.FindingRoute -> context.getString(R.string.manage_step_route)
+    is ManageStep.Airtime -> {
+        // As a message waiting for the same is worded.
+        val reason = when (step.reason) {
+            3 -> R.string.reason_3
+            4 -> R.string.reason_4
+            else -> R.string.reason_5
+        }
+        val base = context.getString(R.string.waiting_for, context.getString(reason))
+        if (step.wait > 0) base + " · " + context.getString(R.string.about_seconds, step.wait) else base
+    }
+    ManageStep.Waiting -> context.getString(R.string.manage_step_waiting)
+    ManageStep.Sent -> context.getString(R.string.manage_step_sent, node)
+    ManageStep.Delivered -> context.getString(R.string.manage_step_delivered, node)
+    ManageStep.NotDelivered -> context.getString(R.string.manage_step_not_delivered)
+}
+
+/** That [node] sleeps [wake] seconds between wakes, and so may take that long: null for a node not known to sleep. */
+fun manageAsleepText(context: Context, node: String, wake: Int?): String? =
+    wake?.takeIf { it > 0 }?.let {
+        context.getString(R.string.manage_asleep, node.replaceFirstChar { c -> c.uppercase() }, (it + 59) / 60)
+    }
