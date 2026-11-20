@@ -28,8 +28,11 @@ class ManageStepTest {
     @Test
     fun whetherItSleeps() {
         assertEquals(900, ManageStep.sleeps(Body.Sleep(900, 5, Sleeping.ASLEEP, 7, 0), null))
-        assertEquals(0, ManageStep.sleeps(Body.Sleep(900, 5, Sleeping.WAITING, 0, 0), 600), "to sleep, but listening all the time")
-        assertEquals(0, ManageStep.sleeps(Body.Sleep(0, 5, Sleeping.AWAKE, 0, 0), 600))
+        assertEquals(900, ManageStep.sleeps(Body.Sleep(900, 5, Sleeping.WAITING, 0, 0), null), "listening for a keeper, but to sleep again")
+        assertEquals(0, ManageStep.sleeps(Body.Sleep(900, 5, Sleeping.AWAKE, 0, 0), null), "a relay never sleeps")
+        assertEquals(0, ManageStep.sleeps(Body.Sleep(0, 5, Sleeping.AWAKE, 0, 0), 0))
+        // What its contact last said, news whenever it changes, before an older sync's.
+        assertEquals(600, ManageStep.sleeps(Body.Sleep(0, 5, Sleeping.AWAKE, 0, 0), 600))
         assertEquals(600, ManageStep.sleeps(null, 600))
         assertNull(ManageStep.sleeps(null, 0), "a contact's 0 may be one that said nothing")
         assertNull(ManageStep.sleeps(null, null))

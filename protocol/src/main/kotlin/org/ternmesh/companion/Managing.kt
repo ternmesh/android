@@ -166,11 +166,11 @@ class Remote(
     var trialUntil: Long? = null
         private set
 
-    /** The request on its way, or waiting for its answer; null when none is. */
-    val asking: Body? get() = inFlight?.pending?.body
+    /** The request on its way, or waiting for its answer, the first of those that are; null when none is. */
+    val asking: Body? get() = flights.firstOrNull()?.pending?.body
 
     /** Whether a request is on its way or waiting for its answer. */
-    val busy: Boolean get() = inFlight != null || queue.isNotEmpty()
+    val busy: Boolean get() = flights.isNotEmpty() || queue.isNotEmpty()
 
     /**
      * Until when the next request waits, on [now]'s clock, for the node to come back from the
@@ -191,13 +191,18 @@ class Remote(
     /** How long a request waits for its answer from each step its message takes: longer by a sleep and a listen for a node that sleeps. */
     val answerWaitMs: Long get() = waitFor(wake, listen)
 
-    /** When the request on its way is given up on unless something more is heard; null when none is. */
-    val deadline: Long? get() = inFlight?.deadline
+    /** When a request on its way is first given up on unless something more is heard; null when none is. */
+    val deadline: Long? get() = flights.minOfOrNull { it.deadline }
 
     /** When tick() next has something to do; null when nothing waits. */
-    val nextDeadline: Long? get() = inFlight?.deadline ?: settleUntil?.takeIf { queue.isNotEmpty() }
+    val nextDeadline: Long? get() = deadline ?: settleUntil?.takeIf { queue.isNotEmpty() }
 
-    private class Pending(val body: Body, val then: (Outcome) -> Unit)
+    /**
+     * A request asked, and what to tell of it. One [together] may go while others are unanswered,
+     * if they are all so: the `HELLO` and `SYNC` that open a node, which ride the same wake of a
+     * node that sleeps, and whose answers are told apart by `seq`.
+     */
+    private class Pending(val body: Body, val together: Boolean = false, val then: (Outcome) -> Unit)
 
     private inner class InFlight(val pending: Pending, val seq: Int, val frame: ByteArray) {
         var attempt = 0
@@ -209,9 +214,13 @@ class Remote(
     }
 
     private val queue = ArrayDeque<Pending>()
-    private var inFlight: InFlight? = null
+
+    /** The requests on their way, or waiting for their answers, oldest first: one, or the few that go together. */
+    private val flights = mutableListOf<InFlight>()
     private var seq = 0
-    private var syncing = false
+
+    /** The `SYNC` on its way, whose news the records take. */
+    private var syncFlight: InFlight? = null
 
     /** The node's count of news on this client's connection when the sync under way began: 0 after `HELLO`, then each `SYNCED`'s. */
     private var newsFrom = 0
@@ -222,12 +231,21 @@ class Remote(
     /** A `SYNCED` that came before all the news it counts: answers can pass each other on the mesh. */
     private var heldSynced: Body.Synced? = null
 
-    /** Says `HELLO`, then asks for the node's state, before anything else asked. [then] hears what came of the sync, or of a `HELLO` that failed. */
+    /**
+     * Asks for the node's state, before anything else asked; and says `HELLO` first, unless the node
+     * has answered one from this client already, which holds until it answers `ERROR` 6. The two go
+     * at once, not one after the other, so that a node that sleeps takes both in one wake. [then]
+     * hears what came of the sync, or of a `HELLO` that failed.
+     */
     fun open(then: (Outcome) -> Unit = {}) {
         queue.removeAll { it.body is Body.Hello }
-        val sync = Pending(Body.Sync(0), then)
+        if (nodeVersion != null) {
+            queue.addFirst(Pending(Body.Sync(0), then = then))
+            return pump()
+        }
+        val sync = Pending(Body.Sync(0), together = true, then = then)
         queue.addFirst(sync)
-        queue.addFirst(Pending(Body.Hello(version)) { outcome ->
+        queue.addFirst(Pending(Body.Hello(version), together = true) { outcome ->
             if (outcome !is Outcome.Answered && queue.remove(sync)) then(outcome)
         })
         pump()
@@ -244,71 +262,83 @@ class Remote(
     fun submit(body: Body, then: (Outcome) -> Unit = {}) {
         require(Protocol.isRequest(body.type)) { "${body.typeName} is not a request" }
         if (body.since > (agreed ?: version)) return then(Outcome.Unsupported)
-        queue.addLast(Pending(body, then))
+        queue.addLast(Pending(body, then = then))
         pump()
     }
 
-    /** Gives up on every request, unanswered or waiting: the app no longer manages the node. */
+    /** Gives up on every request, unanswered or waiting: the app no longer manages the node. What it has learned of the node stays. */
     fun close() {
-        val pending = listOfNotNull(inFlight?.pending) + queue
-        inFlight = null
+        val pending = flights.map { it.pending } + queue
+        flights.clear()
         queue.clear()
+        if (syncFlight != null) {
+            syncFlight = null
+            records.abandonSync()
+        }
+        heldSynced = null
         for (p in pending) p.then(Outcome.Closed)
     }
 
     /** One news frame from the client's own node: `STATE` for a request's message, and `MANAGED` from [to]. Anything else is ignored. */
     fun receive(news: Body) {
-        val f = inFlight ?: return
         when (news) {
-            is Body.State -> if (news.id == f.id) carried(f, news)
-            is Body.Managed -> if (news.from == to) answered(f, news.answer)
+            is Body.State -> flights.find { it.id == news.id }?.let { carried(it, news) }
+            is Body.Managed -> if (news.from == to && flights.isNotEmpty()) answered(news.answer)
             else -> {}
         }
     }
 
-    /** Gives up on an answer overdue: tries the request again if its message was lost and tries are left. */
+    /** Gives up on answers overdue: tries a request again if its message was lost and tries are left. */
     fun tick() {
-        val f = inFlight ?: return pump()
-        if (now() < f.deadline) return
-        heldSynced?.let { synced ->
-            // The rest of the sync never came: what did is held, but proves nothing gone.
-            heldSynced = null
-            newsFrom = synced.news ?: 0
-            return finish(f, Outcome.Answered(synced))
+        for (f in flights.toList()) {
+            if (f !in flights || now() < f.deadline) continue
+            val synced = heldSynced
+            if (f === syncFlight && synced != null) {
+                // The rest of the sync never came: what did is held, but proves nothing gone.
+                heldSynced = null
+                newsFrom = synced.news ?: 0
+                finish(f, Outcome.Answered(synced), next = false)
+            } else if (f.lost && f.attempt < TRIES) {
+                attempt(f)
+            } else {
+                finish(f, Outcome.NoAnswer, next = false)
+            }
         }
-        if (f.lost && f.attempt < TRIES) {
-            attempt(f)
-        } else {
-            finish(f, Outcome.NoAnswer)
-        }
+        pump()
     }
 
     private fun pump() {
-        if (inFlight != null) return
-        settleUntil?.let { if (now() < it) return else settleUntil = null }
-        val p = queue.removeFirstOrNull() ?: return
-        // A request asked before the HELLO was answered: the node's version is known only now.
-        if (p.body.since > (agreed ?: version)) {
-            p.then(Outcome.Unsupported)
-            return pump()
+        while (true) {
+            settleUntil?.let { if (now() < it) return else settleUntil = null }
+            val p = queue.firstOrNull() ?: return
+            // One at a time, but for those that go together.
+            if (flights.isNotEmpty() && !(p.together && flights.all { it.pending.together })) return
+            queue.removeFirst()
+            // A request asked before the HELLO was answered: the node's version is known only now.
+            if (p.body.since > (agreed ?: version)) {
+                p.then(Outcome.Unsupported)
+                continue
+            }
+            val body = if (p.body is Body.Hello) Body.Hello(version) else p.body
+            seq = seq % 255 + 1
+            val frame = try {
+                Codec.encode(Frame(seq, body)).also { require(it.size <= Protocol.REQUEST_MAX) { "longer than a request may be" } }
+            } catch (e: IllegalArgumentException) {
+                p.then(Outcome.Invalid(e.message ?: body.typeName))
+                continue
+            }
+            // A HELLO starts the node's count of news on this connection again.
+            if (body is Body.Hello) newsFrom = 0
+            val f = InFlight(p, seq, frame)
+            if (body is Body.Sync) {
+                records.beginSync()
+                newsSeen.clear()
+                heldSynced = null
+                syncFlight = f
+            }
+            flights += f
+            attempt(f)
         }
-        val body = if (p.body is Body.Hello) Body.Hello(version) else p.body
-        seq = seq % 255 + 1
-        val frame = try {
-            Codec.encode(Frame(seq, body)).also { require(it.size <= Protocol.REQUEST_MAX) { "longer than a request may be" } }
-        } catch (e: IllegalArgumentException) {
-            p.then(Outcome.Invalid(e.message ?: body.typeName))
-            return pump()
-        }
-        if (body is Body.Sync) {
-            records.beginSync()
-            newsSeen.clear()
-            heldSynced = null
-        }
-        syncing = body is Body.Sync
-        val f = InFlight(p, seq, frame)
-        inFlight = f
-        attempt(f)
     }
 
     private fun attempt(f: InFlight) {
@@ -318,7 +348,7 @@ class Remote(
         f.deadline = now() + answerWaitMs
         onEvent(RemoteEvent.Trying(f.attempt))
         manage(Body.Manage(newRef(), to, f.frame)) { outcome ->
-            if (inFlight !== f) return@manage
+            if (f !in flights) return@manage
             when {
                 outcome is Outcome.Answered && outcome.body is Body.Queued -> {
                     f.id = outcome.body.id
@@ -346,7 +376,7 @@ class Remote(
         }
     }
 
-    private fun answered(f: InFlight, answer: ByteArray) {
+    private fun answered(answer: ByteArray) {
         val frames = Managing.unpack(answer) ?: return
         for (bytes in frames) {
             if (bytes.size < 2) continue
@@ -358,13 +388,14 @@ class Remote(
                 continue
             }
             if (Protocol.isNews(type)) {
-                if (syncing && inFlight === f && newsSeen.add(frame.seq)) records.apply(frame.body)
-                heldSynced?.takeIf { inFlight === f && syncComplete(it) }?.let { synced ->
+                val s = syncFlight ?: continue
+                if (newsSeen.add(frame.seq)) records.apply(frame.body)
+                heldSynced?.takeIf { syncComplete(it) }?.let { synced ->
                     heldSynced = null
-                    answer(f, synced)
+                    answer(s, synced)
                 }
-            } else if (Protocol.isAnswer(type) && frame.seq == f.seq && inFlight === f) {
-                answer(f, frame.body)
+            } else if (Protocol.isAnswer(type)) {
+                flights.find { it.seq == frame.seq }?.let { answer(it, frame.body) }
             }
         }
     }
@@ -380,8 +411,9 @@ class Remote(
         if (body is Body.Error && body.code == ErrorCode.NOT_AN_OWNER) {
             // Not one of its owners: asking again, or anything else, comes to the same.
             onEvent(RemoteEvent.Owner(false))
-            finish(f, Outcome.Refused(body.code), next = false)
-            return failQueued(Outcome.Refused(body.code))
+            val refused = Outcome.Refused(body.code)
+            for (other in flights.toList()) finish(other, refused, next = false)
+            return failQueued(refused)
         }
         // Whatever else it answered, it answers only its owners.
         onEvent(RemoteEvent.Owner(true))
@@ -398,36 +430,39 @@ class Remote(
         }
         when {
             body is Body.Error && body.code == ErrorCode.HELLO_FIRST && p.body !is Body.Hello -> {
-                // The node restarted, as one does to apply some settings, and forgot this client:
-                // say HELLO again, and ask once more. Nothing it refused was acted on.
-                inFlight = null
-                syncing = false
-                records.abandonSync()
-                queue.addFirst(p)
-                queue.addFirst(Pending(Body.Hello(version)) { outcome -> if (outcome !is Outcome.Answered) failQueued(outcome) })
+                // The node restarted, as one does to apply some settings, and forgot this client; or
+                // a request that went with a HELLO arrived before it. Say HELLO again, unless one is
+                // on its way, and ask once more, after it. Nothing it refused was acted on.
+                flights.remove(f)
+                if (syncFlight === f) {
+                    syncFlight = null
+                    records.abandonSync()
+                }
+                nodeVersion = null
+                queue.addFirst(Pending(p.body, then = p.then))
+                val helloGoing = flights.any { it.pending.body is Body.Hello } || queue.any { it.body is Body.Hello }
+                if (!helloGoing) {
+                    queue.addFirst(Pending(Body.Hello(version)) { outcome -> if (outcome !is Outcome.Answered) failQueued(outcome) })
+                }
                 return pump()
             }
             p.body is Body.Hello && body is Body.Info -> {
                 nodeVersion = body.version
                 firmware = body.firmware
-                newsFrom = 0
                 records.speaking = agreed
                 onEvent(RemoteEvent.Ready(body.version, body.firmware))
             }
             p.body is Body.Sync && body is Body.Synced -> {
                 newsFrom = body.news ?: 0
-                syncing = false
+                syncFlight = null
                 if (records.finishSync(agreed ?: version)) {
                     // Its own word on whether it sleeps is better than any the app had; a node of
                     // version 14 or earlier, which sends no SLEEP, does not.
-                    val sleep = records.sleep
-                    val asleep = sleep != null && sleep.state == Sleeping.ASLEEP && sleep.wake > 0
-                    wake = if (asleep) sleep!!.wake else 0
-                    listen = if (asleep) sleep!!.listen else 0
+                    wake = sleepsFor(records.sleep)
+                    listen = records.sleep?.listen?.takeIf { wake != 0 } ?: 0
                     onEvent(RemoteEvent.Synced)
                 }
             }
-            p.body is Body.Sync -> records.abandonSync()
             p.body is Body.Set && body == Body.Ok -> {
                 val until = now() + Protocol.TRIAL_MS
                 trialUntil = until
@@ -443,10 +478,9 @@ class Remote(
     }
 
     private fun finish(f: InFlight, outcome: Outcome, next: Boolean = true) {
-        if (inFlight !== f) return
-        inFlight = null
-        if (syncing) {
-            syncing = false
+        if (!flights.remove(f)) return
+        if (syncFlight === f) {
+            syncFlight = null
             records.abandonSync()
         }
         f.pending.then(outcome)
@@ -485,6 +519,14 @@ class Remote(
          * not know of, and listens [listen] after each: it may not hear it, or answer, until it next
          * wakes, and its keeper holds the request until then.
          */
+        /**
+         * Seconds between wakes of a node whose own `SLEEP` is [sleep]: its wake when it is to sleep,
+         * as a leaf, even while it listens all the time for a keeper (it sleeps again once it has
+         * one); 0 when it is not to sleep, or is a relay; and 0 from a node that sends no `SLEEP`.
+         */
+        fun sleepsFor(sleep: Body.Sleep?): Int =
+            if (sleep != null && sleep.wake > 0 && sleep.state != Sleeping.AWAKE) sleep.wake else 0
+
         fun waitFor(wake: Int?, listen: Int): Long = when {
             wake == null -> UNKNOWN_WAIT_MS
             wake > 0 -> Protocol.MESH_ANSWER_WAIT_MS + (wake.toLong() + listen.coerceAtLeast(0)) * 1000
@@ -575,14 +617,15 @@ sealed interface ManageStep {
 
         /**
          * Seconds between the managed node's wakes when it is known to sleep, 0 when it is known not
-         * to, and null when the client does not know. Its own [sleep] from a sync over the mesh comes
-         * first, as what it does now; then the [contactWake] its `CONTACT` in the client's own node
-         * gave, which is what it said of itself in its session, and whose 0 may mean it said nothing.
-         * Nothing is guessed.
+         * to, and null when the client does not know. The [contactWake] its `CONTACT` in the client's
+         * own node gave comes first, when it is not 0: what it last said of itself in its session,
+         * news the client's node sends whenever it changes. Then its own [sleep] from a sync over
+         * the mesh, which may be older; a leaf that is to sleep counts as sleeping even while it
+         * listens for a keeper. A contact's 0 may mean it said nothing. Nothing is guessed.
          */
         fun sleeps(sleep: Body.Sleep?, contactWake: Int?): Int? = when {
-            sleep != null -> if (sleep.state == Sleeping.ASLEEP && sleep.wake > 0) sleep.wake else 0
             contactWake != null && contactWake > 0 -> contactWake
+            sleep != null -> Remote.sleepsFor(sleep)
             else -> null
         }
 

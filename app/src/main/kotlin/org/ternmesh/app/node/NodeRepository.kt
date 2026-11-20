@@ -293,6 +293,13 @@ class NodeRepository(private val context: Context) {
     /** The node managed over the mesh, while the Manage screen is open. */
     private var remote: Remote? = null
 
+    /**
+     * Each node managed over the mesh since the app's node was chosen, kept when its screen closes:
+     * a node that has answered a `HELLO` from this app is asked straight for its state next time,
+     * one request, not two, which for a node that sleeps is a wake saved.
+     */
+    private val remotes = mutableMapOf<Address, Remote>()
+
     /** The last `SLEEP` each node managed over the mesh gave, while the app runs: how long it may take to answer next time. */
     private val sleepOf = mutableMapOf<Address, Body.Sleep>()
 
@@ -421,6 +428,8 @@ class NodeRepository(private val context: Context) {
     /** Drops the link and the node, keeping its records on disk in case it is chosen again. */
     fun leave() {
         stopManaging()
+        // Another node's HELLOs, answered to this one's address, are not its.
+        remotes.clear()
         stopUpdate()
         handler.removeCallbacksAndMessages(null)
         link.disconnect()
@@ -675,7 +684,7 @@ class NodeRepository(private val context: Context) {
             return
         }
         remote?.close()
-        val r = Remote(address, manage = { body, then -> submit(body, then) }, now = SystemClock::elapsedRealtime)
+        val r = remotes.getOrPut(address) { Remote(address, manage = { body, then -> submit(body, then) }, now = SystemClock::elapsedRealtime) }
         // A node known to sleep may answer only once it wakes: wait for it, not the bare two minutes.
         val sleep = sleepOf[address]
         r.wake = ManageStep.sleeps(sleep, connection.records.contacts[address]?.wake)
