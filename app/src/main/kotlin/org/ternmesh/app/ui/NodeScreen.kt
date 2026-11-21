@@ -84,6 +84,7 @@ import org.ternmesh.companion.Conversations
 import org.ternmesh.companion.ErrorCode
 import org.ternmesh.companion.Install
 import org.ternmesh.companion.Offer
+import org.ternmesh.companion.Outcome
 import org.ternmesh.companion.Pairing
 import org.ternmesh.companion.ReceiverState
 import org.ternmesh.companion.Records
@@ -657,7 +658,12 @@ fun PrivacyScreen(repository: NodeRepository, state: NodeState, back: () -> Unit
             SectionHeader(stringResource(R.string.card_section))
             SettingsGroup {
                 val report = rememberReport()
-                PresenceCard(s) { repository.submit(Body.Set(it), report) }
+                // In order, each only once the one before is answered: the name, then cards on.
+                fun send(settings: List<Setting>) {
+                    val first = settings.firstOrNull() ?: return
+                    repository.submit(Body.Set(first)) { o -> report(o); if (o is Outcome.Answered) send(settings.drop(1)) }
+                }
+                PresenceCard(s, ::send)
             }
             Footnote(stringResource(R.string.card_on_explained))
         }
@@ -984,11 +990,23 @@ private fun TurnOffDialog(node: ChosenNode, onDismiss: () -> Unit, turnOff: () -
 }
 
 /**
- * Whether the node sends cards, and the name they carry. Each is sent only when the user changes it
- * here: being seen is theirs to choose, so the switch says plainly what turning it on puts on the air.
+ * What to send for the node's card, in order: the name typed, if it is not the one the node has,
+ * and then, if [turnOn] and the card is off, cards on. Turning it on, by the switch or by saving a
+ * name while it is off, takes the name typed with it, so the card never goes out with an old one.
+ */
+internal fun cardRequests(on: Boolean, saved: String, typed: String, turnOn: Boolean): List<Setting> = buildList {
+    if (typed.trim() != saved) add(Setting.CardName(typed.trim()))
+    if (turnOn && !on) add(Setting.Cards(1))
+}
+
+/**
+ * Whether the node sends cards, and the name they carry: one switch, with the name under it. Each is
+ * sent only when the user changes it here: being seen is theirs to choose, so the switch says plainly
+ * what turning it on puts on the air. While the card is off, saving the name turns it on too, and the
+ * button says so: a name saved to a card that stays off was what confused people.
  */
 @Composable
-internal fun PresenceCard(self: Body.Self, set: (Setting) -> Unit) {
+internal fun PresenceCard(self: Body.Self, set: (List<Setting>) -> Unit) {
     val on = self.cards == 1
     val current = self.cardName.orEmpty()
     var name by remember(current) { mutableStateOf(current) }
@@ -997,7 +1015,13 @@ internal fun PresenceCard(self: Body.Self, set: (Setting) -> Unit) {
     SettingsRow(
         stringResource(R.string.card_on),
         subtitle = stringResource(if (on) R.string.card_on_yes else R.string.card_on_no),
-        trailing = { Switch(checked = on, onCheckedChange = { set(Setting.Cards(if (it) 1 else 0)) }) },
+        trailing = {
+            Switch(
+                checked = on,
+                enabled = !tooLong || on,
+                onCheckedChange = { set(if (it) cardRequests(on, current, name, turnOn = true) else listOf(Setting.Cards(0))) },
+            )
+        },
     )
     GroupDivider()
     Text(
@@ -1024,9 +1048,9 @@ internal fun PresenceCard(self: Body.Self, set: (Setting) -> Unit) {
             modifier = Modifier.weight(1f),
         )
         TextButton(
-            onClick = { set(Setting.CardName(name.trim())) },
+            onClick = { set(cardRequests(on, current, name, turnOn = true)) },
             enabled = !tooLong && name.trim() != current,
-        ) { Text(stringResource(R.string.set)) }
+        ) { Text(stringResource(if (on) R.string.save else R.string.card_name_save_on)) }
     }
 }
 

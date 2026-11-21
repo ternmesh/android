@@ -170,7 +170,13 @@ fun ManageScreen(repository: NodeRepository, state: NodeState, address: Address,
         // Neither restarts the node, so the PING that confirms each goes at once.
         if (self.cards != null && self.cardName != null) {
             SectionHeader(stringResource(R.string.card_section))
-            SettingsGroup { PresenceCard(self) { ask(Body.Set(it)) } }
+            // The name, then cards on: each asked only once the one before is answered.
+            fun askAll(settings: List<Setting>) {
+                val first = settings.firstOrNull() ?: return
+                if (settings.size == 1) return ask(Body.Set(first))
+                repository.askManaged(Body.Set(first)) { o -> report(o); if (o is Outcome.Answered) askAll(settings.drop(1)) }
+            }
+            SettingsGroup { PresenceCard(self, ::askAll) }
         }
         // SLEEP comes from a node of version 15: below it, there is no section.
         r.sleep?.let { sleep ->
