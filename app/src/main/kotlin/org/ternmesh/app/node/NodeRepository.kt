@@ -946,20 +946,17 @@ class NodeRepository(private val context: Context) {
 
     /**
      * The node does not keep an ASKED, and a sync does not send it again, so the app keeps each on
-     * disk until the user saves the address or dismisses it.
+     * disk until the user saves the address or dismisses it: its address, its `why` and, from a node
+     * of version 19, the name it gave itself, as base64url so that no name breaks the list apart.
      */
     private fun setAsked(change: (List<Body.Asked>) -> List<Body.Asked>) {
         update { it.copy(asked = change(it.asked)) }
         val address = _state.value.node?.address ?: return
-        askedPrefs.edit().putString(address, _state.value.asked.joinToString(",") { "${it.address}:${it.why}" }).apply()
+        askedPrefs.edit().putString(address, _state.value.asked.joinToString(",") { askedEntry(it) }).apply()
     }
 
     private fun loadAsked(address: String): List<Body.Asked> =
-        askedPrefs.getString(address, null).orEmpty().split(',').mapNotNull { entry ->
-            val (hex, why) = entry.split(':').takeIf { it.size == 2 } ?: return@mapNotNull null
-            val a = org.ternmesh.companion.Address.fromHex(hex) ?: return@mapNotNull null
-            Body.Asked(a, why.toIntOrNull() ?: return@mapNotNull null)
-        }
+        askedPrefs.getString(address, null).orEmpty().split(',').mapNotNull { askedOf(it) }
 
     /**
      * Traces the way frames go to the node whose routing id is [to], and back (version 18): its
@@ -1776,4 +1773,17 @@ class NodeRepository(private val context: Context) {
         /** With [KEY_DISCONNECTED]: the app stays off the node because the user turned it off. */
         private const val KEY_OFF = "off"
     }
+}
+
+/** One `ASKED` as the app keeps it: `address:why`, then `:name` in base64url where the node gave a name (version 19). */
+internal fun askedEntry(a: Body.Asked): String =
+    "${a.address}:${a.why}" + (a.name?.let { ":" + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(it.toByteArray(Charsets.UTF_8)) } ?: "")
+
+/** An `ASKED` as [askedEntry] keeps it, or null for one that does not read; one kept before names has none. */
+internal fun askedOf(entry: String): Body.Asked? {
+    val parts = entry.split(':').takeIf { it.size == 2 || it.size == 3 } ?: return null
+    val a = org.ternmesh.companion.Address.fromHex(parts[0]) ?: return null
+    val why = parts[1].toIntOrNull() ?: return null
+    val name = parts.getOrNull(2)?.let { runCatching { String(java.util.Base64.getUrlDecoder().decode(it), Charsets.UTF_8) }.getOrNull() ?: return null }
+    return Body.Asked(a, why, name)
 }

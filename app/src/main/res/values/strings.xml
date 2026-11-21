@@ -56,6 +56,8 @@
     <string name="error_13">that can\'t be done over the mesh</string>
     <string name="error_14">the node\'s Bluetooth is locked. Only USB, or one of its owners over the mesh, can unlock it</string>
     <string name="error_15">you\'re not one of the node\'s owners</string>
+    <!-- ERROR 16, to LOOK: the node asked for cards less than ASK_GAP (ten minutes) ago. -->
+    <string name="error_16">your node asked who\'s about less than ten minutes ago. Try again in a few minutes</string>
     <string name="error_other">error %1$d</string>
 
     <string name="outcome_unsupported">Your node\'s firmware does not support this yet.</string>
@@ -198,6 +200,8 @@
     <string name="save">Save</string>
     <string name="remove">Remove</string>
     <string name="remove_title">Remove %1$s?</string>
+    <!-- Naming a contact that gave itself a name in first contact (CONTACT's says, version 19): offered, never put in place of the user's. -->
+    <string name="contact_says">They call themselves “%1$s”. The name you give is yours, and only you see it.</string>
     <string name="remove_explained">Your node forgets the name, stops sharing your location with this contact and forgets theirs. Your messages and any secure session with them are kept, but once that ends your node may turn away a new one they start.</string>
     <string name="message">Message</string>
     <string name="session_yes">Secure</string>
@@ -207,6 +211,8 @@
     <string name="asked_no_room">Your node turned away a message from %1$s because it has no room for another session.</string>
     <!-- An ASKED from an address the node holds a card from: the card's name, as its sender's claim. -->
     <string name="asked_card">Their presence card says they are “%1$s”.</string>
+    <!-- An ASKED with a name (version 19): the name the asking node gave itself in first contact, its claim. -->
+    <string name="asked_says">They say they are “%1$s”. That is only what they call themselves: check their short code with them before you save them.</string>
 
     <!-- Who is about: other nodes' presence cards -->
     <string name="cards_title">Who\'s about</string>
@@ -476,6 +482,10 @@
     <string name="nearby_heard_one">Your node hears this one, but it hasn\'t shared a card, so all your node knows is its short id, not whose it is. You can\'t message or add it from here. To talk to it, ask its owner for their link or QR code, or wait for its card: nodes showing a card send one about every two hours.</string>
     <string name="nearby_heard_one_no_cards">Your node hears this one, but all it knows is its short id, not whose it is. You can\'t message or add it from here. To talk to it, ask its owner for their link or QR code.</string>
     <string name="nearby_contact_tag">Contact</string>
+    <!-- LOOK (version 20): the node asks the nodes in earshot for their cards. Only when the user asks. -->
+    <string name="look">Ask who\'s about</string>
+    <string name="look_explained">Asks the nodes in range to send their cards now, instead of waiting up to two hours for the next. Only nodes within earshot hear it, and it carries nothing of yours. Your node can ask once every ten minutes.</string>
+    <string name="look_asked">Asked. Cards from nodes about arrive within half a minute.</string>
     <string name="seen_ago">seen %1$s ago</string>
     <string name="signal_bars">Signal: %1$d of 4 bars</string>
     <string name="signal_explained">Bars show how clearly your node hears each one: four is strong, one is at the edge of range. The number is the signal-to-noise ratio in dB.</string>

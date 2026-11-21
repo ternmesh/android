@@ -1,4 +1,4 @@
-// The companion protocol's frames, version 18: draft/companion.md in ternmesh/spec.
+// The companion protocol's frames, version 20: draft/companion.md in ternmesh/spec.
 //
 // Nothing here touches Bluetooth or a screen. It builds frames and reads them, and the tests hold
 // it to the specification's vectors.
@@ -9,8 +9,8 @@ package org.ternmesh.companion
 
 /** The protocol's numbers, as the specification's Parameters give them. */
 object Companion {
-    /** The version this client speaks. Version 17 is this without how messages went and traces (`TRACE`, `ROUTE` and `TRACED`), version 16 is version 17 without managing (`MANAGE`, `OWNER`, `RESTART`, `SET` 10, `MANAGED`, `OWNER_CHANGED`, `CONTACT`'s `owner` and `SELF`'s `locked`), version 15 is version 16 without forgetting (`FORGET`, `FORGET_GROUP`, `FORGOTTEN` and `GROUP_FORGOTTEN`), version 14 is version 15 without sleeping (`SET` 8 and 9, `SLEEP`, and `CONTACT`'s `wake`), version 13 is this with routing ids made from the address itself, not from the key blinded from it (RoutingIds), version 12 is version 13 without signed images (`UPDATE_BEGIN`'s `signature`) and `WIPE`, version 11 is version 12 without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
-    const val VERSION = 18
+    /** The version this client speaks. Version 19 is this without asking for cards (`LOOK` and `ERROR` 16), version 18 is version 19 without names in first contact (`ASKED`'s `name` and `CONTACT`'s `says`), version 17 is version 18 without how messages went and traces (`TRACE`, `ROUTE` and `TRACED`), version 16 is version 17 without managing (`MANAGE`, `OWNER`, `RESTART`, `SET` 10, `MANAGED`, `OWNER_CHANGED`, `CONTACT`'s `owner` and `SELF`'s `locked`), version 15 is version 16 without forgetting (`FORGET`, `FORGET_GROUP`, `FORGOTTEN` and `GROUP_FORGOTTEN`), version 14 is version 15 without sleeping (`SET` 8 and 9, `SLEEP`, and `CONTACT`'s `wake`), version 13 is this with routing ids made from the address itself, not from the key blinded from it (RoutingIds), version 12 is version 13 without signed images (`UPDATE_BEGIN`'s `signature`) and `WIPE`, version 11 is version 12 without updates by the bootloader (`UPDATE_BOOTLOADER` and `INFO`'s `update`), version 10 is version 11 without `SELF`'s `pairing`, version 9 is version 10 without the most (`SET` 3's -128 and `SELF`'s `most`), version 8 is version 9 without turning the node off, version 7 is version 8 without the node's own fix, version 6 is version 7 without join codes, version 5 is version 6 without cards, version 4 is version 5 without positions, version 3 is version 4 without updates, version 2 is version 3 without `SYNCED`'s `news`, version 1 is version 2 without groups, and version 0 is version 1 without `END_SESSION` and `ASKED`. */
+    const val VERSION = 20
     /** `SET` 3's power that asks for the most the node may transmit at, which it works out (version 10). */
     const val POWER_MOST = -128
     const val MAX_FRAME = 180
@@ -79,6 +79,9 @@ object Companion {
     /** One entry of a trace: a routing id, 4 bytes, and the SNR its node heard the frame at, an `i8` in quarters of a dB. */
     const val TRACE_ENTRY = 5
 
+    /** The least time between two asks for cards: a `LOOK` sooner after the last is answered `ERROR` 16 (version 20; draft/cards.md, Asking). */
+    const val ASK_GAP_MS = 600_000L
+
     /** The least time between two `ASKED`s for one address, or two of `NEIGHBOUR`, `AIRTIME` or `POWER`, or two `FIX`es for a fix that moved. */
     const val QUIET_MS = 10_000L
 
@@ -110,6 +113,7 @@ object Companion {
         0x12, 0x28, 0x96, 0x97 -> 16
         0x13, 0x14, 0x38, 0x98, 0x99 -> 17
         0x15, 0x9A, 0x9B -> 18
+        0x16 -> 20
         else -> 0
     }
 
@@ -222,6 +226,9 @@ object ErrorCode {
      * often it answers so; and a node of version 17 always says nothing.
      */
     const val NOT_AN_OWNER = 15
+
+    /** Too soon: `LOOK` within `ASK_GAP` of the node's last ask for cards (version 20). Ask again later. */
+    const val TOO_SOON = 16
 }
 
 /**
@@ -393,7 +400,7 @@ object TraceResult {
 /** One entry of a trace: a node that passed it on or answered it, by [routingId], and how well it heard the node before, in quarters of a dB. */
 data class TraceHop(val routingId: Long, val snrQuarterDb: Int)
 
-/** What a frame says: every frame of version 18. [since] is the least version that defines it. */
+/** What a frame says: every frame of version 20. [since] is the least version that defines it. */
 sealed class Body(val type: Int, val typeName: String) {
     /** The least version that defines this frame: a client sends no request the node's version does not define, and reads no frame the version both ends speak does not. */
     open val since: Int get() = Companion.since(type)
@@ -452,6 +459,14 @@ sealed class Body(val type: Int, val typeName: String) {
      * and `TRACED` how it ended.
      */
     data class Trace(val ref: Long, val to: Long) : Body(0x15, "TRACE")
+
+    /**
+     * Ask the nodes in earshot for their cards (version 20; draft/cards.md, Asking). Answered `OK`
+     * once the ask waits for the air, or `ERROR` 16 if the node asked less than `ASK_GAP` before.
+     * The cards come as `CARD` news, as any card does, within half a minute. Only ever what the
+     * user asked for.
+     */
+    data object Look : Body(0x16, "LOOK")
     data class SaveContact(val address: Address, val name: String) : Body(0x18, "SAVE_CONTACT")
     data class RemoveContact(val address: Address) : Body(0x19, "REMOVE_CONTACT")
     data class EndSession(val address: Address) : Body(0x1A, "END_SESSION")
@@ -605,10 +620,20 @@ sealed class Body(val type: Int, val typeName: String) {
      * An address the user saved, with a name. [session] is 1 if the node shares one with it. [wake]
      * is how long the contact said it sleeps between wakes, in seconds, 0 if it does not or said
      * nothing; null below version 15. [owner] is 1 if the contact is one of the node's owners, who
-     * may manage it over the mesh; null below version 17.
+     * may manage it over the mesh; null below version 17. [says] is the name the contact gave itself
+     * in the last first contact the node made with it, empty for none; null below version 19. It is
+     * the contact's claim, not the user's name for it: shown as such where [name] is empty, offered
+     * when the user names it, never put in [name]'s place unless the user says so
+     * (draft/first-contact.md, Names).
      */
-    data class Contact(val address: Address, val session: Int, val name: String, val wake: Int? = null, val owner: Int? = null) :
-        Body(0x81, "CONTACT")
+    data class Contact(
+        val address: Address,
+        val session: Int,
+        val name: String,
+        val wake: Int? = null,
+        val owner: Int? = null,
+        val says: String? = null,
+    ) : Body(0x81, "CONTACT")
 
     data class ContactGone(val address: Address) : Body(0x82, "CONTACT_GONE")
 
@@ -647,9 +672,11 @@ sealed class Body(val type: Int, val typeName: String) {
 
     /**
      * The node refused first contact from [address], which proved itself: [why] is 1 if it is not a
-     * contact, 2 if the node has no room for another session.
+     * contact, 2 if the node has no room for another session. [name] is the name the asking node
+     * gave itself in its `message_3`, empty for none; null below version 19. Its claim: shown with
+     * the address's short code, and offered as the contact's name (draft/first-contact.md, Names).
      */
-    data class Asked(val address: Address, val why: Int) : Body(0x89, "ASKED")
+    data class Asked(val address: Address, val why: Int, val name: String? = null) : Body(0x89, "ASKED")
 
     /** A group the node holds, with the user's name for it. */
     data class Group(val group: GroupId, val name: String) : Body(0x8A, "GROUP")

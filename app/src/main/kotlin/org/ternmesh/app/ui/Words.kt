@@ -20,6 +20,7 @@ import org.ternmesh.companion.Item
 import org.ternmesh.companion.ManageStep
 import org.ternmesh.companion.MessageState
 import org.ternmesh.companion.Outcome
+import org.ternmesh.companion.Peer
 import org.ternmesh.companion.Records
 import org.ternmesh.companion.Setting
 
@@ -68,6 +69,7 @@ fun errorText(context: Context, code: Int): String = when (code) {
     13 -> context.getString(R.string.error_13)
     14 -> context.getString(R.string.error_14)
     15 -> context.getString(R.string.error_15)
+    16 -> context.getString(R.string.error_16)
     else -> context.getString(R.string.error_other, code)
 }
 
@@ -149,10 +151,13 @@ fun dfuText(context: Context, why: DfuFailure?): String = when (why) {
     DfuFailure.Lost, null -> context.getString(R.string.dfu_lost)
 }
 
-/** What the app calls the node at [address]: the user's name for the contact, "your node" for its own, or its short code. */
+/**
+ * What the app calls the node at [address]: the user's name for the contact, "your node" for its own,
+ * the name a contact the user gave none gave itself, as its claim, or its short code.
+ */
 fun nodeName(context: Context, records: Records, address: Address): String = when {
     address == records.self?.address -> context.getString(R.string.your_node)
-    else -> records.contacts[address]?.name?.ifEmpty { null } ?: Conversations.short(address.toString())
+    else -> Conversations.name(records, Peer.Contact(address))
 }
 
 /** An `OWNER_CHANGED` in a sentence: who was made an owner of which node, or is no longer one, and how. */

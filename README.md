@@ -19,7 +19,7 @@ turns it on again, and then stays off it, saying the node is off, until the user
 It erases a node of version 13 or later when the user asks (`WIPE`), after saying that its address,
 contacts, groups and messages go for good, and then forgets the node and the phone's pairing with it.
 
-It speaks version 18 of the companion protocol, and any earlier version a node speaks. From a node
+It speaks version 20 of the companion protocol, and any earlier version a node speaks. From a node
 of version 14, the routing ids it is told (of neighbours, group messages' writers and group
 positions) are made from a key blinded from each address, as below; from an earlier node, from the
 address itself. When pairing fails it says that a node with no screen pairs only for three minutes
@@ -85,6 +85,14 @@ It shows who is about: the presence cards the node has heard from the nodes near
 the name its sender claims beside its short code, and a contact made from one only when the user
 asks. The node's own card is off until the user turns it on, and the switch says what that puts
 on the air: the node's address and the name the user gives it, in clear, every couple of hours.
+From a node of version 20, "Ask who's about", at the top of Nearby, has the node ask the nodes in
+earshot for their cards now (`LOOK`), only when the user taps it; a node asks at most once every
+ten minutes, and the app says so when it is too soon (`ERROR` 16).
+
+From a node of version 19, a node that first contact was refused to shows the name it gave itself
+(`ASKED`'s `name`) beside its short code, as its claim, and saving it offers that name. A contact the
+user gave no name is shown by the name it gave itself, in quotes, with its short code (`CONTACT`'s
+`says`), and naming it offers that name; the name the user gives is never replaced by it.
 
 It shares the user's position with the contacts and groups they choose, each at the precision
 they choose, and shows on a map where those sharing with them are, and where the node itself is:
@@ -196,7 +204,7 @@ says a board.
 
 | Path | |
 |---|---|
-| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 18, as Kotlin types, and its numbers. |
+| `protocol/src/main/kotlin/org/ternmesh/companion/Frame.kt` | Every frame of the protocol's version 20, as Kotlin types, and its numbers. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Codec.kt` | A frame built into bytes, and read back from them. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/ByteStream.kt` | Frames on a byte stream (USB serial, TCP), with the node's console text between them. Bluetooth does not need it. |
 | `protocol/src/main/kotlin/org/ternmesh/companion/Connection.kt` | One connection, the client's half: `HELLO` and the version both speak, one request at a time, counted news, syncing again, and the `PING` that keeps a node from taking the app for gone. No I/O and no clock of its own: a link hands it frames and calls `tick()`. |

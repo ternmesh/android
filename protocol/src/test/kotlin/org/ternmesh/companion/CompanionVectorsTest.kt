@@ -330,7 +330,7 @@ class CompanionVectorsTest {
         assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(1, Body.Managed(bob, ByteArray(Companion.ANSWER_MAX + 1)))) }
 
         val contact = Codec.encode(Frame(0, Body.Contact(bob, 1, "Bob", 0, 1)))
-        assertEquals(Body.Contact(bob, 1, "Bob", 0, 1), Codec.decode(contact).body)
+        assertEquals(Body.Contact(bob, 1, "Bob", 0, 1), Codec.decode(contact, 18).body)
         assertEquals(Body.Contact(bob, 1, "Bob", 0), Codec.decode(contact, 16).body)
         assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, Body.Contact(bob, 1, "Bob", owner = 1))) }
         val self = Body.Self(ada, 1, "EU868", 14, 0, 0, "", 0, Pairing.SET, 1)
@@ -375,6 +375,43 @@ class CompanionVectorsTest {
         }
         // An entry cut short is no hop.
         assertEquals(1, Body.Traced(26, 1, 0, 1, 0, 0, ByteArray(9)).hops.size)
+    }
+
+    /**
+     * Names in first contact are version 19's: `ASKED`'s `name` after its `why`, and `CONTACT`'s
+     * `says` after its `owner`. Read by version 18, each is the frame without them; read by 19 or
+     * later, a frame without them is cut short.
+     */
+    @Test
+    fun namesInFirstContactAreVersion19s() {
+        val bob = Address(ByteArray(Address.LENGTH) { 7 })
+        val asked = Body.Asked(bob, 1, "Carol")
+        val bytes = Codec.encode(Frame(0, asked))
+        assertEquals(asked, Codec.decode(bytes).body)
+        assertEquals(asked, Codec.decode(bytes, 19).body)
+        assertEquals(Body.Asked(bob, 1), Codec.decode(bytes, 18).body)
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(Codec.encode(Frame(0, Body.Asked(bob, 1)))) }.reason)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, Body.Asked(bob, 1, "x".repeat(Companion.NAME_MAX + 1)))) }
+
+        val contact = Body.Contact(bob, 1, "", 0, 0, "Robert at the ridge")
+        val says = Codec.encode(Frame(0, contact))
+        assertEquals(contact, Codec.decode(says).body)
+        assertEquals(contact.copy(says = null), Codec.decode(says, 18).body)
+        assertEquals(Unreadable.MALFORMED, assertFailsWith<DecodeException> { Codec.decode(Codec.encode(Frame(0, contact.copy(says = null)))) }.reason)
+        assertFailsWith<IllegalArgumentException> { Codec.encode(Frame(0, contact.copy(owner = null))) }
+    }
+
+    /** Asking for cards is version 20's: `LOOK`, with no fields, and `ERROR` 16, which any version reads as a refusal. */
+    @Test
+    fun askingForCardsIsVersion20s() {
+        val bytes = Codec.encode(Frame(5, Body.Look))
+        assertEquals("1605", Hex.encode(bytes))
+        assertEquals(20, Body.Look.since)
+        assertEquals(Body.Look, Codec.decode(bytes).body)
+        assertEquals(Body.Look, Codec.decode(bytes + byteArrayOf(0)).body)
+        assertEquals(Unreadable.UNDEFINED, assertFailsWith<DecodeException> { Codec.decode(bytes, 19) }.reason)
+        assertEquals(ErrorCode.UNDEFINED, Codec.errorCode(bytes, Unreadable.UNDEFINED), "a node of 19 answers it as a request it does not define")
+        assertEquals(Body.Error(ErrorCode.TOO_SOON), Codec.decode(byteArrayOf(0x41, 5, 16), 1).body)
     }
 
     /** The node's own fix and the receiver setting are version 8's, and a fix's signed fields build and read back at their ends. */
@@ -530,6 +567,7 @@ class CompanionVectorsTest {
         "MANAGE" -> Body.Manage(f.long("ref"), f.addr("to"), f.bytes("request"))
         "OWNER" -> Body.Owner(f.addr("address"), f.int("owner"))
         "TRACE" -> Body.Trace(f.long("ref"), f.long("to"))
+        "LOOK" -> Body.Look
         "SAVE_CONTACT" -> Body.SaveContact(f.addr("address"), f.str("name"))
         "REMOVE_CONTACT" -> Body.RemoveContact(f.addr("address"))
         "END_SESSION" -> Body.EndSession(f.addr("address"))
@@ -575,6 +613,7 @@ class CompanionVectorsTest {
             f.addr("address"), f.int("session"), f.str("name"),
             if (f.containsKey("wake")) f.int("wake") else null,
             if (f.containsKey("owner")) f.int("owner") else null,
+            if (f.containsKey("says")) f.str("says") else null,
         )
         "CONTACT_GONE" -> Body.ContactGone(f.addr("address"))
         "MESSAGE" -> Body.Message(
@@ -586,7 +625,7 @@ class CompanionVectorsTest {
         "NEIGHBOUR_GONE" -> Body.NeighbourGone(f.long("routing_id"))
         "AIRTIME" -> Body.Airtime(f.long("period"), f.long("allowed"), f.long("used"), f.long("wait"))
         "POWER" -> Body.Power(f.int("millivolts"), f.int("percent"), f.int("flags"))
-        "ASKED" -> Body.Asked(f.addr("address"), f.int("why"))
+        "ASKED" -> Body.Asked(f.addr("address"), f.int("why"), if (f.containsKey("name")) f.str("name") else null)
         "GROUP" -> Body.Group(f.gid("group"), f.str("name"))
         "GROUP_GONE" -> Body.GroupGone(f.gid("group"))
         "GROUP_MESSAGE" -> Body.GroupMessage(

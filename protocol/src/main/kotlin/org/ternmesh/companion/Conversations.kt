@@ -38,9 +38,12 @@ object Conversations {
     fun of(records: Records, peer: Peer): Conversation =
         Conversation(peer, name(records, peer), records.ordered.filter { peerOf(it) == peer })
 
-    /** The contact's or group's name, or the start of the address or id where there is none. */
+    /**
+     * The contact's or group's name, or the start of the address or id where there is none. A
+     * contact the user gave no name is shown by the name it gave itself, where it gave one, as [claim].
+     */
     fun name(records: Records, peer: Peer): String = when (peer) {
-        is Peer.Contact -> records.contacts[peer.address]?.name?.takeIf { it.isNotEmpty() } ?: short(peer.address.toString())
+        is Peer.Contact -> records.contacts[peer.address]?.let { c -> c.name.ifEmpty { null } ?: claim(c) } ?: short(peer.address.toString())
         is Peer.Group -> records.groups[peer.group]?.name?.takeIf { it.isNotEmpty() } ?: short(peer.group.toString())
     }
 
@@ -67,6 +70,14 @@ object Conversations {
 
     /** The first 8 hex digits, to tell addresses apart at a glance. Not a check that one is who it claims. */
     fun short(hex: String) = hex.take(8) + "…"
+
+    /**
+     * The name [contact] gave itself in first contact (`CONTACT`'s `says`, version 19), as its claim:
+     * in quotes, with the start of its address, so that it is not taken for a name the user gave it
+     * (draft/first-contact.md, Names). Null where it gave none.
+     */
+    fun claim(contact: Body.Contact): String? =
+        contact.says?.takeIf { it.isNotEmpty() }?.let { "“$it” · ${short(contact.address.toString())}" }
 
     /**
      * The `through` to send a `READ` with once [peer]'s conversation has been seen, or null for none.

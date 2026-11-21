@@ -134,10 +134,11 @@ private fun ContactsList(
             if (contacts.isEmpty()) item { EmptyState(stringResource(R.string.contacts_empty_title), stringResource(R.string.contacts_empty)) }
             items(contacts, key = { it.address.toString() }) { c ->
                 var menu by remember { mutableStateOf(false) }
-                val name = c.name.ifEmpty { Conversations.short(c.address.toString()) }
+                val name = contactName(c)
                 val neighbour = state.records.routingIdOf(c.address)?.let { state.records.neighbours[it] }
                 PersonRow(
-                    avatar = { Avatar(name, key = c.address.toString()) },
+                    // A claimed name's initials are the claim's, not the quotes'.
+                    avatar = { Avatar(c.name.ifEmpty { c.says.orEmpty() }.ifEmpty { name }, key = c.address.toString()) },
                     title = { Text(name, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)) },
                     subtitle = listOfNotNull(
                         stringResource(if (c.session == 1) R.string.session_yes else R.string.session_no),
@@ -205,7 +206,7 @@ private fun ContactsList(
         // Only ever what the user asked for, once told what an owner can do.
         AlertDialog(
             onDismissRequest = { owning = null },
-            title = { Text(stringResource(R.string.make_owner_title, c.name.ifEmpty { Conversations.short(c.address.toString()) })) },
+            title = { Text(stringResource(R.string.make_owner_title, contactName(c))) },
             text = { Text(stringResource(R.string.make_owner_explained, Companion.OWNERS)) },
             confirmButton = {
                 TextButton(onClick = {
@@ -223,7 +224,7 @@ private fun ContactsList(
         var forgetToo by remember(c) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { removing = null },
-            title = { Text(stringResource(R.string.remove_title, c.name.ifEmpty { Conversations.short(c.address.toString()) })) },
+            title = { Text(stringResource(R.string.remove_title, contactName(c))) },
             text = {
                 Column {
                     Text(stringResource(R.string.remove_explained))
@@ -246,7 +247,16 @@ private fun ContactsList(
         )
     }
     renaming?.let { c ->
-        NameDialog(stringResource(R.string.rename), c.name, Companion.NAME_MAX, stringResource(R.string.save), onDismiss = { renaming = null }) { name ->
+        // Where the user gave none, the name the contact gave itself is offered, and said to be its own.
+        val says = c.says?.takeIf { it.isNotEmpty() }
+        NameDialog(
+            stringResource(R.string.rename),
+            c.name.ifEmpty { says.orEmpty() },
+            Companion.NAME_MAX,
+            stringResource(R.string.save),
+            onDismiss = { renaming = null },
+            explained = says?.let { stringResource(R.string.contact_says, it) },
+        ) { name ->
             renaming = null
             repository.submit(Body.SaveContact(c.address, name), report)
         }
@@ -296,12 +306,18 @@ internal fun AddContactDialog(given: String, suggested: String = "", onDismiss: 
     )
 }
 
+/**
+ * What a contact is shown by: the user's name for it; where they gave none, the name it gave itself in
+ * first contact, as its claim (version 19); or its short code.
+ */
+internal fun contactName(c: Body.Contact): String = c.name.ifEmpty { Conversations.claim(c) ?: Conversations.short(c.address.toString()) }
+
 /** A contact's code, for passing the same node on to someone else. */
 @Composable
 private fun CodeDialog(c: Body.Contact, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(c.name.ifEmpty { Conversations.short(c.address.toString()) }) },
+        title = { Text(contactName(c)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 QrCode(c.address, Modifier.fillMaxWidth())

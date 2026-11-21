@@ -36,7 +36,7 @@ object Codec {
         when (b) {
             is Body.Hello -> w.u8(b.version)
             is Body.Sync -> w.u32(b.after)
-            Body.Ping, Body.Off, Body.Ok -> {}
+            Body.Ping, Body.Off, Body.Ok, Body.Look -> {}
             is Body.Synced -> b.news?.let { w.u8(it) }
             is Body.SetTime -> w.u32(b.time)
             is Body.Set -> {
@@ -175,8 +175,9 @@ object Codec {
                 w.str(b.name, Companion.NAME_MAX)
                 // Version 15's.
                 if (b.wake != null) w.u16(b.wake) else require(b.owner == null) { "CONTACT has owner only after wake" }
-                // Version 17's.
-                if (b.owner != null) w.u8(b.owner)
+                // Version 17's, and version 19's after it.
+                if (b.owner != null) w.u8(b.owner) else require(b.says == null) { "CONTACT has says only after owner" }
+                if (b.says != null) w.str(b.says, Companion.NAME_MAX)
             }
             is Body.ContactGone -> w.addr(b.address)
             is Body.Message -> {
@@ -216,6 +217,8 @@ object Codec {
             is Body.Asked -> {
                 w.addr(b.address)
                 w.u8(b.why)
+                // Version 19's.
+                if (b.name != null) w.str(b.name, Companion.NAME_MAX)
             }
             is Body.Group -> {
                 w.gid(b.group)
@@ -367,6 +370,7 @@ object Codec {
             0x13 -> Body.Manage(r.u32(), r.addr(), r.bytes(Companion.REQUEST_MAX))
             0x14 -> Body.Owner(r.addr(), r.u8())
             0x15 -> Body.Trace(r.u32(), r.u32())
+            0x16 -> Body.Look
             0x18 -> Body.SaveContact(r.addr(), r.str(Companion.NAME_MAX))
             0x19 -> Body.RemoveContact(r.addr())
             0x1A -> Body.EndSession(r.addr())
@@ -428,6 +432,7 @@ object Codec {
             }
             0x81 -> Body.Contact(
                 r.addr(), r.u8(), r.str(Companion.NAME_MAX), if (version >= 15) r.u16() else null, if (version >= 17) r.u8() else null,
+                if (version >= 19) r.str(Companion.NAME_MAX) else null,
             )
             0x82 -> Body.ContactGone(r.addr())
             0x83 -> Body.Message(
@@ -438,7 +443,7 @@ object Codec {
             0x86 -> Body.NeighbourGone(r.u32())
             0x87 -> Body.Airtime(r.u32(), r.u32(), r.u32(), r.u32())
             0x88 -> Body.Power(r.u16(), r.u8(), r.u8())
-            0x89 -> Body.Asked(r.addr(), r.u8())
+            0x89 -> Body.Asked(r.addr(), r.u8(), if (version >= 19) r.str(Companion.NAME_MAX) else null)
             0x8A -> Body.Group(r.gid(), r.str(Companion.NAME_MAX))
             0x8B -> Body.GroupGone(r.gid())
             0x8C -> Body.GroupMessage(
