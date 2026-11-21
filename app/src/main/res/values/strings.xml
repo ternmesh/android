@@ -228,12 +228,14 @@
 
     <!-- The node's own presence card -->
     <string name="card_section">Presence card</string>
-    <string name="card_on">Show this node to others nearby</string>
+    <string name="card_on">Show my card to nodes nearby</string>
     <string name="card_on_yes">On: your node sends its card</string>
     <string name="card_on_no">Off: your node sends no card</string>
-    <string name="card_on_explained">Anyone near can see this node\'s address and the name on its card, every couple of hours, and can tell it is the same node each time. Off, your node puts neither on the air. Either way it shows you the cards of others.</string>
+    <string name="card_on_explained">On, your node sends its address and the name above to every node in range, about every two hours, so anyone nearby can recognise it each time, and add it as a contact. Off, it puts neither on the air. Either way it shows you the cards of others.</string>
     <string name="card_name">Name on the card</string>
-    <string name="card_name_explained">The one name your node puts on the air, in clear, while its card is on. Empty for none.</string>
+    <string name="card_name_explained">The name on your card: the one name your node puts on the air, in clear, while its card is on. Empty for none.</string>
+    <!-- Saving the card's name while the card is off, which turns it on too. -->
+    <string name="card_name_save_on">Save and turn on</string>
     <string name="card_name_too_long">At most %1$d bytes</string>
 
     <!-- Node -->
@@ -466,6 +468,13 @@
     <string name="nearby_cards">Showing a card</string>
     <string name="nearby_heard">Heard by your node</string>
     <string name="nearby_heard_no_card">Heard, no card</string>
+    <!-- Under the nodes heard with no card: why they can't be messaged or added. -->
+    <string name="nearby_heard_explained">Your node hears these, but they haven\'t shared a card, so all it knows is a short id, not who they are. To talk to one, ask its owner for their link or QR code, or wait for their card: nodes showing a card send one about every two hours.</string>
+    <!-- The same, for a node too old for cards. -->
+    <string name="nearby_heard_explained_no_cards">Your node hears these, but all it knows of each is a short id, not who they are. To talk to one, ask its owner for their link or QR code.</string>
+    <!-- When one of them is tapped. -->
+    <string name="nearby_heard_one">Your node hears this one, but it hasn\'t shared a card, so all your node knows is its short id, not whose it is. You can\'t message or add it from here. To talk to it, ask its owner for their link or QR code, or wait for its card: nodes showing a card send one about every two hours.</string>
+    <string name="nearby_heard_one_no_cards">Your node hears this one, but all it knows is its short id, not whose it is. You can\'t message or add it from here. To talk to it, ask its owner for their link or QR code.</string>
     <string name="nearby_contact_tag">Contact</string>
     <string name="seen_ago">seen %1$s ago</string>
     <string name="signal_bars">Signal: %1$d of 4 bars</string>

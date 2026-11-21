@@ -3,6 +3,7 @@
 // no card. A card's sender becomes a contact only when the user says so, under the name they choose.
 package org.ternmesh.app.ui
 
+import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,7 +50,8 @@ fun heardNow(state: NodeState, card: Body.Card, now: Long): Long = card.heard + 
  * Who is near: the people whose cards the node holds, first, each by the name it claims and how
  * well the node hears it when it is a neighbour too; then the neighbours with no card, by a
  * contact's name or their routing id. Tapping a contact opens the conversation; tapping a card
- * asks about making a contact of it.
+ * asks about making a contact of it. A node heard with no card is only a routing id, which can be
+ * neither messaged nor added: the list says so under them, and tapping one says why.
  */
 @Composable
 fun NearbyList(repository: NodeRepository, state: NodeState, open: (Peer) -> Unit) {
@@ -63,6 +65,7 @@ fun NearbyList(repository: NodeRepository, state: NodeState, open: (Peer) -> Uni
     val carded = remember(r, cards) { cards.mapNotNull { r.routingIdOf(it.address) }.toSet() }
     val bare = remember(r, carded) { r.neighbours.values.filter { it.routingId !in carded }.sortedBy { it.heard } }
     var choosing by remember { mutableStateOf<Body.Card?>(null) }
+    var unknown by remember { mutableStateOf<Long?>(null) }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         if (cards.isEmpty() && bare.isEmpty()) {
@@ -99,22 +102,54 @@ fun NearbyList(repository: NodeRepository, state: NodeState, open: (Peer) -> Uni
                         if (name != null) {
                             Text(name, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
                         } else {
-                            Text(routingText(n.routingId), style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Monospace)
+                            // Only a routing id: muted, as a row there is nothing to do with.
+                            Text(
+                                routingText(n.routingId),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     },
                     tag = if (contact != null) stringResource(R.string.nearby_contact_tag) else null,
                     subtitle = stringResource(if (n.role == 1) R.string.role_relay_short else R.string.role_leaf_short) + " · " +
                         stringResource(R.string.heard_ago, spanText(n.heard.toLong())),
                     signal = n.snrQuarterDb,
-                    onClick = contact?.let { c -> { open(Peer.Contact(c.address)) } },
+                    // A contact's: its conversation. Otherwise nothing can be done with it, and tapping says why.
+                    onClick = contact?.let { c -> { open(Peer.Contact(c.address)) } } ?: { unknown = n.routingId },
                 )
+            }
+            // Why the ones that are only an id can't be messaged or added, and how to reach them.
+            if (bare.any { Conversations.contactOf(r, it.routingId) == null }) {
+                item { Footnote(heardOnlyText(context, hasCards(state), one = false), Modifier.padding(top = 4.dp)) }
             }
         }
         if (cards.isNotEmpty()) item { Footnote(stringResource(R.string.cards_explained), Modifier.padding(top = 12.dp)) }
-        else if (bare.isNotEmpty() && hasCards(state)) item { Footnote(stringResource(R.string.neighbour_no_card), Modifier.padding(top = 12.dp)) }
     }
     choosing?.let { card -> MakeContactFromCard(repository, card) { choosing = null } }
+    unknown?.let { id ->
+        AlertDialog(
+            onDismissRequest = { unknown = null },
+            title = { Text(routingText(id), fontFamily = FontFamily.Monospace) },
+            text = { Text(heardOnlyText(context, hasCards(state), one = true)) },
+            confirmButton = { TextButton(onClick = { unknown = null }) { Text(stringResource(R.string.ok)) } },
+        )
+    }
 }
+
+/**
+ * Why a node heard with no card can't be messaged or added: all the node knows of it is a routing
+ * id, not its address. [one] for the node tapped, rather than those listed; [cards] whether the node
+ * speaks cards, without which waiting for one is no way to meet it.
+ */
+internal fun heardOnlyText(context: Context, cards: Boolean, one: Boolean): String = context.getString(
+    when {
+        one && cards -> R.string.nearby_heard_one
+        one -> R.string.nearby_heard_one_no_cards
+        cards -> R.string.nearby_heard_explained
+        else -> R.string.nearby_heard_explained_no_cards
+    },
+)
 
 /** A routing id as eight hex digits, one word, as the firmware's log and the trace show it. */
 internal fun routingText(id: Long): String = "%08x".format(id)
