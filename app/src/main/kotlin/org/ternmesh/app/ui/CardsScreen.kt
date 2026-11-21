@@ -1,6 +1,8 @@
 // Who is near: the cards the node holds from other nodes near it, each with the name its sender
 // claims, how long ago it was heard, and whether it is a contact; and the neighbours it hears with
 // no card. A card's sender becomes a contact only when the user says so, under the name they choose.
+// From version 20 the user can have the node ask those in earshot for their cards now (`LOOK`,
+// draft/cards.md, Asking): only when they ask, never on the app's own account.
 package org.ternmesh.app.ui
 
 import android.content.Context
@@ -17,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,13 +38,18 @@ import androidx.compose.ui.unit.dp
 import org.ternmesh.app.R
 import org.ternmesh.app.node.NodeRepository
 import org.ternmesh.app.node.NodeState
+import org.ternmesh.app.node.Phase
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Conversations
+import org.ternmesh.companion.Outcome
 import org.ternmesh.companion.Peer
 import org.ternmesh.companion.Sharing
 
 /** Whether the node speaks cards: version 6 or later. Below it there are none to show or set. */
 fun hasCards(state: NodeState) = (state.version ?: 0) >= 6
+
+/** Whether the node can be asked for the cards of those about now: `LOOK` is version 20's. Below it the list waits for cards as they come. */
+fun canLook(state: NodeState) = (state.version ?: 0) >= 20
 
 /** How many seconds ago the node heard [card], now: its `heard` counts on from when the record came. */
 fun heardNow(state: NodeState, card: Body.Card, now: Long): Long = card.heard + (now - (state.arrived[card] ?: now)) / 1000
@@ -66,8 +74,26 @@ fun NearbyList(repository: NodeRepository, state: NodeState, open: (Peer) -> Uni
     val bare = remember(r, carded) { r.neighbours.values.filter { it.routingId !in carded }.sortedBy { it.heard } }
     var choosing by remember { mutableStateOf<Body.Card?>(null) }
     var unknown by remember { mutableStateOf<Long?>(null) }
+    val say = LocalSay.current
+    val report = rememberReport()
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        if (canLook(state)) {
+            item {
+                // Asked only when the user taps it: an ask goes on the air, and every node about with
+                // its card on answers it. The cards come as any card does; ERROR 16 says it is too soon.
+                Column(Modifier.padding(top = 4.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            repository.submit(Body.Look) { o -> if (o is Outcome.Answered) say(context.getString(R.string.look_asked)) else report(o) }
+                        },
+                        enabled = state.phase == Phase.READY,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    ) { Text(stringResource(R.string.look)) }
+                    Footnote(stringResource(R.string.look_explained))
+                }
+            }
+        }
         if (cards.isEmpty() && bare.isEmpty()) {
             item { EmptyState(stringResource(R.string.nearby_empty_title), stringResource(if (hasCards(state)) R.string.cards_empty else R.string.neighbours_none)) }
         }

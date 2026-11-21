@@ -9,8 +9,8 @@
 //
 // A `SELF` is kept as it came: without `cards` and `card_name` from a connection that spoke version
 // 5 or earlier, and read back so, and without `locked` from one of version 16 or earlier; a
-// `CONTACT` likewise, without `wake` from one of version 14 or earlier, and without `owner` from one
-// of version 16 or earlier. Whether the node sleeps (`SLEEP`) is not kept: like the fix, every sync sends it, and its
+// `CONTACT` likewise, without `wake` from one of version 14 or earlier, without `owner` from one
+// of version 16 or earlier, and without `says` from one of version 18 or earlier. Whether the node sleeps (`SLEEP`) is not kept: like the fix, every sync sends it, and its
 // `retry` counts down. How each message went (`ROUTE`, version 18) is kept, after the messages: a
 // node may keep none across a restart, and a client keeps those it holds.
 //
@@ -85,14 +85,15 @@ object RecordsFile {
      * One record's frame, read as this client's version reads it; a `SELF` that is not one of
      * version 17 as version 16's, keeping its pairing, one that is not that as version 10's, keeping
      * its most, one that is not that as version 9's, keeping its cards, and one that is not that
-     * either as version 5's; and a `CONTACT` without `owner` as version 16's, and one without `wake`
-     * either as version 14's. `SELF` and `CONTACT` are all that differ between the versions' records.
+     * either as version 5's; and a `CONTACT` without `says` as version 18's, one without `owner`
+     * either as version 16's, and one without `wake` either as version 14's. `SELF` and `CONTACT` are all that differ between the versions' records.
      */
     private fun record(frame: ByteArray): Body = try {
         Codec.decode(frame).body
     } catch (e: DecodeException) {
         when (frame.firstOrNull()) {
-            0x81.toByte() -> runCatching { Codec.decode(frame, 16).body }.getOrNull() ?: Codec.decode(frame, 14).body
+            0x81.toByte() -> listOf(18, 16).firstNotNullOfOrNull { v -> runCatching { Codec.decode(frame, v).body }.getOrNull() }
+                ?: Codec.decode(frame, 14).body
             0x80.toByte() -> listOf(16, 10, 9).firstNotNullOfOrNull { v -> runCatching { Codec.decode(frame, v).body }.getOrNull() }
                 ?: Codec.decode(frame, 5).body
             else -> throw e

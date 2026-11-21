@@ -749,7 +749,7 @@ class ConnectionTest {
         node.answerOne()
         node.answerOne()
         node.sent.removeFirst() // SYNC
-        node.news(Body.Contact(Node.BOB, 1, "Bob", 0, 0))
+        node.news(Body.Contact(Node.BOB, 1, "Bob", 0, 0, ""))
         node.answerSync()
         assertEquals(1, node.connection.records.contacts.size)
 
@@ -769,7 +769,7 @@ class ConnectionTest {
         val node = synced(Node.message(10, MessageState.DELIVERED))
         node.connection.resync()
         node.sent.removeFirst() // SYNC
-        node.news(Body.Contact(Node.BOB, 1, "Bob", 0, 0))
+        node.news(Body.Contact(Node.BOB, 1, "Bob", 0, 0, ""))
         node.answerSync()
         assertEquals(1, node.connection.records.contacts.size)
 
@@ -903,6 +903,38 @@ class ConnectionTest {
         assertEquals(Outcome.Answered(Body.Ok), result)
     }
 
+    /**
+     * Names in first contact and asking for cards, by the version both ends speak: a node of 18 sends
+     * an `ASKED` without `name` and a `CONTACT` without `says`, and a node of 18 or 19 is not sent
+     * `LOOK`, which fails here with nothing on the link. A node of 20 takes it, and its `ERROR` 16
+     * is a refusal.
+     */
+    @Test
+    fun namesAreVersion19sAndLookIsVersion20s() {
+        for (version in listOf(18, 19, 20)) {
+            val node = Node(version = version)
+            node.connection.open()
+            node.answerAll()
+            assertEquals(version, node.connection.agreed)
+            node.news(if (version >= 19) Body.Contact(Node.BOB, 1, "", 0, 0, "Bob") else Body.Contact(Node.BOB, 1, "", 0, 0))
+            assertEquals(if (version >= 19) "Bob" else null, node.connection.records.contacts.getValue(Node.BOB).says, "$version")
+            node.news(if (version >= 19) Body.Asked(Node.CAROL, 1, "Carol") else Body.Asked(Node.CAROL, 1))
+            assertEquals(0, node.sent.size, "$version: nothing missed, so no sync")
+
+            var result: Outcome? = null
+            node.connection.submit(Body.Look) { result = it }
+            if (version < 20) {
+                assertEquals(Outcome.Unsupported, result, "$version")
+                assertEquals(0, node.sent.size, "$version")
+            } else {
+                val look = Codec.decode(node.sent.removeFirst())
+                assertEquals(Body.Look, look.body)
+                node.connection.receive(Codec.encode(Frame(look.seq, Body.Error(ErrorCode.TOO_SOON))))
+                assertEquals(Outcome.Refused(ErrorCode.TOO_SOON), result)
+            }
+        }
+    }
+
     /** A sync that missed some of its news forgets no position and turns no sharing off. */
     @Test
     fun aSyncThatMissedNewsKeepsPositionsAndSharing() {
@@ -943,8 +975,8 @@ class ConnectionTest {
         node.answerOne()
         node.answerOne()
         node.sent.removeFirst()
-        node.news(Body.Contact(Node.BOB, 1, "Bob", 0, 0))
-        node.news(Body.Contact(Node.CAROL, 0, "Carol", 0, 0))
+        node.news(Body.Contact(Node.BOB, 1, "Bob", 0, 0, ""))
+        node.news(Body.Contact(Node.CAROL, 0, "Carol", 0, 0, ""))
         node.news(Body.Group(Node.HUT, "Hut"))
         node.news(Body.Neighbour(7, 1, 20, 3))
         node.news(Node.message(3, MessageState.RECEIVED))
@@ -952,7 +984,7 @@ class ConnectionTest {
 
         node.connection.resync()
         node.sent.removeFirst()
-        node.news(Body.Contact(Node.BOB, 1, "Bob", 0, 0))
+        node.news(Body.Contact(Node.BOB, 1, "Bob", 0, 0, ""))
         node.answerSync()
         val r = node.connection.records
         assertEquals(setOf(Node.BOB), r.contacts.keys)

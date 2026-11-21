@@ -132,13 +132,14 @@ class RecordsFileTest {
         assertEquals(seventeen, RecordsFile.decode(RecordsFile.encode(seventeen)))
     }
 
-    /** A `CONTACT` is kept as it came too: without `owner` from version 16, without `wake` from 14, and with both from 17. */
+    /** A `CONTACT` is kept as it came too: without `owner` from version 16, without `wake` from 14, with both from 17, and with `says` from 19. */
     @Test
     fun aContactOfAnEarlierVersionIsKept() {
         for ((version, contact) in listOf(
             14 to Body.Contact(bob, 1, "Bob"),
             16 to Body.Contact(bob, 1, "Bob", 900),
             17 to Body.Contact(bob, 1, "Bob", 0, 1),
+            20 to Body.Contact(bob, 1, "", 0, 1, "Robert"),
         )) {
             val r = Records().apply {
                 apply(contact)
@@ -180,6 +181,23 @@ class RecordsFileTest {
         val c = Conversations.of(r)
         assertEquals(listOf("Bob", Conversations.short(alice.toString()), "00000000…", "Hikers"), c.map { it.name })
         assertEquals(listOf(0, 1, 0, 0), c.map { it.unread })
+    }
+
+    /**
+     * A contact the user gave no name is shown by the name it gave itself (version 19), in quotes as
+     * its claim, with its short code; never in place of a name the user gave it.
+     */
+    @Test
+    fun aContactsOwnNameIsItsClaimAndOnlyWhereTheUserGaveNone() {
+        val r = Records().apply {
+            apply(Body.Contact(alice, 1, "", 0, 0, "Alice"))
+            apply(Body.Contact(bob, 1, "Bob", 0, 0, "Robert"))
+        }
+        assertEquals("“Alice” · a1a1a1a1…", Conversations.name(r, Peer.Contact(alice)))
+        assertEquals("Bob", Conversations.name(r, Peer.Contact(bob)))
+        r.apply(Body.Contact(alice, 1, "", 0, 0, ""))
+        assertEquals("a1a1a1a1…", Conversations.name(r, Peer.Contact(alice)))
+        assertNull(Conversations.claim(Body.Contact(alice, 1, "", 0, 0)))
     }
 
     /** A READ stops short of the first unread item in another conversation, which it would mark too. */
