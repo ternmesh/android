@@ -1049,7 +1049,7 @@ internal fun PresenceCard(self: Body.Self, set: (List<Setting>) -> Unit) {
         )
         TextButton(
             onClick = { set(cardRequests(on, current, name, turnOn = true)) },
-            enabled = !tooLong && (!on || name.trim() != current),
+            enabled = !tooLong && name.trim() != current,
         ) { Text(stringResource(if (on) R.string.save else R.string.card_name_save_on)) }
     }
 }
