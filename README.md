@@ -8,8 +8,9 @@ in Kotlin.
 What the app is, and why it is native, is in
 [decisions/phone-apps.md](https://github.com/ternmesh/spec/blob/main/decisions/phone-apps.md).
 It finds a node, pairs with it, and keeps a link to it in the background; it shows conversations
-with contacts and groups, where each message is and what it waits for, the node's battery, airtime
-and the nodes it hears, and changes its region, role, power and passkey, with the power set to a number or to the most the node
+with contacts and groups, where each message is and what it waits for, the node's battery and airtime
+over the past week as this phone heard them,
+the nodes it hears, and changes its region, role, power and passkey, with the power set to a number or to the most the node
 works out it may send at. It updates the node's
 firmware with the release ternmesh.org publishes for its board and region: over the same link for
 an ESP32 board, and through its bootloader for an nRF52840 board (Heltec T114, Seeed T1000-E), as

@@ -262,6 +262,8 @@ internal fun TernApp(
                     composable(NodePage.PRIVACY.route) { PrivacyScreen(repository, state, back) }
                     composable(NodePage.PIN.route) { PinScreen(repository, state, back) }
                     composable(NodePage.ABOUT.route) { AboutScreen(repository, state, back) }
+                    composable(NodePage.BATTERY.route) { BatteryScreen(state, back) }
+                    composable(NodePage.AIRTIME.route) { AirtimeScreen(state, back) }
                     composable("manage/{address}") { entry ->
                         val address = entry.arguments?.getString("address")?.let(Address::fromHex)
                         if (address != null) ManageScreen(repository, state, address, back)
