@@ -7,21 +7,20 @@
 // for the node to apply with one restart rather than one in the middle of each step.
 package org.ternmesh.app.ui
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -32,9 +31,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import org.ternmesh.app.R
 import org.ternmesh.app.node.NodeRepository
@@ -42,7 +42,6 @@ import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
 import org.ternmesh.companion.Body
 import org.ternmesh.companion.Setting
-import org.ternmesh.companion.Sharing
 
 private enum class Step { REGION, ROLE, CONTACT }
 
@@ -76,57 +75,94 @@ fun SetupScreen(repository: NodeRepository, state: NodeState, modifier: Modifier
     val step = steps[at.coerceAtMost(steps.lastIndex)]
     val next: () -> Unit = { if (at < steps.lastIndex) at++ else finish() }
 
-    Column(
-        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        if (steps.size > 1) LinearProgressIndicator(progress = { (at + 1f) / steps.size }, modifier = Modifier.fillMaxWidth())
-        when (step) {
-            Step.REGION -> {
-                Text(stringResource(R.string.setup_region_title), style = MaterialTheme.typography.headlineSmall)
-                Text(stringResource(R.string.setup_region_explained))
-                for ((name, detail) in REGIONS) {
-                    Option(
-                        selected = chosenRegion == name,
-                        title = name,
-                        detail = stringResource(detail),
-                    ) { region = name }
+    val context = LocalContext.current
+    Column(modifier.fillMaxSize()) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
+            Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 4.dp)) {
+                if (steps.size > 1) {
+                    Text(
+                        stringResource(R.string.setup_step, at + 1, steps.size),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    LinearProgressIndicator(
+                        progress = { (at + 1f) / steps.size },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).clip(RoundedCornerShape(2.dp)),
+                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        drawStopIndicator = {},
+                    )
                 }
-                Text(stringResource(R.string.setup_region_law), style = MaterialTheme.typography.bodySmall)
-            }
-            Step.ROLE -> {
-                Text(stringResource(R.string.setup_role_title), style = MaterialTheme.typography.headlineSmall)
-                Text(stringResource(R.string.setup_role_explained))
-                Option(chosenRole == 0, stringResource(R.string.role_leaf_short), stringResource(R.string.setup_role_leaf)) {
-                    role = 0
-                }
-                Option(chosenRole == 1, stringResource(R.string.role_relay_short), stringResource(R.string.setup_role_relay)) {
-                    role = 1
-                }
-            }
-            Step.CONTACT -> {
-                Text(stringResource(R.string.setup_contact_title), style = MaterialTheme.typography.headlineSmall)
-                Text(stringResource(R.string.setup_contact_explained))
-                QrCode(self.address, Modifier.fillMaxWidth().align(Alignment.CenterHorizontally))
                 Text(
-                    Sharing.shortCode(self.address),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    stringResource(
+                        when (step) {
+                            Step.REGION -> R.string.setup_region_title
+                            Step.ROLE -> R.string.setup_role_title
+                            Step.CONTACT -> R.string.setup_contact_title
+                        },
+                    ),
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(top = 16.dp),
                 )
-                OutlinedButton(onClick = { adding = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.add_contact))
+                Text(
+                    stringResource(
+                        when (step) {
+                            Step.REGION -> R.string.setup_region_explained
+                            Step.ROLE -> R.string.setup_role_explained
+                            Step.CONTACT -> R.string.setup_contact_explained
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 12.dp),
+                )
+            }
+            when (step) {
+                Step.REGION -> {
+                    SettingsGroup {
+                        REGIONS.forEachIndexed { i, (name, detail) ->
+                            if (i > 0) GroupDivider()
+                            ChoiceRow(name, stringResource(detail), selected = chosenRegion == name) { region = name }
+                        }
+                    }
+                    Footnote(stringResource(R.string.setup_region_law), Modifier.padding(top = 4.dp))
                 }
-                if (state.records.contacts.isNotEmpty()) {
-                    Text(pluralStringResource(R.plurals.setup_contacts_count, state.records.contacts.size, state.records.contacts.size))
+                Step.ROLE -> SettingsGroup {
+                    RoleChoice(stringResource(R.string.role_leaf_title), stringResource(R.string.role_leaf_short), stringResource(R.string.setup_role_leaf), chosenRole == 0) {
+                        role = 0
+                    }
+                    GroupDivider()
+                    RoleChoice(stringResource(R.string.role_relay_title), stringResource(R.string.role_relay_short), stringResource(R.string.setup_role_relay), chosenRole == 1) {
+                        role = 1
+                    }
+                }
+                Step.CONTACT -> {
+                    AddressHero(state.node?.shown ?: stringResource(R.string.unnamed_device), self.address) {
+                        HeroButton(TernIcons.Share, stringResource(R.string.share_link), Modifier.weight(1f)) { shareLink(context, self.address) }
+                        HeroButton(TernIcons.People, stringResource(R.string.add_contact), Modifier.weight(1f)) { adding = true }
+                    }
+                    if (state.records.contacts.isNotEmpty()) {
+                        Footnote(
+                            pluralStringResource(R.plurals.setup_contacts_count, state.records.contacts.size, state.records.contacts.size),
+                            Modifier.padding(top = 4.dp),
+                        )
+                    }
                 }
             }
         }
-        Spacer(Modifier.weight(1f, fill = false))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        // Where to go next, kept in reach under the list rather than at the end of it.
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             // The region cannot be skipped: until it is set the node sends nothing at all.
-            if (step != Step.REGION) TextButton(onClick = finish) { Text(stringResource(R.string.setup_skip)) } else Spacer(Modifier)
-            Button(onClick = next, enabled = step != Step.REGION || chosenRegion.isNotEmpty()) {
+            if (step != Step.REGION) TextButton(onClick = finish) { Text(stringResource(R.string.setup_skip)) }
+            Spacer(Modifier.weight(1f))
+            Button(
+                onClick = next,
+                enabled = step != Step.REGION || chosenRegion.isNotEmpty(),
+                contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
+            ) {
                 Text(stringResource(if (at < steps.lastIndex) R.string.setup_next else R.string.setup_done))
             }
         }
@@ -136,21 +172,6 @@ fun SetupScreen(repository: NodeRepository, state: NodeState, modifier: Modifier
         AddContactDialog("", onDismiss = { adding = false }) { address, name ->
             adding = false
             repository.submit(Body.SaveContact(address, name), report)
-        }
-    }
-}
-
-/** One choice of several, with what it means under it. */
-@Composable
-private fun Option(selected: Boolean, title: String, detail: String, choose: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().selectable(selected = selected, onClick = choose).padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = null)
-        Column(Modifier.padding(start = 12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(detail, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }

@@ -34,8 +34,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -47,6 +51,80 @@ import androidx.compose.ui.unit.sp
 import org.ternmesh.app.R
 import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
+
+/**
+ * The card at the head of a screen, on the dashboard's teal: the node's dashboard, a reading, the
+ * address, a trace or a range test each lead with one, so that what a screen is about is found first.
+ */
+@Composable
+fun HeroCard(
+    modifier: Modifier = Modifier,
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val extra = LocalTernColors.current
+    Column(
+        modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(Brush.linearGradient(listOf(extra.heroTop, extra.heroBottom)))
+            .padding(18.dp),
+        horizontalAlignment = horizontalAlignment,
+        content = content,
+    )
+}
+
+/** A button on a [HeroCard]: an icon and a word, on a lighter wash of the card's own colour. */
+@Composable
+fun HeroButton(icon: ImageVector?, text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    val on = LocalTernColors.current.onHero
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(14.dp),
+        color = on.copy(alpha = if (enabled) 0.18f else 0.08f),
+        contentColor = if (enabled) on else on.copy(alpha = 0.5f),
+        modifier = modifier,
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            icon?.let {
+                Icon(it, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** A status line on a [HeroCard]: a dot coloured for how it is going, and what it is doing. */
+@Composable
+fun HeroStatus(text: String, good: Boolean, modifier: Modifier = Modifier) {
+    val on = LocalTernColors.current.onHero
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(if (good) HeroGood else HeroWarn))
+        Spacer(Modifier.width(7.dp))
+        Text(text, style = MaterialTheme.typography.bodySmall, color = on.copy(alpha = 0.85f))
+    }
+}
+
+/** The status dot's colours on a [HeroCard], light enough to read on its teal. */
+val HeroGood = Color(0xFF9FF0C6)
+val HeroWarn = Color(0xFFFFD08A)
+
+/** One choice of several in a [SettingsGroup]: a radio button, its name, and what it means under it. */
+@Composable
+fun ChoiceRow(title: String, detail: String?, selected: Boolean, choose: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().selectable(selected = selected, role = Role.RadioButton, onClick = choose)
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null, modifier = Modifier.padding(12.dp))
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
+            detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+    }
+}
 
 /** A tab's own title, large, with the node's status at its end, and [actions] before it. */
 @Composable

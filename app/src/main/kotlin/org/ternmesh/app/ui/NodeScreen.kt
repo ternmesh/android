@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -319,88 +320,82 @@ private fun NodeHero(repository: NodeRepository, state: NodeState, go: (NodePage
     val extra = LocalTernColors.current
     val r = state.records
     val ready = state.phase == Phase.READY
-    Box(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(Brush.linearGradient(listOf(extra.heroTop, extra.heroBottom))),
-    ) {
-        Column(Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    state.node?.shown ?: stringResource(R.string.unnamed_device),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = extra.onHero,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+    HeroCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                state.node?.shown ?: stringResource(R.string.unnamed_device),
+                style = MaterialTheme.typography.headlineSmall,
+                color = extra.onHero,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (state.node != null) {
+                IconButton(onClick = rename, modifier = Modifier.size(36.dp)) {
+                    Icon(TernIcons.Edit, stringResource(R.string.rename), tint = extra.onHero.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(if (ready) HeroGood else HeroWarn))
+            Spacer(Modifier.width(7.dp))
+            Text(
+                listOfNotNull(
+                    phaseText(context, state),
+                    state.board?.takeIf { it.isNotEmpty() },
+                    r.self?.let { stringResource(if (it.role == 1) R.string.role_relay_short else R.string.role_leaf_short) },
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = extra.onHero.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (r.power != null || r.airtime != null) {
+            Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val p = r.power
+                Gauge(
+                    stringResource(R.string.battery),
+                    value = p?.percent?.takeIf { it in 0..100 }?.let { "$it%" } ?: stringResource(R.string.unknown),
+                    fraction = p?.percent?.takeIf { it in 0..100 }?.let { it / 100f },
+                    hint = when {
+                        p == null -> null
+                        p.flags and 1 != 0 -> stringResource(R.string.charging)
+                        p.flags and 2 != 0 -> stringResource(R.string.external_power)
+                        p.millivolts > 0 -> stringResource(R.string.battery_volts, p.millivolts / 1000.0)
+                        else -> null
+                    },
+                    onClick = { go(NodePage.BATTERY) },
+                    modifier = Modifier.weight(1f),
                 )
-                if (state.node != null) {
-                    IconButton(onClick = rename, modifier = Modifier.size(36.dp)) {
-                        Icon(TernIcons.Edit, stringResource(R.string.rename), tint = extra.onHero.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
-                    }
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(if (ready) Color(0xFF9FF0C6) else Color(0xFFFFD08A)))
-                Spacer(Modifier.width(7.dp))
-                Text(
-                    listOfNotNull(
-                        phaseText(context, state),
-                        state.board?.takeIf { it.isNotEmpty() },
-                        r.self?.let { stringResource(if (it.role == 1) R.string.role_relay_short else R.string.role_leaf_short) },
-                    ).joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = extra.onHero.copy(alpha = 0.85f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                val a = r.airtime
+                Gauge(
+                    stringResource(R.string.airtime_label),
+                    value = when {
+                        a == null -> stringResource(R.string.unknown)
+                        a.period == 0L -> stringResource(R.string.airtime_no_limit_short)
+                        else -> "${(100 * a.used / a.allowed.coerceAtLeast(1)).coerceIn(0, 100)}%"
+                    },
+                    fraction = a?.takeIf { it.period != 0L }?.let { (it.used.toFloat() / it.allowed.coerceAtLeast(1)).coerceIn(0f, 1f) },
+                    hint = when {
+                        a == null -> null
+                        a.wait > 0 -> stringResource(R.string.airtime_wait, a.wait / 1000.0)
+                        a.period == 0L -> stringResource(R.string.airtime_unlimited)
+                        a.used * 10 >= a.allowed * 9 -> stringResource(R.string.airtime_nearly_out)
+                        a.used * 2 >= a.allowed -> stringResource(R.string.airtime_half)
+                        else -> stringResource(R.string.airtime_plenty)
+                    },
+                    onClick = { go(NodePage.AIRTIME) },
+                    modifier = Modifier.weight(1f),
                 )
             }
-            if (r.power != null || r.airtime != null) {
-                Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val p = r.power
-                    Gauge(
-                        stringResource(R.string.battery),
-                        value = p?.percent?.takeIf { it in 0..100 }?.let { "$it%" } ?: stringResource(R.string.unknown),
-                        fraction = p?.percent?.takeIf { it in 0..100 }?.let { it / 100f },
-                        hint = when {
-                            p == null -> null
-                            p.flags and 1 != 0 -> stringResource(R.string.charging)
-                            p.flags and 2 != 0 -> stringResource(R.string.external_power)
-                            p.millivolts > 0 -> stringResource(R.string.battery_volts, p.millivolts / 1000.0)
-                            else -> null
-                        },
-                        onClick = { go(NodePage.BATTERY) },
-                        modifier = Modifier.weight(1f),
-                    )
-                    val a = r.airtime
-                    Gauge(
-                        stringResource(R.string.airtime_label),
-                        value = when {
-                            a == null -> stringResource(R.string.unknown)
-                            a.period == 0L -> stringResource(R.string.airtime_no_limit_short)
-                            else -> "${(100 * a.used / a.allowed.coerceAtLeast(1)).coerceIn(0, 100)}%"
-                        },
-                        fraction = a?.takeIf { it.period != 0L }?.let { (it.used.toFloat() / it.allowed.coerceAtLeast(1)).coerceIn(0f, 1f) },
-                        hint = when {
-                            a == null -> null
-                            a.wait > 0 -> stringResource(R.string.airtime_wait, a.wait / 1000.0)
-                            a.period == 0L -> stringResource(R.string.airtime_unlimited)
-                            a.used * 10 >= a.allowed * 9 -> stringResource(R.string.airtime_nearly_out)
-                            a.used * 2 >= a.allowed -> stringResource(R.string.airtime_half)
-                            else -> stringResource(R.string.airtime_plenty)
-                        },
-                        onClick = { go(NodePage.AIRTIME) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-            Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (r.self != null) HeroButton(TernIcons.Qr, stringResource(R.string.node_my_address), Modifier.weight(1f)) { go(NodePage.ADDRESS) }
-                if (state.phase.stayingOff) {
-                    HeroButton(TernIcons.Link, stringResource(R.string.connect), Modifier.weight(1f), onClick = repository::connect)
-                } else {
-                    HeroButton(TernIcons.Unlink, stringResource(R.string.disconnect), Modifier.weight(1f), onClick = repository::disconnect)
-                }
+        }
+        Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (r.self != null) HeroButton(TernIcons.Qr, stringResource(R.string.node_my_address), Modifier.weight(1f)) { go(NodePage.ADDRESS) }
+            if (state.phase.stayingOff) {
+                HeroButton(TernIcons.Link, stringResource(R.string.connect), Modifier.weight(1f), onClick = repository::connect)
+            } else {
+                HeroButton(TernIcons.Unlink, stringResource(R.string.disconnect), Modifier.weight(1f), onClick = repository::disconnect)
             }
         }
     }
@@ -430,24 +425,45 @@ private fun Gauge(label: String, value: String, fraction: Float?, hint: String?,
     }
 }
 
-@Composable
-private fun HeroButton(icon: ImageVector, text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val on = LocalTernColors.current.onHero
-    Surface(onClick = onClick, shape = RoundedCornerShape(14.dp), color = on.copy(alpha = 0.18f), contentColor = on, modifier = modifier) {
-        Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(text, style = MaterialTheme.typography.labelLarge)
-        }
-    }
-}
-
 /** A screen the dashboard opens: its bar, and its content scrolling under it. */
 @Composable
 internal fun NodeSubScreen(title: String, back: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxSize()) {
         SubScreenBar(title, back)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 24.dp), content = content)
+    }
+}
+
+/**
+ * A node's address on a [HeroCard]: its name, its QR code to scan and its short code to read out,
+ * with [actions] in a row under them. The address screen and the setup's last step both show it.
+ */
+@Composable
+internal fun AddressHero(name: String, address: org.ternmesh.companion.Address, actions: @Composable RowScope.() -> Unit) {
+    val on = LocalTernColors.current.onHero
+    HeroCard(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(name, style = MaterialTheme.typography.titleMedium, color = on, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // The code stays black on white whatever the theme, or a scanner may not read it.
+        Box(Modifier.padding(top = 14.dp).clip(RoundedCornerShape(18.dp)).background(Color.White).padding(10.dp)) {
+            QrCode(address, Modifier.size(200.dp))
+        }
+        Text(
+            stringResource(R.string.short_code).uppercase(),
+            style = SectionLabel,
+            color = on.copy(alpha = 0.75f),
+            modifier = Modifier.padding(top = 16.dp),
+        )
+        SelectionContainer {
+            Text(
+                Sharing.shortCode(address),
+                style = MaterialTheme.typography.headlineMedium.copy(letterSpacing = 2.sp),
+                fontFamily = FontFamily.Monospace,
+                color = on,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), content = actions)
     }
 }
 
@@ -459,50 +475,14 @@ internal fun NodeSubScreen(title: String, back: () -> Unit, content: @Composable
 fun AddressScreen(state: NodeState, back: () -> Unit) {
     val context = LocalContext.current
     val say = LocalSay.current
-    val extra = LocalTernColors.current
     NodeSubScreen(stringResource(R.string.node_my_address), back) {
         val s = state.records.self ?: return@NodeSubScreen
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(Brush.linearGradient(listOf(extra.heroTop, extra.heroBottom)))
-                .padding(18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                state.node?.shown ?: stringResource(R.string.unnamed_device),
-                style = MaterialTheme.typography.titleMedium,
-                color = extra.onHero,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            // The code stays black on white whatever the theme, or a scanner may not read it.
-            Box(Modifier.padding(top = 14.dp).clip(RoundedCornerShape(18.dp)).background(Color.White).padding(10.dp)) {
-                QrCode(s.address, Modifier.size(200.dp))
-            }
-            Text(
-                stringResource(R.string.short_code).uppercase(),
-                style = SectionLabel,
-                color = extra.onHero.copy(alpha = 0.75f),
-                modifier = Modifier.padding(top = 16.dp),
-            )
-            SelectionContainer {
-                Text(
-                    Sharing.shortCode(s.address),
-                    style = MaterialTheme.typography.headlineMedium.copy(letterSpacing = 2.sp),
-                    fontFamily = FontFamily.Monospace,
-                    color = extra.onHero,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-            }
-            Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                HeroButton(TernIcons.Share, stringResource(R.string.share_link), Modifier.weight(1f)) { shareLink(context, s.address) }
-                HeroButton(TernIcons.Copy, stringResource(R.string.copy), Modifier.weight(1f)) {
-                    context.getSystemService(ClipboardManager::class.java)
-                        .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.node_address), Sharing.text(s.address)))
-                    say(context.getString(R.string.copied))
-                }
+        AddressHero(state.node?.shown ?: stringResource(R.string.unnamed_device), s.address) {
+            HeroButton(TernIcons.Share, stringResource(R.string.share_link), Modifier.weight(1f)) { shareLink(context, s.address) }
+            HeroButton(TernIcons.Copy, stringResource(R.string.copy), Modifier.weight(1f)) {
+                context.getSystemService(ClipboardManager::class.java)
+                    .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.node_address), Sharing.text(s.address)))
+                say(context.getString(R.string.copied))
             }
         }
 
