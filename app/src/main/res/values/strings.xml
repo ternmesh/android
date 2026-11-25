@@ -492,6 +492,9 @@
     <string name="snr_db">%1$.1f dB</string>
     <string name="node_my_address">My address</string>
     <string name="node_address_full">Full address</string>
+    <string name="address_how">How others add you</string>
+    <string name="address_scan">Scan the code</string>
+    <string name="address_read_out">Read out the short code</string>
     <string name="share_link">Share link</string>
     <string name="node_nearby_nodes">Nearby nodes</string>
     <string name="node_heard_none">None heard</string>

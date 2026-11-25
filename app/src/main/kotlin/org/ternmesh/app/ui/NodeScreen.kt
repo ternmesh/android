@@ -32,7 +32,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -452,53 +451,87 @@ internal fun NodeSubScreen(title: String, back: () -> Unit, content: @Composable
     }
 }
 
-/** The node's address: its QR code to scan, the short code to read out, and the link to send. */
+/**
+ * The node's address, laid out as the dashboard is: a head on the dashboard's colours with its QR
+ * code, its short code and the two ways to send it; then how others use each, and the full address.
+ */
 @Composable
 fun AddressScreen(state: NodeState, back: () -> Unit) {
     val context = LocalContext.current
     val say = LocalSay.current
+    val extra = LocalTernColors.current
     NodeSubScreen(stringResource(R.string.node_my_address), back) {
         val s = state.records.self ?: return@NodeSubScreen
-        Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
-            Box(Modifier.clip(RoundedCornerShape(20.dp)).background(Color.White).padding(12.dp)) {
-                QrCode(s.address, Modifier.size(220.dp))
-            }
-        }
-        Footnote(stringResource(R.string.qr_explained), Modifier.padding(top = 8.dp))
-        SectionHeader(stringResource(R.string.short_code))
-        Text(
-            Sharing.shortCode(s.address),
-            style = MaterialTheme.typography.headlineMedium,
-            fontFamily = FontFamily.Monospace,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Footnote(stringResource(R.string.short_code_explained))
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = { shareLink(context, s.address) }, modifier = Modifier.weight(1f)) {
-                Icon(TernIcons.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.share_link))
-            }
-            FilledTonalButton(onClick = {
-                context.getSystemService(ClipboardManager::class.java)
-                    .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.node_address), Sharing.text(s.address)))
-                say(context.getString(R.string.copied))
-            }, modifier = Modifier.weight(1f)) {
-                Icon(TernIcons.Copy, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.copy))
-            }
-        }
-        SectionHeader(stringResource(R.string.node_address_full))
-        SelectionContainer {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Brush.linearGradient(listOf(extra.heroTop, extra.heroBottom)))
+                .padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Text(
-                Sharing.grouped(s.address),
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp),
+                state.node?.shown ?: stringResource(R.string.unnamed_device),
+                style = MaterialTheme.typography.titleMedium,
+                color = extra.onHero,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
+            // The code stays black on white whatever the theme, or a scanner may not read it.
+            Box(Modifier.padding(top = 14.dp).clip(RoundedCornerShape(18.dp)).background(Color.White).padding(10.dp)) {
+                QrCode(s.address, Modifier.size(200.dp))
+            }
+            Text(
+                stringResource(R.string.short_code).uppercase(),
+                style = SectionLabel,
+                color = extra.onHero.copy(alpha = 0.75f),
+                modifier = Modifier.padding(top = 16.dp),
+            )
+            SelectionContainer {
+                Text(
+                    Sharing.shortCode(s.address),
+                    style = MaterialTheme.typography.headlineMedium.copy(letterSpacing = 2.sp),
+                    fontFamily = FontFamily.Monospace,
+                    color = extra.onHero,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                HeroButton(TernIcons.Share, stringResource(R.string.share_link), Modifier.weight(1f)) { shareLink(context, s.address) }
+                HeroButton(TernIcons.Copy, stringResource(R.string.copy), Modifier.weight(1f)) {
+                    context.getSystemService(ClipboardManager::class.java)
+                        .setPrimaryClip(ClipData.newPlainText(context.getString(R.string.node_address), Sharing.text(s.address)))
+                    say(context.getString(R.string.copied))
+                }
+            }
+        }
+
+        SectionHeader(stringResource(R.string.address_how))
+        SettingsGroup {
+            SettingsRow(
+                stringResource(R.string.address_scan),
+                icon = TernIcons.Qr, tint = RowTint.link,
+                subtitle = stringResource(R.string.qr_explained),
+            )
+            GroupDivider()
+            SettingsRow(
+                stringResource(R.string.address_read_out),
+                icon = TernIcons.Chats, tint = RowTint.nearby,
+                subtitle = stringResource(R.string.short_code_explained),
+            )
+        }
+
+        SectionHeader(stringResource(R.string.node_address_full))
+        SettingsGroup {
+            SelectionContainer {
+                Text(
+                    Sharing.grouped(s.address),
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
         }
     }
 }
