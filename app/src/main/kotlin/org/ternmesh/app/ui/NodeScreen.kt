@@ -1,4 +1,5 @@
-// The node itself, as a dashboard: its name, link, battery and airtime at the head, then a row for
+// The node itself, as a dashboard: its name, link, battery and airtime at the head, each meter
+// opening its own screen of how it went over time, then a row for
 // each thing about it, each opening a screen of its own: its address to give others, the nodes it
 // hears, its radio, what it shows of itself, its pairing PIN, and its firmware; and, last,
 // switching to another node, turning it off, or forgetting it.
@@ -118,6 +119,8 @@ enum class NodePage(val route: String) {
     PIN("node/pin"),
     ABOUT("node/about"),
     RANGE("range"),
+    BATTERY("node/battery"),
+    AIRTIME("node/airtime"),
 }
 
 /** Each kind of setting's colour, so that it is found by colour as well as by name. */
@@ -367,6 +370,7 @@ private fun NodeHero(repository: NodeRepository, state: NodeState, go: (NodePage
                             p.millivolts > 0 -> stringResource(R.string.battery_volts, p.millivolts / 1000.0)
                             else -> null
                         },
+                        onClick = { go(NodePage.BATTERY) },
                         modifier = Modifier.weight(1f),
                     )
                     val a = r.airtime
@@ -386,6 +390,7 @@ private fun NodeHero(repository: NodeRepository, state: NodeState, go: (NodePage
                             a.used * 2 >= a.allowed -> stringResource(R.string.airtime_half)
                             else -> stringResource(R.string.airtime_plenty)
                         },
+                        onClick = { go(NodePage.AIRTIME) },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -402,11 +407,19 @@ private fun NodeHero(repository: NodeRepository, state: NodeState, go: (NodePage
     }
 }
 
+/** A meter on the dashboard's head: what it measures, its value, a bar, and a hint; it opens a screen of its own. */
 @Composable
-private fun Gauge(label: String, value: String, fraction: Float?, hint: String?, modifier: Modifier = Modifier) {
+private fun Gauge(label: String, value: String, fraction: Float?, hint: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val on = LocalTernColors.current.onHero
-    Column(modifier.clip(RoundedCornerShape(16.dp)).background(on.copy(alpha = 0.13f)).padding(12.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = on.copy(alpha = 0.85f))
+    Column(
+        modifier.clip(RoundedCornerShape(16.dp)).background(on.copy(alpha = 0.13f))
+            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.reading_open), onClick = onClick)
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = on.copy(alpha = 0.85f), modifier = Modifier.weight(1f))
+            Icon(TernIcons.Chevron, contentDescription = null, tint = on.copy(alpha = 0.7f), modifier = Modifier.size(14.dp))
+        }
         Text(value, style = MaterialTheme.typography.headlineSmall, color = on, maxLines = 1)
         Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(on.copy(alpha = 0.25f))) {
             fraction?.let { Box(Modifier.fillMaxWidth(it).height(6.dp).clip(RoundedCornerShape(3.dp)).background(on)) }

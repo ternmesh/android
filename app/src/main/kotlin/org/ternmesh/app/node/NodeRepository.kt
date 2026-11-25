@@ -249,6 +249,8 @@ data class NodeState(
      * elapsed clock: the `age`, `minutes` and `heard` each gives are as of then.
      */
     val arrived: Map<Body, Long> = emptyMap(),
+    /** The node's battery and airtime as this phone heard them over time, for their screens' charts; kept on disk. */
+    val readings: Readings = Readings(),
 )
 
 class NodeRepository(private val context: Context) {
@@ -346,6 +348,9 @@ class NodeRepository(private val context: Context) {
     private var rangeRunning = false
     private val phoneFixes = PhoneFixes(context)
 
+    /** The node's battery and airtime as heard, kept on disk beside its records. */
+    private var readings = Readings()
+
     init {
         link.onState = ::linkState
         link.onFrame = { frame ->
@@ -358,6 +363,7 @@ class NodeRepository(private val context: Context) {
             // A node chosen before the app kept a list of them.
             if (!knownPrefs.contains(address)) remember(node)
             adopt(load(address))
+            readings = loadReadings(address)
             val phase = when {
                 prefs.getBoolean(KEY_OFF, false) -> Phase.OFF
                 prefs.getBoolean(KEY_DISCONNECTED, false) -> Phase.DISCONNECTED
@@ -367,7 +373,7 @@ class NodeRepository(private val context: Context) {
                 it.copy(
                     node = node, phase = phase, records = connection.records.copy(),
                     unanswered = loadUnanswered(address), asked = loadAsked(address), ownerChanges = loadOwnerChanges(address),
-                    owned = loadOwned(address),
+                    owned = loadOwned(address), readings = readings,
                 )
             }
         }
@@ -391,11 +397,12 @@ class NodeRepository(private val context: Context) {
             leave()
             prefs.edit().putString(KEY_ADDRESS, node.address).putString(KEY_NAME, node.name).apply()
             adopt(load(node.address))
+            readings = loadReadings(node.address)
             update {
                 NodeState(
                     node = node, records = connection.records.copy(), unanswered = loadUnanswered(node.address),
                     asked = loadAsked(node.address), ownerChanges = loadOwnerChanges(node.address),
-                    owned = loadOwned(node.address), relayNames = it.relayNames,
+                    owned = loadOwned(node.address), relayNames = it.relayNames, readings = readings,
                 )
             }
         }
@@ -457,6 +464,7 @@ class NodeRepository(private val context: Context) {
         scheduleRange()
         link.disconnect()
         connection.close()
+        endReadings()
         save()
         NodeService.stop(context)
     }
@@ -471,7 +479,9 @@ class NodeRepository(private val context: Context) {
         handler.removeCallbacksAndMessages(null)
         link.disconnect()
         connection.close()
+        endReadings()
         save()
+        readings = Readings()
         prefs.edit().clear().apply()
         NodeService.stop(context)
         // A notification names only an address or group: opened after another node is chosen, it
@@ -487,6 +497,7 @@ class NodeRepository(private val context: Context) {
     fun forget(address: String) {
         if (_state.value.node?.address == address) leave()
         file(address).delete()
+        readingsFile(address).delete()
         unansweredPrefs.edit().remove(address).apply()
         askedPrefs.edit().remove(address).apply()
         ownersFile(address).delete()
@@ -1594,6 +1605,7 @@ class NodeRepository(private val context: Context) {
                 if (_state.value.phase == Phase.BOOTLOADER) return
                 connection.close()
                 handler.removeCallbacks(tick)
+                endReadings()
                 save()
                 val node = _state.value.node
                 if (s.why == LinkFailure.LOST && node != null) {
@@ -1642,6 +1654,7 @@ class NodeRepository(private val context: Context) {
             }
             ConnectionEvent.Gone -> {
                 link.disconnect()
+                endReadings()
                 if (_state.value.phase == Phase.BOOTLOADER) return
                 val node = _state.value.node ?: return
                 update { it.copy(phase = Phase.CONNECTING, problem = Problem.Gone) }
@@ -1679,6 +1692,7 @@ class NodeRepository(private val context: Context) {
         if (body is Body.Traced) return
         if (body is Body.Forgotten) forgotten(Peer.Contact(body.contact), body.through)
         if (body is Body.GroupForgotten) forgotten(Peer.Group(body.group), body.through)
+        if (body is Body.Power || body is Body.Airtime) readings = readings.with(body, System.currentTimeMillis())
         if (body is Body.Position || body is Body.GroupPosition || body is Body.Sharing || body is Body.GroupSharing ||
             body is Body.Card || body is Body.Fix
         ) {
@@ -1714,7 +1728,7 @@ class NodeRepository(private val context: Context) {
         update {
             it.copy(
                 records = connection.records.copy(), setUp = it.node?.let { n -> setUp(n.address, records) } ?: true,
-                arrived = arrived.toMap(),
+                arrived = arrived.toMap(), readings = readings,
             )
         }
         NodeService.refresh(context, _state.value)
@@ -1751,6 +1765,23 @@ class NodeRepository(private val context: Context) {
         val tmp = File(f.path + ".tmp")
         tmp.writeBytes(RecordsFile.encode(connection.records))
         tmp.renameTo(f)
+        val rf = readingsFile(address)
+        val rtmp = File(rf.path + ".tmp")
+        rtmp.writeBytes(Readings.encode(readings))
+        rtmp.renameTo(rf)
+    }
+
+    private fun readingsFile(address: String) = File(context.filesDir, "records/${address.replace(':', '-')}.readings")
+
+    private fun loadReadings(address: String): Readings =
+        // Kept by an app that stopped while connected, the last of each had no end: it ends where it was heard.
+        readingsFile(address).takeIf { it.exists() }?.let { Readings.decode(it.readBytes()).ended(0) } ?: Readings()
+
+    /** The link ended: a chart draws the last battery and airtime up to now, and no further. */
+    private fun endReadings() {
+        val before = readings
+        readings = readings.ended(System.currentTimeMillis())
+        if (readings !== before) update { it.copy(readings = readings) }
     }
 
     private inline fun update(change: (NodeState) -> NodeState) {
