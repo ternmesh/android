@@ -43,6 +43,12 @@ class ReadingsTest {
     }
 
     @Test
+    fun anEndAtNoTimeEndsWhereTheLastWasHeard() {
+        val r = Readings().with(Body.Power(4100, 90, 0), t0).ended(0)
+        assertEquals(PowerReading(t0, 4100, 90, 0, end = true), r.power.last())
+    }
+
+    @Test
     fun readingsOlderThanAWeekGo() {
         var r = Readings().with(Body.Power(4100, 90, 0), t0)
         r = r.with(Body.Power(4000, 80, 0), t0 + Readings.KEPT_MS + 1)

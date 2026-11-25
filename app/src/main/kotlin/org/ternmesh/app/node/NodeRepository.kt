@@ -1774,7 +1774,8 @@ class NodeRepository(private val context: Context) {
     private fun readingsFile(address: String) = File(context.filesDir, "records/${address.replace(':', '-')}.readings")
 
     private fun loadReadings(address: String): Readings =
-        readingsFile(address).takeIf { it.exists() }?.let { Readings.decode(it.readBytes()) } ?: Readings()
+        // Kept by an app that stopped while connected, the last of each had no end: it ends where it was heard.
+        readingsFile(address).takeIf { it.exists() }?.let { Readings.decode(it.readBytes()).ended(0) } ?: Readings()
 
     /** The link ended: a chart draws the last battery and airtime up to now, and no further. */
     private fun endReadings() {
