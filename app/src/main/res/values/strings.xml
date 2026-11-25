@@ -803,6 +803,7 @@
     <string name="range_test_explained">Sends %1$s a numbered message every so often, and logs each: where this phone was, whether it was delivered and how. Keep this screen open while you move; the screen stays on.</string>
     <string name="range_to">To</string>
     <string name="range_choose">Choose a contact</string>
+    <string name="range_a_contact">a contact</string>
     <string name="range_every">Every %1$d s</string>
     <string name="range_begin">Start</string>
     <string name="range_stop">Stop</string>

@@ -329,7 +329,7 @@ fun RangeTestScreen(repository: NodeRepository, state: NodeState, initial: Addre
                         if (export != null) HeroButton(TernIcons.Share, stringResource(R.string.range_export), Modifier.weight(1f), onClick = export)
                     }
                 }
-                Footnote(stringResource(R.string.range_test_explained, name ?: stringResource(R.string.range_choose)), Modifier.padding(top = 4.dp))
+                Footnote(stringResource(R.string.range_test_explained, name ?: stringResource(R.string.range_a_contact)), Modifier.padding(top = 4.dp))
 
                 SectionHeader(stringResource(R.string.range_settings))
                 SettingsGroup {
