@@ -92,12 +92,7 @@ private fun SpanChips(span: ReadingSpan, choose: (ReadingSpan) -> Unit) {
 @Composable
 private fun ReadingHead(value: String, line: String?, sub: String?) {
     val extra = LocalTernColors.current
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(Brush.linearGradient(listOf(extra.heroTop, extra.heroBottom)))
-            .padding(18.dp),
-    ) {
+    HeroCard {
         Text(value, style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.SemiBold), color = extra.onHero)
         line?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = extra.onHero.copy(alpha = 0.9f)) }
         sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = extra.onHero.copy(alpha = 0.8f), modifier = Modifier.padding(top = 4.dp)) }

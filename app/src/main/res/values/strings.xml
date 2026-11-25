@@ -94,6 +94,17 @@
     <string name="connect_turn_on">Turn on Bluetooth</string>
     <string name="connect_location">On this version of Android, finding Bluetooth devices needs the phone\'s location setting on. Tern does not use your location.</string>
     <string name="connect_turn_on_location">Open location settings</string>
+    <string name="connect_permission_title">Allow Bluetooth</string>
+    <string name="connect_bluetooth_off">Bluetooth is off</string>
+    <string name="connect_bluetooth_off_explained">Turn it on so Tern can find your node and talk to it.</string>
+    <string name="connect_location_off">Location is off</string>
+    <string name="connect_looking">Looking for nodes…</string>
+    <string name="connect_not_looking">Not scanning</string>
+    <plurals name="connect_found">
+        <item quantity="one">%1$d Tern node found nearby. Tap it to connect.</item>
+        <item quantity="other">%1$d Tern nodes found nearby. Tap one to connect.</item>
+    </plurals>
+    <string name="connect_found_title">Nodes nearby</string>
     <string name="unnamed_device">Unnamed node</string>
     <string name="signal_dbm">%1$d dBm</string>
     <string name="retry">Try again</string>
@@ -404,6 +415,7 @@
         <item quantity="one">You have %1$d contact.</item>
         <item quantity="other">You have %1$d contacts.</item>
     </plurals>
+    <string name="setup_step">Step %1$d of %2$d</string>
     <string name="setup_next">Next</string>
     <string name="setup_done">Done</string>
     <string name="setup_skip">Skip</string>
@@ -492,6 +504,9 @@
     <string name="snr_db">%1$.1f dB</string>
     <string name="node_my_address">My address</string>
     <string name="node_address_full">Full address</string>
+    <string name="address_how">How others add you</string>
+    <string name="address_scan">Scan the code</string>
+    <string name="address_read_out">Read out the short code</string>
     <string name="share_link">Share link</string>
     <string name="node_nearby_nodes">Nearby nodes</string>
     <string name="node_heard_none">None heard</string>
@@ -788,12 +803,17 @@
     <string name="range_test_explained">Sends %1$s a numbered message every so often, and logs each: where this phone was, whether it was delivered and how. Keep this screen open while you move; the screen stays on.</string>
     <string name="range_to">To</string>
     <string name="range_choose">Choose a contact</string>
+    <string name="range_a_contact">a contact</string>
     <string name="range_every">Every %1$d s</string>
     <string name="range_begin">Start</string>
     <string name="range_stop">Stop</string>
     <string name="range_export">Export CSV</string>
     <string name="range_running">Running: next in %1$d s</string>
     <string name="range_stopped">Stopped</string>
+    <string name="range_ready">Ready</string>
+    <string name="range_ready_to">To %1$s, when you start</string>
+    <string name="range_settings">Test</string>
+    <string name="range_log">Log</string>
     <string name="range_tally">Delivered: %1$d of %2$d</string>
     <string name="range_no_location">No location: the log won\'t say where you were.</string>
     <string name="range_allow_location">Allow location</string>

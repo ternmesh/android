@@ -11,7 +11,13 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,10 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,11 +49,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.delay
@@ -59,6 +65,7 @@ import org.ternmesh.app.node.LocationFeed
 import org.ternmesh.app.node.NodeRepository
 import org.ternmesh.app.node.NodeState
 import org.ternmesh.app.node.Phase
+import org.ternmesh.app.node.RangeRow
 import org.ternmesh.app.node.RangeTest
 import org.ternmesh.app.node.rangeCsv
 import org.ternmesh.app.node.rangeRows
@@ -66,6 +73,7 @@ import org.ternmesh.app.node.rangeTally
 import org.ternmesh.companion.Address
 import org.ternmesh.companion.Companion
 import org.ternmesh.companion.Conversations
+import org.ternmesh.companion.MessageState
 import org.ternmesh.companion.Peer
 import org.ternmesh.companion.TraceHop
 import java.io.File
@@ -101,50 +109,68 @@ fun TraceScreen(repository: NodeRepository, state: NodeState, to: Long, back: ()
         }
     }
     NodeSubScreen(stringResource(R.string.trace_title, target), back) {
-        Footnote(stringResource(R.string.trace_explained, target))
-        // A leaf with no session with this node drops the trace: said before it runs, not only after.
-        if (leafWithoutSession(r, to) && run?.traced == null) {
-            Footnote(stringResource(R.string.trace_leaf_hint), Modifier.padding(top = 4.dp))
-        }
-        if (!canTrace(state)) {
-            Footnote(stringResource(R.string.trace_needs_update), Modifier.padding(top = 8.dp))
-            return@NodeSubScreen
-        }
         val traced = run?.traced
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        val on = LocalTernColors.current.onHero
+        HeroCard {
+            Text(target, style = MaterialTheme.typography.headlineSmall, color = on, maxLines = 1, overflow = TextOverflow.Ellipsis)
             when {
+                !canTrace(state) -> HeroStatus(stringResource(R.string.trace_needs_update), good = false, Modifier.padding(top = 4.dp))
                 run == null -> {}
-                run.running -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Text(traceStepText(context, run), style = MaterialTheme.typography.bodyLarge)
+                run.running -> Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(16.dp), color = on, trackColor = on.copy(alpha = 0.25f), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text(traceStepText(context, run), style = MaterialTheme.typography.bodyMedium, color = on.copy(alpha = 0.9f))
                 }
-                run.failed != null -> Text(
+                run.failed != null -> HeroStatus(
                     stringResource(R.string.trace_failed, outcomeText(context, run.failed)),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.error,
+                    good = false,
+                    Modifier.padding(top = 4.dp),
                 )
                 traced != null -> {
-                    Text(traceResultText(context, r, names, traced, target), style = MaterialTheme.typography.titleMedium)
+                    HeroStatus(traceResultText(context, r, names, traced, target), good = traced.answered, Modifier.padding(top = 4.dp))
                     if (traced.answered) {
-                        Text(traceSummary(context, traced), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            traceSummary(context, traced),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = on,
+                            modifier = Modifier.padding(top = 10.dp),
+                        )
                     }
                 }
             }
-            Button(onClick = { repository.trace(to) }, enabled = ready && run?.running != true, modifier = Modifier.padding(top = 6.dp)) {
-                Text(stringResource(if (run == null) R.string.trace_start else R.string.trace_again))
+            if (canTrace(state)) {
+                HeroButton(
+                    TernIcons.Wave,
+                    stringResource(if (run == null) R.string.trace_start else R.string.trace_again),
+                    Modifier.fillMaxWidth().padding(top = 16.dp),
+                    enabled = ready && run?.running != true,
+                ) { repository.trace(to) }
             }
         }
+        Footnote(stringResource(R.string.trace_explained, target), Modifier.padding(top = 4.dp))
+        // A leaf with no session with this node drops the trace: said before it runs, not only after.
+        if (leafWithoutSession(r, to) && traced == null) {
+            Footnote(stringResource(R.string.trace_leaf_hint), Modifier.padding(top = 4.dp))
+        }
+        if (!canTrace(state)) return@NodeSubScreen
         if (traced != null && traced.answered) {
             val self = r.self?.address?.let(r::routingIdOf)
             SectionHeader(stringResource(R.string.trace_way_out))
-            HopRow(stringResource(R.string.trace_you), null, null, onClick = null)
-            traced.wayOut.forEachIndexed { i, hop ->
-                HopRow(state, hop, answerer = i == traced.wayOut.size - 1) { naming = hop.routingId }
+            SettingsGroup {
+                HopRow(stringResource(R.string.trace_you), null, null, onClick = null)
+                traced.wayOut.forEachIndexed { i, hop ->
+                    GroupDivider()
+                    HopRow(state, hop, answerer = i == traced.wayOut.size - 1) { naming = hop.routingId }
+                }
             }
             SectionHeader(stringResource(R.string.trace_way_back))
-            for (hop in traced.wayBack) HopRow(state, hop, answerer = false) { naming = hop.routingId }
-            HopRow(stringResource(R.string.trace_you), traced.snr, null, onClick = null)
+            SettingsGroup {
+                for (hop in traced.wayBack) {
+                    HopRow(state, hop, answerer = false) { naming = hop.routingId }
+                    GroupDivider()
+                }
+                HopRow(stringResource(R.string.trace_you), traced.snr, null, onClick = null)
+            }
             // A node the user can name: neither this one, nor one a contact has.
             if (traced.hops.any { it.routingId != self && Conversations.contactOf(r, it.routingId) == null }) {
                 Footnote(stringResource(R.string.trace_name_hint), Modifier.padding(top = 8.dp))
@@ -265,86 +291,89 @@ fun RangeTestScreen(repository: NodeRepository, state: NodeState, initial: Addre
                 }
             }
         }
-        LazyColumn(Modifier.weight(1f)) {
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
-                Footnote(stringResource(R.string.range_test_explained, name ?: stringResource(R.string.range_choose)))
-                SettingsGroup(Modifier.padding(top = 8.dp)) {
+                val (delivered, sent) = rangeTally(rows)
+                val on = LocalTernColors.current.onHero
+                HeroCard {
+                    Text(
+                        if (logged) stringResource(R.string.range_tally, delivered, sent) else stringResource(R.string.range_ready),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = on,
+                    )
+                    HeroStatus(
+                        when {
+                            running -> stringResource(R.string.range_running, ((range!!.nextAt - now) / 1000).coerceAtLeast(0).toInt())
+                            logged -> stringResource(R.string.range_stopped)
+                            else -> name?.let { stringResource(R.string.range_ready_to, it) } ?: stringResource(R.string.range_choose)
+                        },
+                        good = running || (to != null && !logged),
+                        Modifier.padding(top = 4.dp),
+                    )
+                    if (logged && sent > 0) {
+                        Box(Modifier.padding(top = 14.dp).fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(on.copy(alpha = 0.25f))) {
+                            Box(Modifier.fillMaxWidth(delivered.toFloat() / sent).height(6.dp).clip(RoundedCornerShape(3.dp)).background(on))
+                        }
+                    }
+                    Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (running) {
+                            HeroButton(TernIcons.Power, stringResource(R.string.range_stop), Modifier.weight(1f), onClick = repository::stopRangeTest)
+                        } else {
+                            HeroButton(TernIcons.Send, stringResource(R.string.range_begin), Modifier.weight(1f), enabled = to != null) {
+                                if (to != null) {
+                                    if (!permitted) ask.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                                    repository.startRangeTest(to, seconds * 1000L)
+                                }
+                            }
+                        }
+                        if (export != null) HeroButton(TernIcons.Share, stringResource(R.string.range_export), Modifier.weight(1f), onClick = export)
+                    }
+                }
+                Footnote(stringResource(R.string.range_test_explained, name ?: stringResource(R.string.range_a_contact)), Modifier.padding(top = 4.dp))
+
+                SectionHeader(stringResource(R.string.range_settings))
+                SettingsGroup {
                     SettingsRow(
                         stringResource(R.string.range_to),
+                        icon = TernIcons.People, tint = RangeTint.to,
                         value = name ?: stringResource(R.string.range_choose),
                         enabled = !running,
                         onClick = { choosing = true },
                     )
                     GroupDivider()
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Text(stringResource(R.string.range_every, seconds), style = MaterialTheme.typography.bodyLarge)
-                        Slider(
-                            value = seconds.toFloat(),
-                            onValueChange = { seconds = (Math.round(it / 5f) * 5).coerceIn(30, 60) },
-                            valueRange = 30f..60f,
-                            steps = 5,
-                            enabled = !running,
+                    Row(Modifier.padding(start = 14.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        RowIcon(TernIcons.Wave, RangeTint.every)
+                        Text(
+                            stringResource(R.string.range_every, seconds),
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                            color = if (running) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    Slider(
+                        value = seconds.toFloat(),
+                        onValueChange = { seconds = (Math.round(it / 5f) * 5).coerceIn(30, 60) },
+                        valueRange = 30f..60f,
+                        steps = 5,
+                        enabled = !running,
+                        modifier = Modifier.padding(start = 62.dp, end = 16.dp, bottom = 4.dp),
+                    )
+                }
+                if (!permitted) {
+                    Spacer(Modifier.height(12.dp))
+                    SettingsGroup {
+                        SettingsRow(
+                            stringResource(R.string.range_allow_location),
+                            icon = TernIcons.Pin, tint = LocalTernColors.current.warn,
+                            subtitle = stringResource(R.string.range_no_location),
+                            onClick = { ask.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) },
                         )
                     }
                 }
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (running) {
-                        Button(onClick = repository::stopRangeTest, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.range_stop)) }
-                    } else {
-                        Button(
-                            onClick = {
-                                if (to != null) {
-                                    if (!permitted) ask.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                                    repository.startRangeTest(to, seconds * 1000L)
-                                }
-                            },
-                            enabled = to != null,
-                            modifier = Modifier.weight(1f),
-                        ) { Text(stringResource(R.string.range_begin)) }
-                    }
-                    if (export != null) {
-                        FilledTonalButton(onClick = export, modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.range_export))
-                        }
-                    }
-                }
-                val (delivered, sent) = rangeTally(rows)
-                val status = listOfNotNull(
-                    if (running) stringResource(R.string.range_running, ((range!!.nextAt - now) / 1000).coerceAtLeast(0).toInt()) else if (logged) stringResource(R.string.range_stopped) else null,
-                    if (logged) stringResource(R.string.range_tally, delivered, sent) else null,
-                )
-                if (status.isNotEmpty()) {
-                    Text(status.joinToString(" · "), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp))
-                }
-                if (!permitted) {
-                    Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.range_no_location), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                        TextButton(onClick = {
-                            ask.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                        }) { Text(stringResource(R.string.range_allow_location)) }
-                    }
-                }
-                if (!canTrace(state) && state.version != null) Footnote(stringResource(R.string.range_needs_update))
-                Spacer(Modifier.size(8.dp))
+                if (!canTrace(state) && state.version != null) Footnote(stringResource(R.string.range_needs_update), Modifier.padding(top = 4.dp))
+                if (rows.isNotEmpty()) SectionHeader(stringResource(R.string.range_log))
             }
             items(rows.asReversed(), key = { it.ping.n }) { row ->
-                val p = row.ping
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    Text(
-                        "#${p.n} · " + DateFormat.getTimeInstance(DateFormat.MEDIUM).format(Date(p.at)),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Text(rangeRowText(context, r, state.relayNames, row), style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        p.fix?.let { f ->
-                            f.accuracy?.let { stringResource(R.string.range_fix, f.lat, f.lon, Math.round(it)) }
-                                ?: stringResource(R.string.range_fix_unsure, f.lat, f.lon)
-                        } ?: stringResource(R.string.range_no_fix),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                PingRow(row, rangeRowText(context, r, state.relayNames, row))
             }
         }
     }
@@ -373,6 +402,56 @@ fun RangeTestScreen(repository: NodeRepository, state: NodeState, initial: Addre
                 }) { Text(stringResource(R.string.range_export)) }
             },
         )
+    }
+}
+
+/** The colours of the range test's settings, found by colour as the node's are. */
+private object RangeTint {
+    val to = Color(0xFF1D4ED8)
+    val every = Color(0xFF0F766E)
+}
+
+/**
+ * One ping of the range test's log: its number on a badge coloured for what became of it, when it
+ * went and what became of it, and where the phone was.
+ */
+@Composable
+private fun PingRow(row: RangeRow, text: String) {
+    val p = row.ping
+    val extra = LocalTernColors.current
+    val failed = p.unsent != null || row.state == MessageState.NOT_DELIVERED
+    val hue = when {
+        row.delivered -> extra.good
+        failed -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(Modifier.size(40.dp).clip(CircleShape).background(hue.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+            Text("${p.n}", style = MaterialTheme.typography.labelLarge, color = hue, maxLines = 1)
+        }
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), modifier = Modifier.weight(1f))
+                Text(
+                    DateFormat.getTimeInstance(DateFormat.MEDIUM).format(Date(p.at)),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            Text(
+                p.fix?.let { f ->
+                    f.accuracy?.let { stringResource(R.string.range_fix, f.lat, f.lon, Math.round(it)) }
+                        ?: stringResource(R.string.range_fix_unsure, f.lat, f.lon)
+                } ?: stringResource(R.string.range_no_fix),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
